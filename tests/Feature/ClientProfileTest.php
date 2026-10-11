@@ -59,18 +59,30 @@ class ClientProfileTest extends TestCase
         $page->call('togglePaid', $payment->id);
         $this->assertSame('paid', $payment->fresh()->status());
 
-        $page->set('contractStart', '2026-05-01')
+        Storage::fake('local');
+
+        $page->call('editAgreement')
+            ->set('contractStart', '2026-05-01')
             ->set('contractEnd', '2026-04-01')
             ->call('saveAgreement')
             ->assertHasErrors(['contractEnd'])
             ->set('contractEnd', '2027-04-30')
+            ->set('agreementSigned', true)
+            ->set('agreementFile', UploadedFile::fake()->create('signed-agreement.pdf', 80, 'application/pdf'))
             ->call('saveAgreement')
             ->assertHasNoErrors()
-            ->call('toggleSigned');
+            ->assertSee('१७ बैशाख २०८४'); // 2027-04-30 in BS
 
         $client->refresh();
         $this->assertSame('2027-04-30', $client->contract_end->toDateString());
         $this->assertNotNull($client->agreement_signed_at);
+        $this->assertSame('agreement', $client->documents()->sole()->type);
+
+        $page->call('editAgreement')->set('agreementSigned', false)->call('saveAgreement');
+        $this->assertNull($client->fresh()->agreement_signed_at);
+
+        $page->call('editNotes')->set('notes', 'Prefers WhatsApp')->call('saveNotes');
+        $this->assertSame('Prefers WhatsApp', $client->fresh()->notes);
     }
 
     public function test_another_clients_task_cannot_be_changed_from_this_profile(): void

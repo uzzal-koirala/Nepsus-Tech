@@ -1,0 +1,1 @@
+import './nepali-datepicker';

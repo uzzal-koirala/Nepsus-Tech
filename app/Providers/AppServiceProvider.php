@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Support\NepaliDate;
+use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +26,11 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        foreach ([Carbon::class, CarbonImmutable::class] as $class) {
+            $class::macro('toNepali', fn (bool $withYear = true): string => NepaliDate::format($this, $withYear));
+            $class::macro('toNepaliMonth', fn (): string => NepaliDate::monthYear($this));
+        }
     }
 
     /**
