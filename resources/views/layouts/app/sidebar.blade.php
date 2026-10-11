@@ -22,7 +22,7 @@
                             ['icon' => 'check-circle', 'label' => __('Tasks')],
                         ],
                         __('Team') => [
-                            ['icon' => 'user-group', 'label' => __('Employees')],
+                            ['icon' => 'user-group', 'label' => __('Employees'), 'route' => 'employees.index'],
                             ['icon' => 'clock', 'label' => __('Activity log')],
                         ],
                     ];
