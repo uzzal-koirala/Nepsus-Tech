@@ -101,7 +101,7 @@ new #[Title('Clients')] class extends Component {
 
         return [
             'active' => (clone $active)->count(),
-            'leads' => Client::where('status', 'lead')->count(),
+            'inactive' => Client::where('status', 'inactive')->count(),
             'monthly' => (float) (clone $active)->where('billing_cycle', 'monthly')->sum('price')
                 + (float) (clone $active)->where('billing_cycle', 'yearly')->sum('price') / 12,
             'paying' => (clone $active)->whereIn('billing_cycle', ['monthly', 'yearly'])->whereNotNull('price')->count(),
@@ -246,13 +246,12 @@ new #[Title('Clients')] class extends Component {
 }; ?>
 
 @php
-    $tabs = ['all' => __('All clients'), 'active' => __('Active'), 'lead' => __('Leads'), 'inactive' => __('Inactive')];
+    $tabs = ['all' => __('All clients'), 'active' => __('Active'), 'inactive' => __('Inactive')];
     $badges = [
         'active' => 'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-500/10 dark:text-emerald-300',
-        'lead' => 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-300',
         'inactive' => 'bg-zinc-100 text-zinc-600 ring-zinc-500/15 dark:bg-white/5 dark:text-zinc-400',
     ];
-    $dots = ['active' => 'bg-emerald-500', 'lead' => 'bg-amber-500', 'inactive' => 'bg-zinc-400'];
+    $dots = ['active' => 'bg-emerald-500', 'inactive' => 'bg-zinc-400'];
     $tiers = [
         'basic' => [
             'chip' => 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-300',
@@ -309,7 +308,7 @@ new #[Title('Clients')] class extends Component {
                 <p class="text-sm font-medium text-brand-100">{{ __('Active clients') }}</p>
             </div>
             <p class="text-[2rem] leading-none font-semibold tracking-tight tabular-nums">{{ $sum['active'] }}</p>
-            <p class="mt-auto text-xs text-brand-100">{{ trans_choice(':count lead in the pipeline|:count leads in the pipeline', $sum['leads']) }}</p>
+            <p class="mt-auto text-xs text-brand-100">{{ trans_choice(':count inactive client|:count inactive clients', $sum['inactive']) }}</p>
         </div>
 
         <div class="flex flex-col gap-4 rounded-xl bg-white p-5 ring-1 ring-zinc-200/70 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:ring-white/10">
@@ -705,7 +704,7 @@ new #[Title('Clients')] class extends Component {
                     <div class="sm:col-span-2">
                         <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Status') }}</span>
                         <div class="mt-2 flex gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-white/5">
-                            @foreach (['active' => ['Active', 'bg-emerald-500'], 'lead' => ['Lead', 'bg-amber-500'], 'inactive' => ['Inactive', 'bg-zinc-400']] as $value => [$label, $dot])
+                            @foreach (['active' => ['Active', 'bg-emerald-500'], 'inactive' => ['Inactive', 'bg-zinc-400']] as $value => [$label, $dot])
                                 <button type="button" @click="$wire.clientStatus = '{{ $value }}'" class="{{ $seg }} inline-flex items-center justify-center gap-2" :class="$wire.clientStatus === '{{ $value }}' ? @js($segOn) : @js($segOff)">
                                     <span class="{{ $dot }} size-2 rounded-full"></span>{{ __($label) }}
                                 </button>

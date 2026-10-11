@@ -90,7 +90,7 @@ class ClientsTest extends TestCase
     {
         $this->actingAs(User::factory()->create());
 
-        Client::factory()->create(['name' => 'Asha Koirala', 'status' => 'lead']);
+        Client::factory()->create(['name' => 'Asha Koirala', 'status' => 'inactive']);
         Client::factory()->create(['name' => 'Bikram Thapa', 'status' => 'active']);
 
         $this->get(route('clients.index'))->assertOk()->assertSee('Asha Koirala');
@@ -115,6 +115,10 @@ class ClientsTest extends TestCase
             ->call('save')
             ->assertHasErrors(['instagram_url'])
             ->set('instagram_url', 'https://instagram.com/sita')
+            ->set('clientStatus', 'lead')
+            ->call('save')
+            ->assertHasErrors(['clientStatus'])
+            ->set('clientStatus', 'active')
             ->call('save')
             ->assertHasNoErrors()
             ->assertSee('NPR 25,000')
@@ -122,7 +126,7 @@ class ClientsTest extends TestCase
             ->assertSee('Sita Gurung')
             ->assertDontSee('Bikram Thapa')
             ->set('search', '')
-            ->call('setStatus', 'lead')
+            ->call('setStatus', 'inactive')
             ->assertSee('Asha Koirala')
             ->assertDontSee('Bikram Thapa');
 

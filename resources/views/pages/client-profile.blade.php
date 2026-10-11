@@ -278,10 +278,9 @@ new #[Title('Client profile')] class extends Component {
     ];
     $badges = [
         'active' => 'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-500/10 dark:text-emerald-300',
-        'lead' => 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-300',
         'inactive' => 'bg-zinc-100 text-zinc-600 ring-zinc-500/15 dark:bg-white/5 dark:text-zinc-400',
     ];
-    $dots = ['active' => 'bg-emerald-500', 'lead' => 'bg-amber-500', 'inactive' => 'bg-zinc-400'];
+    $dots = ['active' => 'bg-emerald-500', 'inactive' => 'bg-zinc-400'];
     $payBadges = [
         'paid' => 'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-500/10 dark:text-emerald-300',
         'pending' => 'bg-zinc-100 text-zinc-600 ring-zinc-500/15 dark:bg-white/5 dark:text-zinc-300',

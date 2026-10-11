@@ -23,7 +23,7 @@ class Client extends Model
     /** @use HasFactory<ClientFactory> */
     use HasFactory;
 
-    public const STATUSES = ['active', 'lead', 'inactive'];
+    public const STATUSES = ['active', 'inactive'];
 
     public const BILLING_CYCLES = ['monthly', 'yearly', 'one_time'];
 

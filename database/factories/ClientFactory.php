@@ -33,7 +33,7 @@ class ClientFactory extends Factory
             'company' => fake()->optional(0.85)->company(),
             'email' => fake()->unique()->safeEmail(),
             'phone' => fake()->optional(0.9)->phoneNumber(),
-            'status' => fake()->randomElement(['active', 'active', 'active', 'lead', 'inactive']),
+            'status' => fake()->randomElement(['active', 'active', 'active', 'inactive']),
             'notes' => fake()->optional(0.4)->sentence(),
             'package' => $package = fake()->optional(0.9)->randomElement(array_keys(Client::PACKAGES)),
             'price' => $package ? fake()->randomElement(self::PRICES[$package]) : null,
