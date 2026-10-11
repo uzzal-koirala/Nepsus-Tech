@@ -123,14 +123,40 @@ class ClientsTest extends TestCase
             ->assertSet('formTab', 'details')
             ->set('name', 'Sita Gurung')
             ->set('formTab', 'details')
-            ->set('instagram_url', 'not a url')
+            ->set('package', (string) \App\Models\Package::first()->id)
+            ->set('agreementStart', '2026-08-31')
+            ->set('agreementMonths', '0')
             ->call('save')
-            ->assertHasErrors(['instagram_url'])
+            ->assertHasErrors(['agreementMonths'])
             ->assertSet('formTab', 'package')
-            ->set('instagram_url', '')
+            ->set('agreementMonths', '12')
             ->set('name', '')
             ->call('save')
             ->assertSet('formTab', 'details');
+    }
+
+    public function test_editing_keeps_the_agreement_period_and_social_links(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $client = Client::factory()->create([
+            'package_id' => \App\Models\Package::first()->id,
+            'contract_start' => '2026-08-31',
+            'contract_end' => \App\Support\NepaliDate::periodEndAfter(\Illuminate\Support\Carbon::parse('2026-08-31'), 6),
+            'instagram_url' => 'https://instagram.com/keep-me',
+        ]);
+
+        Livewire::test('pages::clients')
+            ->call('edit', $client->id)
+            ->assertSet('agreementStart', '2026-08-31')
+            ->assertSet('agreementMonths', '6')
+            ->set('agreementMonths', '3')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $client->refresh();
+        $this->assertSame('14 Mangsir 2083', $client->contract_end->toNepali());
+        $this->assertSame('https://instagram.com/keep-me', $client->instagram_url);
     }
 
     public function test_dragging_a_card_changes_its_priority(): void
@@ -180,10 +206,8 @@ class ClientsTest extends TestCase
             ->call('save')
             ->assertHasErrors(['progress'])
             ->set('progress', 60)
-            ->set('instagram_url', 'not a url')
-            ->call('save')
-            ->assertHasErrors(['instagram_url'])
-            ->set('instagram_url', 'https://instagram.com/sita')
+            ->set('agreementStart', '2026-08-31') // 15 Bhadra 2083
+            ->set('agreementMonths', '12')
             ->set('clientStatus', 'lead')
             ->call('save')
             ->assertHasErrors(['clientStatus'])
@@ -204,7 +228,9 @@ class ClientsTest extends TestCase
         $this->assertSame(60, $sita->progress);
         $this->assertSame($premium->id, $sita->package_id);
         $this->assertSame('Premium', $sita->package->name);
-        $this->assertSame(['instagram' => 'https://instagram.com/sita'], $sita->socialLinks());
+        $this->assertSame('15 Bhadra 2083', $sita->contract_start->toNepali());
+        $this->assertSame('14 Bhadra 2084', $sita->contract_end->toNepali());
+        $this->assertSame(12, $sita->agreementMonths());
 
         Livewire::test('pages::clients')
             ->call('confirmDelete', $sita->id)

@@ -44,6 +44,31 @@ export function bsToAd(y, m, d) {
     return new Date(EPOCH + days * DAY).toISOString().slice(0, 10);
 }
 
+// Same BS day, n months later (clamped), then the day before: last day of an n-month agreement.
+export function periodEndAfter(iso, months) {
+    const s = adToBs(iso);
+
+    if (!s || !months) return null;
+
+    const index = s.y * 12 + s.m + months;
+    const y = Math.floor(index / 12);
+    const m = index % 12;
+
+    if (!calendar[y]) return null;
+
+    const renewal = bsToAd(y, m, Math.min(s.d, calendar[y][m]));
+
+    return new Date(Date.parse(renewal) - DAY).toISOString().slice(0, 10);
+}
+
+export function formatBs(iso) {
+    const s = iso ? adToBs(iso) : null;
+
+    return s ? `${s.d} ${MONTHS[s.m]} ${s.y}` : '';
+}
+
+window.NepaliCalendar = { adToBs, bsToAd, periodEndAfter, formatBs };
+
 document.addEventListener('alpine:init', () => {
     window.Alpine.data('nepaliDate', () => ({
         value: '',

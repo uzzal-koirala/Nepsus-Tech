@@ -158,6 +158,30 @@ class Client extends Model
     }
 
     /**
+     * Length of the agreement in BS months, when the end date is a whole number of months after the start.
+     */
+    public function agreementMonths(): ?int
+    {
+        if (! $this->contract_start || ! $this->contract_end) {
+            return null;
+        }
+
+        for ($months = 1; $months <= 120; $months++) {
+            $end = NepaliDate::periodEndAfter($this->contract_start, $months);
+
+            if ($end->isSameDay($this->contract_end)) {
+                return $months;
+            }
+
+            if ($end->greaterThan($this->contract_end)) {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Get the client's initials.
      */
     public function initials(): string

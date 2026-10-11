@@ -36,6 +36,19 @@ class NepaliDateTest extends TestCase
         $this->assertSame('2026-10-17 23:59:59', $end->toDateTimeString());
     }
 
+    public function test_agreement_periods_add_bs_months(): void
+    {
+        $start = NepaliDate::toAd(2083, 5, 15); // 15 Bhadra 2083
+
+        $this->assertSame('15 Bhadra 2084', NepaliDate::format(NepaliDate::addMonths($start, 12)));
+        $this->assertSame('14 Bhadra 2084', NepaliDate::format(NepaliDate::periodEndAfter($start, 12)));
+        $this->assertSame('14 Kartik 2083', NepaliDate::format(NepaliDate::periodEndAfter($start, 2)));
+        $this->assertSame('14 Bhadra 2083', NepaliDate::format(NepaliDate::periodEndAfter(NepaliDate::toAd(2082, 11, 15), 6)));
+
+        // 32 Asar + 3 months lands in Ashoj, which has 31 days.
+        $this->assertSame('31 Ashoj 2083', NepaliDate::format(NepaliDate::addMonths(NepaliDate::toAd(2083, 3, 32), 3)));
+    }
+
     public function test_payroll_periods(): void
     {
         $this->assertSame('2083-06', NepaliDate::period(Carbon::parse('2026-10-12')));

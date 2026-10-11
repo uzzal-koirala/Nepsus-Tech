@@ -12,6 +12,7 @@ use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Storage;
 
 new #[Title('Clients')] class extends Component {
@@ -45,17 +46,15 @@ new #[Title('Clients')] class extends Component {
     public string $price = '';
     public string $billing_cycle = 'monthly';
     public int $progress = 0;
-    public string $facebook_url = '';
-    public string $instagram_url = '';
-    public string $tiktok_url = '';
-    public string $google_business_url = '';
+    public string $agreementStart = '';
+    public string $agreementMonths = '12';
 
     /** Step shown in the add/edit form. */
     public string $formTab = 'details';
 
     private const FORM_TABS = [
         'details' => ['photo', 'name', 'company', 'phone', 'clientStatus', 'email'],
-        'package' => ['package', 'price', 'billing_cycle', 'progress', 'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url'],
+        'package' => ['package', 'price', 'billing_cycle', 'agreementStart', 'agreementMonths', 'progress'],
     ];
 
     public function updatedPhoto(): void
@@ -200,8 +199,10 @@ new #[Title('Clients')] class extends Component {
         $this->package = (string) $client->package_id;
 
         $this->currentPhoto = $client->avatarUrl();
+        $this->agreementStart = (string) $client->contract_start?->toDateString();
+        $this->agreementMonths = (string) ($client->agreementMonths() ?? '');
 
-        foreach (['name', 'company', 'email', 'phone', ...array_values(Client::SOCIALS)] as $field) {
+        foreach (['name', 'company', 'email', 'phone'] as $field) {
             $this->{$field} = (string) $client->{$field};
         }
 
@@ -210,8 +211,6 @@ new #[Title('Clients')] class extends Component {
 
     public function save(): void
     {
-        $url = ['nullable', 'url:http,https', 'max:255'];
-
         $this->withValidator(fn ($validator) => $validator->after(function ($validator) {
             // Jump the form to the step that holds the first error.
             if ($field = array_key_first($validator->errors()->messages())) {
@@ -230,16 +229,19 @@ new #[Title('Clients')] class extends Component {
             'price' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
             'billing_cycle' => ['required', Rule::in(Client::BILLING_CYCLES)],
             'progress' => ['required', 'integer', 'min:0', 'max:100'],
-            'facebook_url' => $url,
-            'instagram_url' => $url,
-            'tiktok_url' => $url,
-            'google_business_url' => $url,
+            'agreementStart' => ['nullable', 'date'],
+            'agreementMonths' => ['nullable', 'required_with:agreementStart', 'integer', 'min:1', 'max:120'],
         ]);
 
         $data['status'] = $data['clientStatus'];
         $data['package_id'] = $data['package'] ?: null;
-        unset($data['clientStatus'], $data['package'], $data['photo']);
+        unset($data['clientStatus'], $data['package'], $data['photo'], $data['agreementStart'], $data['agreementMonths']);
         $data = array_map(fn ($v) => $v === '' ? null : $v, $data);
+
+        // Agreement: a start date plus a length in months gives the contract period.
+        $start = $this->agreementStart ? Date::parse($this->agreementStart) : null;
+        $data['contract_start'] = $start;
+        $data['contract_end'] = $start ? NepaliDate::periodEndAfter($start, (int) $this->agreementMonths) : null;
 
         if (! $this->editingId) {
             $data['position'] = (int) Client::min('position') - 1; // new clients start at the top
@@ -283,7 +285,7 @@ new #[Title('Clients')] class extends Component {
 
     private function resetForm(): void
     {
-        $this->reset('editingId', 'name', 'company', 'email', 'phone', 'photo', 'currentPhoto', 'removePhoto', 'package', 'price', 'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url');
+        $this->reset('editingId', 'name', 'company', 'email', 'phone', 'photo', 'currentPhoto', 'removePhoto', 'package', 'price', 'agreementStart', 'agreementMonths');
         $this->clientStatus = 'active';
         $this->billing_cycle = 'monthly';
         $this->progress = 0;
@@ -681,7 +683,7 @@ new #[Title('Clients')] class extends Component {
     @php
         $formTabs = [
             'details' => ['label' => __('Details'), 'hint' => __('Contact details'), 'fields' => ['photo', 'name', 'company', 'phone', 'clientStatus', 'email']],
-            'package' => ['label' => __('Package & social'), 'hint' => __('Plan, price and profiles'), 'fields' => ['package', 'price', 'billing_cycle', 'progress', 'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url']],
+            'package' => ['label' => __('Package & agreement'), 'hint' => __('Plan, price and contract'), 'fields' => ['package', 'price', 'billing_cycle', 'agreementStart', 'agreementMonths', 'progress']],
         ];
         $seg = 'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition';
         $segOn = 'bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-800 dark:text-white dark:ring-white/10';
@@ -850,125 +852,200 @@ new #[Title('Clients')] class extends Component {
 
                 </div>
 
-                {{-- Step 2: package & social --}}
-                <div x-show="tab === 'package'" x-cloak class="flex flex-col gap-5">
-                    <div>
-                        <div class="flex items-baseline justify-between gap-2">
-                            <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Package') }}</span>
-                            <a href="{{ route('packages.index') }}" wire:navigate class="text-xs font-medium text-brand-600 hover:underline dark:text-brand-300">{{ __('Manage packages') }}</a>
+                {{-- Step 2: package & agreement --}}
+                @php
+                    $stepDot = 'flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-600 ring-1 ring-brand-100 dark:bg-brand-500/15 dark:text-brand-300 dark:ring-brand-500/20';
+                    $stepLine = 'mt-1.5 w-px flex-1 bg-linear-to-b from-zinc-200 to-transparent dark:from-white/10';
+                    $stepTitle = 'text-sm font-semibold text-zinc-900 dark:text-white';
+                    $stepHint = 'text-xs text-zinc-500';
+                @endphp
+                <div
+                    x-show="tab === 'package'"
+                    x-cloak
+                    class="flex flex-col"
+                    x-data="{
+                        get agreementEnd() {
+                            const months = parseInt($wire.agreementMonths);
+                            return window.NepaliCalendar && $wire.agreementStart && months > 0
+                                ? NepaliCalendar.formatBs(NepaliCalendar.periodEndAfter($wire.agreementStart, months))
+                                : '';
+                        },
+                        get agreementStartLabel() {
+                            return window.NepaliCalendar ? NepaliCalendar.formatBs($wire.agreementStart) : '';
+                        },
+                    }"
+                >
+                    {{-- 1. Package --}}
+                    <section class="flex gap-4">
+                        <div class="flex flex-col items-center">
+                            <span class="{{ $stepDot }}">1</span>
+                            <span class="{{ $stepLine }}"></span>
                         </div>
-                        @php
-                            $cycleShort = ['monthly' => '/mo', 'yearly' => '/yr', 'one_time' => ' one-time'];
-                        @endphp
-                        <div class="relative mt-2" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.stop="open = false">
-                            <button
-                                type="button"
-                                @click="open = ! open"
-                                class="flex h-12 w-full items-center gap-3 rounded-xl border bg-white px-3 text-start shadow-xs transition dark:bg-white/5"
-                                :class="open ? 'border-brand-400 ring-2 ring-brand-500/20' : 'border-zinc-200 hover:border-zinc-300 dark:border-white/10'"
-                                :aria-expanded="open"
-                                aria-haspopup="listbox"
-                            >
-                                <span class="flex items-center gap-2 text-sm text-zinc-400" x-show="! $wire.package">
-                                    <span class="flex size-8 items-center justify-center rounded-lg bg-zinc-100 dark:bg-white/5"><flux:icon.cube variant="mini" class="size-4" /></span>
-                                    {{ __('Choose a package') }}
-                                </span>
-                                @foreach ($this->packageOptions as $p)
-                                    <span class="flex min-w-0 flex-1 items-center gap-3" x-show="$wire.package == '{{ $p->id }}'" x-cloak>
-                                        <span class="{{ $p->theme()['icon'] }} flex size-8 shrink-0 items-center justify-center rounded-lg"><flux:icon :icon="$p->icon" variant="mini" class="size-4" /></span>
-                                        <span class="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $p->name }}</span>
-                                        <span class="shrink-0 text-xs text-zinc-500 tabular-nums">{{ $p->formattedPrice() ? $p->formattedPrice().($cycleShort[$p->billing_cycle] ?? '') : __('Custom price') }}</span>
+                        <div class="min-w-0 flex-1 pb-6">
+                            <div class="flex items-start justify-between gap-2">
+                                <div>
+                                    <h3 class="{{ $stepTitle }}">{{ __('Package') }}</h3>
+                                    <p class="{{ $stepHint }}">{{ __('What the client is buying') }}</p>
+                                </div>
+                                <a href="{{ route('packages.index') }}" wire:navigate class="text-xs font-medium text-brand-600 hover:underline dark:text-brand-300">{{ __('Manage packages') }}</a>
+                            </div>
+                            @php
+                                $cycleShort = ['monthly' => '/mo', 'yearly' => '/yr', 'one_time' => ' one-time'];
+                            @endphp
+                            <div class="relative mt-2" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.stop="open = false">
+                                <button
+                                    type="button"
+                                    @click="open = ! open"
+                                    class="flex h-12 w-full items-center gap-3 rounded-xl border bg-white px-3 text-start shadow-xs transition dark:bg-white/5"
+                                    :class="open ? 'border-brand-400 ring-2 ring-brand-500/20' : 'border-zinc-200 hover:border-zinc-300 dark:border-white/10'"
+                                    :aria-expanded="open"
+                                    aria-haspopup="listbox"
+                                >
+                                    <span class="flex items-center gap-2 text-sm text-zinc-400" x-show="! $wire.package">
+                                        <span class="flex size-8 items-center justify-center rounded-lg bg-zinc-100 dark:bg-white/5"><flux:icon.cube variant="mini" class="size-4" /></span>
+                                        {{ __('Choose a package') }}
                                     </span>
-                                @endforeach
-                                <flux:icon.chevron-down variant="micro" class="ms-auto size-4 shrink-0 text-zinc-400 transition" ::class="open && 'rotate-180'" />
-                            </button>
-
-                            <div
-                                x-show="open"
-                                x-transition.origin.top
-                                x-cloak
-                                role="listbox"
-                                class="absolute inset-x-0 top-full z-30 mt-1.5 max-h-64 overflow-y-auto rounded-xl bg-white p-1.5 shadow-[0_20px_45px_-20px_rgb(15_23_42/0.4)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10"
-                            >
-                                @forelse ($this->packageOptions as $p)
-                                    <button
-                                        type="button"
-                                        role="option"
-                                        wire:key="opt-{{ $p->id }}"
-                                        @click="$wire.package = '{{ $p->id }}'; @if ($p->price !== null) $wire.price = '{{ rtrim(rtrim((string) $p->price, '0'), '.') }}'; $wire.billing_cycle = '{{ $p->billing_cycle }}'; @endif open = false"
-                                        class="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-start transition"
-                                        :class="$wire.package == '{{ $p->id }}' ? 'bg-brand-50 dark:bg-brand-500/10' : 'hover:bg-zinc-50 dark:hover:bg-white/5'"
-                                        :aria-selected="$wire.package == '{{ $p->id }}'"
-                                    >
-                                        <span class="{{ $p->theme()['icon'] }} flex size-8 shrink-0 items-center justify-center rounded-lg"><flux:icon :icon="$p->icon" variant="mini" class="size-4" /></span>
-                                        <span class="min-w-0 flex-1">
-                                            <span class="block truncate text-sm font-medium text-zinc-900 dark:text-white">{{ $p->name }}</span>
-                                            @if ($p->description)
-                                                <span class="block truncate text-xs text-zinc-400">{{ $p->description }}</span>
-                                            @endif
+                                    @foreach ($this->packageOptions as $p)
+                                        <span class="flex min-w-0 flex-1 items-center gap-3" x-show="$wire.package == '{{ $p->id }}'" x-cloak>
+                                            <span class="{{ $p->theme()['icon'] }} flex size-8 shrink-0 items-center justify-center rounded-lg"><flux:icon :icon="$p->icon" variant="mini" class="size-4" /></span>
+                                            <span class="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $p->name }}</span>
+                                            <span class="shrink-0 text-xs text-zinc-500 tabular-nums">{{ $p->formattedPrice() ? $p->formattedPrice().($cycleShort[$p->billing_cycle] ?? '') : __('Custom price') }}</span>
                                         </span>
-                                        <span class="shrink-0 text-xs font-medium text-zinc-600 tabular-nums dark:text-zinc-300">{{ $p->formattedPrice() ? $p->formattedPrice().($cycleShort[$p->billing_cycle] ?? '') : __('Custom price') }}</span>
-                                        <flux:icon.check variant="micro" class="size-4 shrink-0 text-brand-600 dark:text-brand-300" x-show="$wire.package == '{{ $p->id }}'" />
-                                        <span class="size-4 shrink-0" x-show="$wire.package != '{{ $p->id }}'"></span>
-                                    </button>
-                                @empty
-                                    <p class="px-3 py-4 text-center text-sm text-zinc-500">
-                                        {{ __('No packages yet.') }}
-                                        <a href="{{ route('packages.index') }}" wire:navigate class="font-medium text-brand-600 hover:underline">{{ __('Create one') }}</a>
-                                    </p>
-                                @endforelse
-                            </div>
-                        </div>
-                        <flux:error name="package" />
-                    </div>
+                                    @endforeach
+                                    <flux:icon.chevron-down variant="micro" class="ms-auto size-4 shrink-0 text-zinc-400 transition" ::class="open && 'rotate-180'" />
+                                </button>
 
-                    <div class="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
-                        <flux:field>
-                            <flux:label>{{ __('Price') }}</flux:label>
-                            <flux:input.group>
-                                <flux:input.group.prefix>{{ config('app.currency') }}</flux:input.group.prefix>
-                                <flux:input wire:model="price" type="number" min="0" step="0.01" inputmode="decimal" placeholder="25000" />
-                            </flux:input.group>
-                            <flux:error name="price" />
-                        </flux:field>
-                        <div>
-                            <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Billing') }}</span>
-                            <div class="mt-2 flex gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-white/5">
-                                @foreach (['monthly' => 'Monthly', 'yearly' => 'Yearly', 'one_time' => 'One-time'] as $value => $label)
-                                    <button type="button" @click="$wire.billing_cycle = '{{ $value }}'" class="{{ $seg }} whitespace-nowrap" :class="$wire.billing_cycle === '{{ $value }}' ? @js($segOn) : @js($segOff)">{{ __($label) }}</button>
-                                @endforeach
+                                <div
+                                    x-show="open"
+                                    x-transition.origin.top
+                                    x-cloak
+                                    role="listbox"
+                                    class="absolute inset-x-0 top-full z-30 mt-1.5 max-h-64 overflow-y-auto rounded-xl bg-white p-1.5 shadow-[0_20px_45px_-20px_rgb(15_23_42/0.4)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10"
+                                >
+                                    @forelse ($this->packageOptions as $p)
+                                        <button
+                                            type="button"
+                                            role="option"
+                                            wire:key="opt-{{ $p->id }}"
+                                            @click="$wire.package = '{{ $p->id }}'; @if ($p->price !== null) $wire.price = '{{ rtrim(rtrim((string) $p->price, '0'), '.') }}'; $wire.billing_cycle = '{{ $p->billing_cycle }}'; @endif open = false"
+                                            class="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-start transition"
+                                            :class="$wire.package == '{{ $p->id }}' ? 'bg-brand-50 dark:bg-brand-500/10' : 'hover:bg-zinc-50 dark:hover:bg-white/5'"
+                                            :aria-selected="$wire.package == '{{ $p->id }}'"
+                                        >
+                                            <span class="{{ $p->theme()['icon'] }} flex size-8 shrink-0 items-center justify-center rounded-lg"><flux:icon :icon="$p->icon" variant="mini" class="size-4" /></span>
+                                            <span class="min-w-0 flex-1">
+                                                <span class="block truncate text-sm font-medium text-zinc-900 dark:text-white">{{ $p->name }}</span>
+                                                @if ($p->description)
+                                                    <span class="block truncate text-xs text-zinc-400">{{ $p->description }}</span>
+                                                @endif
+                                            </span>
+                                            <span class="shrink-0 text-xs font-medium text-zinc-600 tabular-nums dark:text-zinc-300">{{ $p->formattedPrice() ? $p->formattedPrice().($cycleShort[$p->billing_cycle] ?? '') : __('Custom price') }}</span>
+                                            <flux:icon.check variant="micro" class="size-4 shrink-0 text-brand-600 dark:text-brand-300" x-show="$wire.package == '{{ $p->id }}'" />
+                                            <span class="size-4 shrink-0" x-show="$wire.package != '{{ $p->id }}'"></span>
+                                        </button>
+                                    @empty
+                                        <p class="px-3 py-4 text-center text-sm text-zinc-500">
+                                            {{ __('No packages yet.') }}
+                                            <a href="{{ route('packages.index') }}" wire:navigate class="font-medium text-brand-600 hover:underline">{{ __('Create one') }}</a>
+                                        </p>
+                                    @endforelse
+                                </div>
+                            </div>
+                            <flux:error name="package" />
+                        </div>
+                    </section>
+
+                    {{-- 2. Price & billing --}}
+                    <section class="flex gap-4">
+                        <div class="flex flex-col items-center">
+                            <span class="{{ $stepDot }}">2</span>
+                            <span class="{{ $stepLine }}"></span>
+                        </div>
+                        <div class="min-w-0 flex-1 pb-6">
+                            <h3 class="{{ $stepTitle }}">{{ __('Price & billing') }}</h3>
+                            <p class="{{ $stepHint }}">{{ __('Filled in from the package. Change it for this client if needed.') }}</p>
+                            <div class="mt-2.5 grid gap-3 sm:grid-cols-[1fr_auto]">
+                                <flux:field>
+                                    <flux:input.group>
+                                        <flux:input.group.prefix>{{ config('app.currency') }}</flux:input.group.prefix>
+                                        <flux:input wire:model="price" type="number" min="0" step="0.01" inputmode="decimal" placeholder="25000" :aria-label="__('Price')" />
+                                    </flux:input.group>
+                                    <flux:error name="price" />
+                                </flux:field>
+                                <div class="flex gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-white/5">
+                                    @foreach (['monthly' => 'Monthly', 'yearly' => 'Yearly', 'one_time' => 'One-time'] as $value => $label)
+                                        <button type="button" @click="$wire.billing_cycle = '{{ $value }}'" class="{{ $seg }} whitespace-nowrap" :class="$wire.billing_cycle === '{{ $value }}' ? @js($segOn) : @js($segOff)">{{ __($label) }}</button>
+                                    @endforeach
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    </section>
+
+                    {{-- 3. Agreement --}}
+                    <section class="flex gap-4">
+                        <div class="flex flex-col items-center">
+                            <span class="{{ $stepDot }}">3</span>
+                            @if ($editingId)
+                                <span class="{{ $stepLine }}"></span>
+                            @endif
+                        </div>
+                        <div class="min-w-0 flex-1 {{ $editingId ? 'pb-6' : '' }}">
+                            <div class="flex items-baseline justify-between gap-2">
+                                <h3 class="{{ $stepTitle }}">{{ __('Agreement') }}</h3>
+                                <span class="text-[0.6875rem] text-zinc-400">{{ __('Optional') }}</span>
+                            </div>
+                            <p class="{{ $stepHint }}">{{ __('When the contract starts and how long it runs.') }}</p>
+
+                            <div class="mt-2.5 flex flex-col gap-2.5">
+                                <x-nepali-date wire:model="agreementStart" :placeholder="__('Agreement date')" />
+                                <div>
+                                    <div class="flex flex-wrap items-center gap-1.5">
+                                        @foreach ([1, 3, 6, 12, 24] as $m)
+                                            <button
+                                                type="button"
+                                                @click="$wire.agreementMonths = '{{ $m }}'"
+                                                class="h-10 rounded-lg px-3 text-sm font-medium ring-1 transition"
+                                                :class="$wire.agreementMonths == '{{ $m }}' ? 'bg-brand-500 text-white ring-brand-500 shadow-sm shadow-brand-500/30' : 'bg-white text-zinc-600 ring-zinc-200 hover:ring-zinc-300 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10'"
+                                            >{{ $m === 12 ? __('1 yr') : ($m === 24 ? __('2 yrs') : $m.' '.__('mo')) }}</button>
+                                        @endforeach
+                                        <label class="flex h-10 items-center gap-1.5 rounded-lg bg-white px-2.5 text-sm text-zinc-500 ring-1 ring-zinc-200 focus-within:ring-2 focus-within:ring-brand-500 dark:bg-white/5 dark:ring-white/10">
+                                            <input type="number" min="1" max="120" wire:model="agreementMonths" class="w-10 border-0 bg-transparent p-0 text-sm text-zinc-900 focus:ring-0 focus:outline-none dark:text-white" aria-label="{{ __('Months') }}">
+                                            {{ __('months') }}
+                                        </label>
+                                    </div>
+                                    <flux:error name="agreementMonths" />
+                                </div>
+                            </div>
+                            <flux:error name="agreementStart" />
+
+                            <div class="mt-3 flex items-center gap-2.5 rounded-lg bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800 ring-1 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20" x-show="agreementEnd" x-cloak>
+                                <flux:icon.document-check variant="micro" class="size-4 shrink-0" />
+                                <span>
+                                    <span class="font-semibold" x-text="agreementStartLabel"></span>
+                                    <span class="opacity-60">→</span>
+                                    <span class="font-semibold" x-text="agreementEnd"></span>
+                                    <span class="opacity-75">· <span x-text="$wire.agreementMonths"></span> {{ __('months') }}</span>
+                                </span>
+                            </div>
+                            <p class="mt-3 text-xs text-zinc-400" x-show="! agreementEnd">{{ __('Pick the agreement date to see when it ends. You can also add this later on the client\'s profile.') }}</p>
+                        </div>
+                    </section>
 
                     @if ($editingId)
-                        <div class="flex items-center gap-4 rounded-xl bg-zinc-50 px-4 py-3 ring-1 ring-zinc-100 dark:bg-white/[0.03] dark:ring-white/5">
-                            <label for="client-progress" class="shrink-0 text-sm font-medium text-zinc-800 dark:text-white">{{ __('Work progress') }}</label>
-                            <input id="client-progress" type="range" min="0" max="100" step="5" x-model.number="$wire.progress" class="min-w-0 flex-1 accent-brand-500">
-                            <span class="w-10 text-end text-sm font-semibold text-brand-600 tabular-nums dark:text-brand-300"><span x-text="$wire.progress"></span>%</span>
-                        </div>
-                    @endif
-
-                    <div>
-                        <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Social profiles') }}</span>
-                        <div class="mt-2 grid gap-2.5 sm:grid-cols-2">
-                            @foreach ([
-                                'facebook_url' => ['facebook', 'Facebook', 'facebook.com/…', 'text-[#1877F2]'],
-                                'instagram_url' => ['instagram', 'Instagram', 'instagram.com/…', 'text-[#E4405F]'],
-                                'tiktok_url' => ['tiktok', 'TikTok', 'tiktok.com/@…', 'text-zinc-900 dark:text-white'],
-                                'google_business_url' => ['google', __('Google Business'), 'g.page/…', 'text-[#4285F4]'],
-                            ] as $field => [$icon, $label, $placeholder, $color])
-                                <div>
-                                    <label class="flex items-center gap-2.5 rounded-lg border border-zinc-200 bg-white px-3 shadow-xs transition focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-500/20 dark:border-white/10 dark:bg-white/5">
-                                        <x-social-icon :name="$icon" class="size-4 shrink-0 {{ $color }}" />
-                                        <span class="sr-only">{{ $label }}</span>
-                                        <input wire:model="{{ $field }}" type="url" placeholder="{{ $label }} · https://{{ $placeholder }}" class="h-10 min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-zinc-800 placeholder:text-zinc-400 focus:ring-0 focus:outline-none dark:text-white">
-                                    </label>
-                                    <flux:error :name="$field" />
+                        {{-- 4. Progress (editing only) --}}
+                        <section class="flex gap-4">
+                            <div class="flex flex-col items-center">
+                                <span class="{{ $stepDot }}">4</span>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <h3 class="{{ $stepTitle }}">{{ __('Work progress') }}</h3>
+                                <div class="mt-2 flex items-center gap-4">
+                                    <input id="client-progress" type="range" min="0" max="100" step="5" x-model.number="$wire.progress" class="min-w-0 flex-1 accent-brand-500" aria-label="{{ __('Work progress') }}">
+                                    <span class="w-10 text-end text-sm font-semibold text-brand-600 tabular-nums dark:text-brand-300"><span x-text="$wire.progress"></span>%</span>
                                 </div>
-                            @endforeach
-                        </div>
-                    </div>
+                            </div>
+                        </section>
+                    @endif
                 </div>
             </div>
 

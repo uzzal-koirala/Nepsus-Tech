@@ -84,6 +84,27 @@ final class NepaliDate
         return [self::toAd($year, $month, 1)->startOfDay(), self::toAd($year, $month, $length)->endOfDay()];
     }
 
+    /**
+     * Same BS day, $months later (clamped to the month's last day).
+     * 15 Bhadra 2083 + 12 months = 15 Bhadra 2084.
+     */
+    public static function addMonths(CarbonInterface $date, int $months): Carbon
+    {
+        [$year, $month, $day] = self::fromAd($date);
+        $index = ($year * 12 + $month - 1) + $months;
+        [$year, $month] = [intdiv($index, 12), $index % 12 + 1];
+
+        return self::toAd($year, $month, min($day, self::monthLength($year, $month)));
+    }
+
+    /**
+     * Last day of an agreement that starts on $start and runs $months BS months.
+     */
+    public static function periodEndAfter(CarbonInterface $start, int $months): Carbon
+    {
+        return self::addMonths($start, $months)->subDay();
+    }
+
     public static function monthLength(int $year, int $month): int
     {
         return self::calendar()[(string) $year][$month - 1];
