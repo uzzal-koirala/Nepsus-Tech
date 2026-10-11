@@ -155,7 +155,7 @@ class ClientsTest extends TestCase
             ->call('edit', $client->id)
             ->assertSet('agreementStart', '2026-08-31')
             ->set('agreementEnd', '2026-11-30')
-            ->set('oneTime', true)
+            ->set('serviceType', 'website')
             ->set('billingMonths', '')
             ->call('save')
             ->assertHasNoErrors();
@@ -164,6 +164,45 @@ class ClientsTest extends TestCase
         $this->assertSame('14 Mangsir 2083', $client->contract_end->toNepali());
         $this->assertNull($client->billing_months);
         $this->assertSame('https://instagram.com/keep-me', $client->instagram_url);
+    }
+
+    public function test_each_service_type_saves_its_own_payment_terms(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $page = Livewire::test('pages::clients');
+
+        // Social media: needs a package, paid every N months.
+        $page->call('create')->set('name', 'Cafe Social')->set('serviceType', 'social_media')->set('price', '20000')->set('billingMonths', '2')
+            ->call('save')->assertHasErrors(['package' => 'required'])
+            ->set('package', (string) \App\Models\Package::first()->id)->set('price', '20000')->set('billingMonths', '2')
+            ->call('save')->assertHasNoErrors();
+        $social = Client::firstWhere('name', 'Cafe Social');
+        $this->assertSame(2, $social->billing_months);
+        $this->assertTrue($social->isRecurring());
+        $this->assertSame('/2 mo', $social->billingSuffix());
+
+        // Website: one-time project, no package needed, never recurring.
+        $page->call('create')->set('name', 'Shop Website')->set('serviceType', 'website')->set('price', '150000')->set('billingMonths', '')
+            ->call('save')->assertHasNoErrors();
+        $site = Client::firstWhere('name', 'Shop Website');
+        $this->assertNull($site->billing_months);
+        $this->assertNull($site->periodEnd());
+        $this->assertSame('One-time project', $site->billingText());
+
+        // Video: price per video times number of videos.
+        $page->call('create')->set('name', 'Wedding Reel')->set('serviceType', 'video')->set('price', '5000')->set('videoCount', '0')
+            ->call('save')->assertHasErrors(['videoCount'])
+            ->set('videoCount', '3')->call('save')->assertHasNoErrors();
+        $video = Client::firstWhere('name', 'Wedding Reel');
+        $this->assertSame(3, $video->video_count);
+        $this->assertSame(15000.0, $video->totalValue());
+        $this->assertSame('/video', $video->billingSuffix());
+
+        // Monthly revenue only counts recurring social media work: 20,000 every 2 months = 10,000 a month.
+        $this->assertSame(10000.0, (float) Livewire::test('pages::clients')->instance()->summary()['monthly']);
+
+        // Filter by service.
+        Livewire::test('pages::clients')->set('service', 'video')->assertSee('Wedding Reel')->assertDontSee('Shop Website');
     }
 
     public function test_dragging_a_card_changes_its_priority(): void

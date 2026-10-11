@@ -28,6 +28,9 @@ new #[Title('Clients')] class extends Component {
     #[Url(except: 'grid')]
     public string $view = 'grid';
 
+    #[Url(except: '')]
+    public string $service = '';
+
     #[Url(except: null)]
     public ?int $open = null;
 
@@ -45,7 +48,8 @@ new #[Title('Clients')] class extends Component {
     public string $package = '';
     public string $price = '';
     public string $billingMonths = '1';
-    public bool $oneTime = false;
+    public string $serviceType = 'social_media';
+    public string $videoCount = '1';
     public int $progress = 0;
     public string $agreementStart = '';
     public string $agreementEnd = '';
@@ -55,7 +59,7 @@ new #[Title('Clients')] class extends Component {
 
     private const FORM_TABS = [
         'details' => ['photo', 'name', 'company', 'phone', 'clientStatus', 'email'],
-        'package' => ['package', 'price', 'billingMonths', 'oneTime', 'agreementStart', 'agreementEnd', 'progress'],
+        'package' => ['serviceType', 'package', 'price', 'billingMonths', 'videoCount', 'agreementStart', 'agreementEnd', 'progress'],
     ];
 
     public function updatedPhoto(): void
@@ -83,6 +87,11 @@ new #[Title('Clients')] class extends Component {
         }
     }
 
+    public function updatedService(): void
+    {
+        $this->resetPage();
+    }
+
     public function updatedSearch(): void
     {
         $this->resetPage();
@@ -90,7 +99,7 @@ new #[Title('Clients')] class extends Component {
 
     public function clearFilters(): void
     {
-        $this->reset('search', 'status');
+        $this->reset('search', 'status', 'service');
         $this->resetPage();
     }
 
@@ -107,6 +116,7 @@ new #[Title('Clients')] class extends Component {
             ->with('package')
             ->withNextPayment()
             ->when($this->status !== 'all', fn ($q) => $q->where('status', $this->status))
+            ->when($this->service !== '', fn ($q) => $q->where('service_type', $this->service))
             ->when($this->search !== '', fn ($q) => $q->where(fn ($q) => $q
                 ->where('name', 'like', "%{$this->search}%")
                 ->orWhere('company', 'like', "%{$this->search}%")
@@ -195,7 +205,8 @@ new #[Title('Clients')] class extends Component {
         $this->editingId = $client->id;
         $this->clientStatus = $client->status;
         $this->billingMonths = (string) ($client->billing_months ?? 1);
-        $this->oneTime = $client->billing_months === null;
+        $this->serviceType = $client->service_type ?? 'social_media';
+        $this->videoCount = (string) ($client->video_count ?? 1);
         $this->progress = $client->progress;
         $this->price = $client->price === null ? '' : rtrim(rtrim((string) $client->price, '0'), '.');
         $this->package = (string) $client->package_id;
@@ -227,10 +238,11 @@ new #[Title('Clients')] class extends Component {
             'phone' => ['nullable', 'string', 'max:50'],
             'clientStatus' => ['required', Rule::in(Client::STATUSES)],
             'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
-            'package' => [Rule::requiredIf(fn () => Package::where('is_active', true)->exists()), 'nullable', Rule::exists('packages', 'id')],
+            'package' => [Rule::requiredIf(fn () => $this->serviceType === 'social_media' && Package::where('is_active', true)->exists()), 'nullable', Rule::exists('packages', 'id')],
             'price' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
-            'oneTime' => ['boolean'],
-            'billingMonths' => ['exclude_if:oneTime,true', 'required', 'integer', 'min:1', 'max:120'],
+            'serviceType' => ['required', Rule::in(array_keys(Client::SERVICE_TYPES))],
+            'billingMonths' => ['exclude_unless:serviceType,social_media', 'required', 'integer', 'min:1', 'max:120'],
+            'videoCount' => ['exclude_unless:serviceType,video', 'required', 'integer', 'min:1', 'max:1000'],
             'progress' => ['required', 'integer', 'min:0', 'max:100'],
             'agreementStart' => ['nullable', 'date', 'required_with:agreementEnd'],
             'agreementEnd' => ['nullable', 'date', 'after_or_equal:agreementStart'],
@@ -238,8 +250,10 @@ new #[Title('Clients')] class extends Component {
 
         $data['status'] = $data['clientStatus'];
         $data['package_id'] = $data['package'] ?: null;
-        $data['billing_months'] = $this->oneTime ? null : (int) $this->billingMonths;
-        unset($data['clientStatus'], $data['package'], $data['photo'], $data['oneTime'], $data['billingMonths'], $data['agreementStart'], $data['agreementEnd']);
+        $data['service_type'] = $this->serviceType;
+        $data['billing_months'] = $this->serviceType === 'social_media' ? (int) $this->billingMonths : null;
+        $data['video_count'] = $this->serviceType === 'video' ? (int) $this->videoCount : null;
+        unset($data['clientStatus'], $data['package'], $data['photo'], $data['serviceType'], $data['billingMonths'], $data['videoCount'], $data['agreementStart'], $data['agreementEnd']);
         $data = array_map(fn ($v) => $v === '' ? null : $v, $data);
 
         $data['contract_start'] = $this->agreementStart ?: null;
@@ -287,7 +301,7 @@ new #[Title('Clients')] class extends Component {
 
     private function resetForm(): void
     {
-        $this->reset('editingId', 'name', 'company', 'email', 'phone', 'photo', 'currentPhoto', 'removePhoto', 'package', 'price', 'billingMonths', 'oneTime', 'agreementStart', 'agreementEnd');
+        $this->reset('editingId', 'name', 'company', 'email', 'phone', 'photo', 'currentPhoto', 'removePhoto', 'package', 'price', 'billingMonths', 'serviceType', 'videoCount', 'agreementStart', 'agreementEnd');
         $this->clientStatus = 'active';
         $this->progress = 0;
         $this->formTab = 'details';
@@ -399,6 +413,12 @@ new #[Title('Clients')] class extends Component {
         </nav>
 
         <div class="flex items-center gap-2">
+            <flux:select wire:model.live="service" class="w-40 shrink-0" :aria-label="__('Service')">
+                <flux:select.option value="">{{ __('All services') }}</flux:select.option>
+                @foreach (Client::SERVICE_TYPES as $key => $st)
+                    <flux:select.option :value="$key">{{ __($st['label']) }}</flux:select.option>
+                @endforeach
+            </flux:select>
             <flux:input wire:model.live.debounce.300ms="search" icon="magnifying-glass" :placeholder="__('Search clients')" clearable class="lg:w-72" />
 
             <div class="flex shrink-0 rounded-xl bg-zinc-100 p-1 dark:bg-white/5">
@@ -510,11 +530,14 @@ new #[Title('Clients')] class extends Component {
                                     <span class="truncate">{{ $pkg->name }}</span>
                                 </span>
                             @else
-                                <span class="text-xs text-zinc-400">{{ __('No package') }}</span>
+                                <span class="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-700 dark:bg-white/10 dark:text-zinc-200">
+                                    <flux:icon :icon="Client::SERVICE_TYPES[$client->service_type]['icon'] ?? 'cube'" variant="micro" class="size-3.5" />
+                                    {{ __(Client::SERVICE_TYPES[$client->service_type]['label'] ?? 'Client') }}
+                                </span>
                             @endif
                             @if ($client->price !== null)
                                 <p class="whitespace-nowrap">
-                                    <span class="text-lg font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $client->formattedPrice() }}</span><span class="text-xs text-zinc-400">{{ $client->billingSuffix() }}</span>
+                                    <span class="text-lg font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $client->formattedPrice() }}</span><span class="text-xs text-zinc-400">{{ $client->billingSuffix() }}@if ($client->service_type === 'video') ×{{ max(1, (int) $client->video_count) }}@endif</span>
                                 </p>
                             @endif
                         </div>
@@ -611,13 +634,16 @@ new #[Title('Clients')] class extends Component {
                                         {{ $pkg->name }}
                                     </span>
                                 @else
-                                    <span class="text-zinc-400">-</span>
+                                    <span class="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-700 dark:bg-white/10 dark:text-zinc-200">
+                                        <flux:icon :icon="Client::SERVICE_TYPES[$client->service_type]['icon'] ?? 'cube'" variant="micro" class="size-3.5" />
+                                        {{ __(Client::SERVICE_TYPES[$client->service_type]['label'] ?? 'Client') }}
+                                    </span>
                                 @endif
                             </td>
                             <td class="px-5 py-3 text-end whitespace-nowrap">
                                 @if ($client->price !== null)
                                     <span class="font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $client->formattedPrice() }}</span>
-                                    <span class="text-xs text-zinc-500">{{ $client->billingSuffix() }}</span>
+                                    <span class="text-xs text-zinc-500">{{ $client->billingSuffix() }}@if ($client->service_type === 'video') ×{{ max(1, (int) $client->video_count) }}@endif</span>
                                     @if ($periodEnd = $client->periodEnd())
                                         <span class="mt-0.5 block text-xs text-zinc-400" title="{{ $periodEnd->format('j M Y') }}">{{ __('ends') }} {{ $periodEnd->toNepali(withYear: false) }}</span>
                                     @endif
@@ -684,7 +710,7 @@ new #[Title('Clients')] class extends Component {
     @php
         $formTabs = [
             'details' => ['label' => __('Details'), 'hint' => __('Contact details'), 'fields' => ['photo', 'name', 'company', 'phone', 'clientStatus', 'email']],
-            'package' => ['label' => __('Package & agreement'), 'hint' => __('Plan, price and contract'), 'fields' => ['package', 'price', 'billingMonths', 'oneTime', 'agreementStart', 'agreementEnd', 'progress']],
+            'package' => ['label' => __('Service & payment'), 'hint' => __('What they buy and how they pay'), 'fields' => ['serviceType', 'package', 'price', 'billingMonths', 'videoCount', 'agreementStart', 'agreementEnd', 'progress']],
         ];
         $seg = 'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition';
         $segOn = 'bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-800 dark:text-white dark:ring-white/10';
@@ -884,19 +910,54 @@ new #[Title('Clients')] class extends Component {
                         },
                     }"
                 >
-                    {{-- 1. Package --}}
+                    {{-- 1. Service --}}
                     <section class="flex gap-4">
                         <div class="flex flex-col items-center">
                             <span class="{{ $stepDot }}">1</span>
                             <span class="{{ $stepLine }}"></span>
                         </div>
                         <div class="min-w-0 flex-1 pb-6">
+                            <h3 class="{{ $stepTitle }}">{{ __('Service') }}</h3>
+                            <p class="{{ $stepHint }}">{{ __('What kind of work this client buys') }}</p>
+                            <div class="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                @foreach (Client::SERVICE_TYPES as $key => $st)
+                                    <button
+                                        type="button"
+                                        @click="$wire.serviceType = '{{ $key }}'"
+                                        class="relative flex flex-col items-start gap-1.5 rounded-xl p-3 text-start ring-1 transition duration-200 hover:-translate-y-0.5"
+                                        :class="$wire.serviceType === '{{ $key }}' ? 'bg-brand-50/70 ring-2 ring-brand-500 dark:bg-brand-500/10' : 'bg-white ring-zinc-200 hover:ring-zinc-300 dark:bg-white/[0.03] dark:ring-white/10'"
+                                    >
+                                        <span class="flex size-8 items-center justify-center rounded-lg transition" :class="$wire.serviceType === '{{ $key }}' ? 'bg-brand-500 text-white' : 'bg-zinc-100 text-zinc-500 dark:bg-white/5'">
+                                            <flux:icon :icon="$st['icon']" variant="mini" class="size-4" />
+                                        </span>
+                                        <span class="text-sm font-semibold text-zinc-900 dark:text-white">{{ __($st['label']) }}</span>
+                                        <span class="text-[0.6875rem] leading-tight text-zinc-500">{{ __($st['hint']) }}</span>
+                                    </button>
+                                @endforeach
+                            </div>
+                            <flux:error name="serviceType" />
+                        </div>
+                    </section>
+
+                    {{-- 2. Package --}}
+                    <section class="flex gap-4">
+                        <div class="flex flex-col items-center">
+                            <span class="{{ $stepDot }}">2</span>
+                            <span class="{{ $stepLine }}"></span>
+                        </div>
+                        <div class="min-w-0 flex-1 pb-6">
                             <div class="flex items-start justify-between gap-2">
                                 <div>
                                     <h3 class="{{ $stepTitle }}">{{ __('Package') }}</h3>
-                                    <p class="{{ $stepHint }}">{{ __('What the client is buying') }}</p>
+                                    <p class="{{ $stepHint }}">
+                                        <span x-show="$wire.serviceType === 'social_media'">{{ __('The social media package they are on') }}</span>
+                                        <span x-show="$wire.serviceType !== 'social_media'" x-cloak>{{ __('Optional for this service') }}</span>
+                                    </p>
                                 </div>
-                                <a href="{{ route('packages.index') }}" wire:navigate class="text-xs font-medium text-brand-600 hover:underline dark:text-brand-300">{{ __('Manage packages') }}</a>
+                                <div class="flex items-center gap-3 text-xs font-medium">
+                                    <button type="button" x-show="$wire.serviceType !== 'social_media' && $wire.package" x-cloak @click="$wire.package = ''" class="text-zinc-500 hover:text-rose-600">{{ __('Remove package') }}</button>
+                                    <a href="{{ route('packages.index') }}" wire:navigate class="text-brand-600 hover:underline dark:text-brand-300">{{ __('Manage packages') }}</a>
+                                </div>
                             </div>
                             @php
                                 $cycleShort = ['monthly' => '/mo', 'yearly' => '/yr', 'one_time' => ' one-time'];
@@ -936,7 +997,7 @@ new #[Title('Clients')] class extends Component {
                                             type="button"
                                             role="option"
                                             wire:key="opt-{{ $p->id }}"
-                                            @click="$wire.package = '{{ $p->id }}'; @if ($p->price !== null) $wire.price = '{{ rtrim(rtrim((string) $p->price, '0'), '.') }}'; $wire.billingMonths = '{{ \App\Models\Client::monthsForCycle($p->billing_cycle) ?? 1 }}'; $wire.oneTime = {{ \App\Models\Client::monthsForCycle($p->billing_cycle) === null ? 'true' : 'false' }}; @endif open = false"
+                                            @click="$wire.package = '{{ $p->id }}'; @if ($p->price !== null) $wire.price = '{{ rtrim(rtrim((string) $p->price, '0'), '.') }}'; $wire.billingMonths = '{{ \App\Models\Client::monthsForCycle($p->billing_cycle) ?? 1 }}'; @endif open = false"
                                             class="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-start transition"
                                             :class="$wire.package == '{{ $p->id }}' ? 'bg-brand-50 dark:bg-brand-500/10' : 'hover:bg-zinc-50 dark:hover:bg-white/5'"
                                             :aria-selected="$wire.package == '{{ $p->id }}'"
@@ -964,57 +1025,88 @@ new #[Title('Clients')] class extends Component {
                         </div>
                     </section>
 
-                    {{-- 2. Price & billing --}}
+                    {{-- 3. Price & payment --}}
                     <section class="flex gap-4">
                         <div class="flex flex-col items-center">
-                            <span class="{{ $stepDot }}">2</span>
+                            <span class="{{ $stepDot }}">3</span>
                             <span class="{{ $stepLine }}"></span>
                         </div>
                         <div class="min-w-0 flex-1 pb-6">
-                            <h3 class="{{ $stepTitle }}">{{ __('Price & billing') }}</h3>
-                            <p class="{{ $stepHint }}">{{ __('Filled in from the package. Change it for this client if needed.') }}</p>
+                            <h3 class="{{ $stepTitle }}">
+                                <span x-show="$wire.serviceType === 'social_media'">{{ __('Price & payment') }}</span>
+                                <span x-show="$wire.serviceType === 'website' || $wire.serviceType === 'software'" x-cloak>{{ __('Project price') }}</span>
+                                <span x-show="$wire.serviceType === 'video'" x-cloak>{{ __('Video pricing') }}</span>
+                            </h3>
+                            <p class="{{ $stepHint }}">
+                                <span x-show="$wire.serviceType === 'social_media'">{{ __('Amount per payment, and how often they pay.') }}</span>
+                                <span x-show="$wire.serviceType === 'website' || $wire.serviceType === 'software'" x-cloak>{{ __('The full project amount, paid once.') }}</span>
+                                <span x-show="$wire.serviceType === 'video'" x-cloak>{{ __('Price for one video and how many videos.') }}</span>
+                            </p>
                             <div class="mt-2.5 grid gap-3 sm:grid-cols-2">
                                 <flux:field>
                                     <flux:input.group>
                                         <flux:input.group.prefix>{{ config('app.currency') }}</flux:input.group.prefix>
                                         <flux:input wire:model="price" type="number" min="0" step="0.01" inputmode="decimal" placeholder="25000" :aria-label="__('Price')" />
+                                        <flux:input.group.suffix x-show="$wire.serviceType === 'video'" x-cloak>{{ __('per video') }}</flux:input.group.suffix>
                                     </flux:input.group>
                                     <flux:error name="price" />
                                 </flux:field>
-                                <flux:field>
+
+                                <flux:field x-show="$wire.serviceType === 'social_media'">
                                     <flux:input.group>
-                                        <flux:input.group.prefix>{{ __('Every') }}</flux:input.group.prefix>
-                                        <flux:input wire:model="billingMonths" type="number" min="1" max="120" step="1" inputmode="numeric" placeholder="1" :aria-label="__('Billing period in months')" x-bind:disabled="$wire.oneTime" />
+                                        <flux:input.group.prefix>{{ __('Paid every') }}</flux:input.group.prefix>
+                                        <flux:input wire:model="billingMonths" type="number" min="1" max="120" step="1" inputmode="numeric" placeholder="1" :aria-label="__('Payment every how many months')" />
                                         <flux:input.group.suffix>{{ __('month(s)') }}</flux:input.group.suffix>
                                     </flux:input.group>
                                     <flux:error name="billingMonths" />
                                 </flux:field>
+
+                                <flux:field x-show="$wire.serviceType === 'video'" x-cloak>
+                                    <flux:input.group>
+                                        <flux:input wire:model="videoCount" type="number" min="1" max="1000" step="1" inputmode="numeric" placeholder="1" :aria-label="__('Number of videos')" />
+                                        <flux:input.group.suffix>{{ __('video(s)') }}</flux:input.group.suffix>
+                                    </flux:input.group>
+                                    <flux:error name="videoCount" />
+                                </flux:field>
+
+                                <div x-show="$wire.serviceType === 'website' || $wire.serviceType === 'software'" x-cloak class="flex items-center gap-2 rounded-lg bg-zinc-50 px-3 text-sm text-zinc-500 ring-1 ring-zinc-100 dark:bg-white/[0.03] dark:ring-white/5">
+                                    <flux:icon.check-badge variant="mini" class="size-4 text-brand-500" /> {{ __('One-time payment') }}
+                                </div>
                             </div>
-                            <div class="mt-2.5 flex flex-wrap items-center justify-between gap-2">
-                                <flux:checkbox wire:model="oneTime" :label="__('One-time payment')" />
-                                <p class="text-xs text-zinc-500" x-show="! $wire.oneTime">
-                                    <span x-show="$wire.billingMonths == 1">{{ __('Billed every month') }}</span>
-                                    <span x-show="$wire.billingMonths == 12">{{ __('Billed every year') }}</span>
-                                    <span x-show="$wire.billingMonths > 1 && $wire.billingMonths != 12">{{ __('Billed every') }} <span x-text="$wire.billingMonths"></span> {{ __('months') }}</span>
-                                </p>
-                            </div>
+
+                            <p class="mt-2 text-xs text-zinc-500">
+                                <span x-show="$wire.serviceType === 'social_media'">
+                                    <span x-show="$wire.billingMonths == 1">{{ __('They pay every month.') }}</span>
+                                    <span x-show="$wire.billingMonths > 1">{{ __('They pay every') }} <span class="font-medium text-zinc-700 dark:text-zinc-200" x-text="$wire.billingMonths"></span> {{ __('months') }}.</span>
+                                </span>
+                                <span x-show="$wire.serviceType === 'video' && $wire.price && $wire.videoCount" x-cloak>
+                                    {{ __('Total') }}: <span class="font-semibold text-zinc-800 dark:text-zinc-100" x-text="@js(config('app.currency')) + ' ' + (Number($wire.price) * Number($wire.videoCount)).toLocaleString('en-US')"></span>
+                                    (<span x-text="$wire.videoCount"></span> × <span x-text="Number($wire.price).toLocaleString('en-US')"></span>)
+                                </span>
+                            </p>
                         </div>
                     </section>
 
-                    {{-- 3. Agreement --}}
+                    {{-- 4. Agreement / timeline --}}
                     <section class="flex gap-4">
                         <div class="flex flex-col items-center">
-                            <span class="{{ $stepDot }}">3</span>
+                            <span class="{{ $stepDot }}">4</span>
                             @if ($editingId)
                                 <span class="{{ $stepLine }}"></span>
                             @endif
                         </div>
                         <div class="min-w-0 flex-1 {{ $editingId ? 'pb-6' : '' }}">
                             <div class="flex items-baseline justify-between gap-2">
-                                <h3 class="{{ $stepTitle }}">{{ __('Agreement') }}</h3>
+                                <h3 class="{{ $stepTitle }}">
+                                    <span x-show="$wire.serviceType === 'social_media'">{{ __('Package period') }}</span>
+                                    <span x-show="$wire.serviceType !== 'social_media'" x-cloak>{{ __('Timeline') }}</span>
+                                </h3>
                                 <span class="text-[0.6875rem] text-zinc-400">{{ __('Optional') }}</span>
                             </div>
-                            <p class="{{ $stepHint }}">{{ __('When the contract starts and how long it runs.') }}</p>
+                            <p class="{{ $stepHint }}">
+                                <span x-show="$wire.serviceType === 'social_media'">{{ __('When the package starts and ends, e.g. a 3-month package.') }}</span>
+                                <span x-show="$wire.serviceType !== 'social_media'" x-cloak>{{ __('When the work starts and when it is due.') }}</span>
+                            </p>
 
                             <div class="mt-2.5 grid gap-3 sm:grid-cols-2">
                                 <x-nepali-date wire:model="agreementStart" :label="__('Start date')" />
@@ -1035,10 +1127,10 @@ new #[Title('Clients')] class extends Component {
                     </section>
 
                     @if ($editingId)
-                        {{-- 4. Progress (editing only) --}}
+                        {{-- 5. Progress (editing only) --}}
                         <section class="flex gap-4">
                             <div class="flex flex-col items-center">
-                                <span class="{{ $stepDot }}">4</span>
+                                <span class="{{ $stepDot }}">5</span>
                             </div>
                             <div class="min-w-0 flex-1">
                                 <h3 class="{{ $stepTitle }}">{{ __('Work progress') }}</h3>

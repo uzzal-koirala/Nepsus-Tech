@@ -16,8 +16,8 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 #[Fillable([
-    'name', 'company', 'avatar_path', 'email', 'phone', 'status', 'position', 'notes',
-    'package_id', 'price', 'billing_months', 'progress',
+    'name', 'company', 'avatar_path', 'email', 'phone', 'status', 'service_type', 'position', 'notes',
+    'package_id', 'price', 'billing_months', 'video_count', 'progress',
     'contract_start', 'contract_end', 'agreement_signed_at',
     'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url',
 ])]
@@ -27,6 +27,17 @@ class Client extends Model
     use HasFactory;
 
     public const STATUSES = ['active', 'inactive'];
+
+    /**
+     * Kinds of work a client buys. Social media is billed every N months;
+     * websites and software are one-time projects; videos are charged per video.
+     */
+    public const SERVICE_TYPES = [
+        'social_media' => ['label' => 'Social media', 'icon' => 'megaphone', 'hint' => 'Monthly management'],
+        'website' => ['label' => 'Website', 'icon' => 'globe-alt', 'hint' => 'One-time project'],
+        'software' => ['label' => 'Software', 'icon' => 'code-bracket', 'hint' => 'One-time project'],
+        'video' => ['label' => 'Video', 'icon' => 'video-camera', 'hint' => 'Charged per video'],
+    ];
 
     /** Billing choices for packages; clients store a number of months instead. */
     public const BILLING_CYCLES = ['monthly', 'yearly', 'one_time'];
@@ -51,6 +62,7 @@ class Client extends Model
             'price' => 'decimal:2',
             'progress' => 'integer',
             'billing_months' => 'integer',
+            'video_count' => 'integer',
             'contract_start' => 'date',
             'contract_end' => 'date',
             'agreement_signed_at' => 'datetime',
@@ -157,11 +169,32 @@ class Client extends Model
         return null;
     }
 
+    public function isRecurring(): bool
+    {
+        return $this->service_type === 'social_media' && $this->billing_months !== null;
+    }
+
     /**
-     * Short suffix after a price: "/mo", "/yr", "/3 mo" or " one-time".
+     * What the client pays in total for one-off work: price x videos for video clients, otherwise the price.
+     */
+    public function totalValue(): ?float
+    {
+        if ($this->price === null) {
+            return null;
+        }
+
+        return $this->service_type === 'video' ? (float) $this->price * max(1, (int) $this->video_count) : (float) $this->price;
+    }
+
+    /**
+     * Short suffix after a price: "/mo", "/yr", "/3 mo", "/video" or " one-time".
      */
     public function billingSuffix(): string
     {
+        if ($this->service_type === 'video') {
+            return __('/video');
+        }
+
         return match ($this->billing_months) {
             null => ' · '.__('one-time'),
             1 => __('/mo'),
@@ -175,6 +208,14 @@ class Client extends Model
      */
     public function billingText(): string
     {
+        if ($this->service_type === 'video') {
+            return trans_choice(':count video, paid per video|:count videos, paid per video', max(1, (int) $this->video_count));
+        }
+
+        if (in_array($this->service_type, ['website', 'software'])) {
+            return __('One-time project');
+        }
+
         return match ($this->billing_months) {
             null => __('One-time payment'),
             1 => __('Billed every month'),

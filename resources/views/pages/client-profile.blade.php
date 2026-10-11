@@ -352,6 +352,10 @@ new #[Title('Client profile')] class extends Component {
                         <flux:icon.phone variant="micro" class="size-3.5" /> {{ $c->phone }}
                     </span>
                 @endif
+                <span class="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 dark:bg-white/10 dark:text-zinc-200">
+                    <flux:icon :icon="Client::SERVICE_TYPES[$c->service_type]['icon'] ?? 'cube'" variant="micro" class="size-3.5" />
+                    {{ __(Client::SERVICE_TYPES[$c->service_type]['label'] ?? 'Client') }}
+                </span>
                 <span class="text-xs text-zinc-400" title="{{ $c->created_at->format('j M Y') }}">{{ __('Client since') }} {{ $c->created_at->toNepaliMonth() }}</span>
             </div>
         </div>
@@ -658,7 +662,9 @@ new #[Title('Client profile')] class extends Component {
                         __('Phone') => $c->phone,
                         __('Email') => $c->email,
                         __('Company') => $c->company,
+                        __('Service') => __(Client::SERVICE_TYPES[$c->service_type]['label'] ?? '-'),
                         __('Billing') => $c->billingText(),
+                        __('Total value') => $c->service_type === 'video' && $c->totalValue() ? Client::money($c->totalValue()) : null,
                         __('Work progress') => $c->progress.'%',
                         __('Added') => $c->created_at->toNepali(),
                     ] as $label => $value)
