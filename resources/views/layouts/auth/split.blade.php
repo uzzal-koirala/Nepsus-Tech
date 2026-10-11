@@ -16,12 +16,7 @@
                     </a>
 
                     <div class="mt-auto max-w-sm">
-                        <div class="flex items-center gap-3">
-                            <span class="flex size-10 items-center justify-center rounded-xl bg-brand-500">
-                                <x-app-logo-icon class="size-7" />
-                            </span>
-                            <span class="text-lg font-semibold text-zinc-900 dark:text-white">Nepsus Tech</span>
-                        </div>
+                        <img src="{{ asset('images/nepsus-logo.png') }}" alt="Nepsus Tech" class="h-16 w-auto">
                         <p class="mt-5 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
                             {{ __('Nepsus Tech is your client and task workspace. Keep every client, project and task in one place, from first contact to final delivery.') }}
                         </p>
@@ -30,11 +25,8 @@
 
                 {{-- Form side --}}
                 <div class="relative flex flex-col justify-center">
-                    <a href="{{ route('home') }}" class="mb-8 flex items-center gap-3 lg:hidden" wire:navigate>
-                        <span class="flex size-10 items-center justify-center rounded-xl bg-brand-500">
-                            <x-app-logo-icon class="size-7" />
-                        </span>
-                        <span class="text-lg font-semibold text-zinc-900 dark:text-white">Nepsus Tech</span>
+                    <a href="{{ route('home') }}" class="mb-8 self-start lg:hidden" wire:navigate>
+                        <img src="{{ asset('images/nepsus-logo.png') }}" alt="Nepsus Tech" class="h-16 w-auto">
                     </a>
 
                     <div class="w-full lg:max-w-sm">
