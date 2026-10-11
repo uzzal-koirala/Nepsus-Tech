@@ -8,13 +8,14 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Str;
 
 #[Fillable([
     'name', 'company', 'email', 'phone', 'status', 'position', 'notes',
-    'package', 'price', 'billing_cycle', 'progress',
+    'package_id', 'price', 'billing_cycle', 'progress',
     'contract_start', 'contract_end', 'agreement_signed_at',
     'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url',
 ])]
@@ -26,14 +27,6 @@ class Client extends Model
     public const STATUSES = ['active', 'inactive'];
 
     public const BILLING_CYCLES = ['monthly', 'yearly', 'one_time'];
-
-    /** Package tiers, lowest to highest, with their icon. */
-    public const PACKAGES = [
-        'basic' => ['label' => 'Basic', 'icon' => 'sprout'],
-        'standard' => ['label' => 'Standard', 'icon' => 'star'],
-        'premium' => ['label' => 'Premium', 'icon' => 'crown'],
-        'enterprise' => ['label' => 'Enterprise', 'icon' => 'gem'],
-    ];
 
     /** Social profile columns, keyed by icon name. */
     public const SOCIALS = [
@@ -52,6 +45,11 @@ class Client extends Model
             'contract_end' => 'date',
             'agreement_signed_at' => 'datetime',
         ];
+    }
+
+    public function package(): BelongsTo
+    {
+        return $this->belongsTo(Package::class);
     }
 
     public function payments(): HasMany

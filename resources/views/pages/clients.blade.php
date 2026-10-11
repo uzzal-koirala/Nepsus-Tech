@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Client;
+use App\Models\Package;
 use App\Models\Payment;
 use App\Support\NepaliDate;
 use Flux\Flux;
@@ -80,16 +81,27 @@ new #[Title('Clients')] class extends Component {
     public function clients()
     {
         return Client::query()
+            ->with('package')
             ->withNextPayment()
             ->when($this->status !== 'all', fn ($q) => $q->where('status', $this->status))
             ->when($this->search !== '', fn ($q) => $q->where(fn ($q) => $q
                 ->where('name', 'like', "%{$this->search}%")
                 ->orWhere('company', 'like', "%{$this->search}%")
                 ->orWhere('phone', 'like', "%{$this->search}%")
-                ->orWhere('package', 'like', "%{$this->search}%")))
+                ->orWhereHas('package', fn ($q) => $q->where('name', 'like', "%{$this->search}%"))))
             ->orderBy('position')
             ->latest('id')
             ->paginate(12);
+    }
+
+    /** Packages offered in the form (plus the client's current one if it was switched off). */
+    #[Computed]
+    public function packageOptions()
+    {
+        return Package::query()
+            ->where(fn ($q) => $q->where('is_active', true)->orWhere('id', (int) $this->package))
+            ->orderBy('position')
+            ->get();
     }
 
     #[Computed]
@@ -162,8 +174,9 @@ new #[Title('Clients')] class extends Component {
         $this->billing_cycle = $client->billing_cycle ?? 'monthly';
         $this->progress = $client->progress;
         $this->price = $client->price === null ? '' : rtrim(rtrim((string) $client->price, '0'), '.');
+        $this->package = (string) $client->package_id;
 
-        foreach (['name', 'company', 'email', 'phone', 'notes', 'package', ...array_values(Client::SOCIALS)] as $field) {
+        foreach (['name', 'company', 'email', 'phone', 'notes', ...array_values(Client::SOCIALS)] as $field) {
             $this->{$field} = (string) $client->{$field};
         }
 
@@ -188,7 +201,7 @@ new #[Title('Clients')] class extends Component {
             'phone' => ['nullable', 'string', 'max:50'],
             'clientStatus' => ['required', Rule::in(Client::STATUSES)],
             'notes' => ['nullable', 'string', 'max:5000'],
-            'package' => ['nullable', Rule::in(array_keys(Client::PACKAGES))],
+            'package' => ['nullable', Rule::exists('packages', 'id')],
             'price' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
             'billing_cycle' => ['required', Rule::in(Client::BILLING_CYCLES)],
             'progress' => ['required', 'integer', 'min:0', 'max:100'],
@@ -199,7 +212,8 @@ new #[Title('Clients')] class extends Component {
         ]);
 
         $data['status'] = $data['clientStatus'];
-        unset($data['clientStatus']);
+        $data['package_id'] = $data['package'] ?: null;
+        unset($data['clientStatus'], $data['package']);
         $data = array_map(fn ($v) => $v === '' ? null : $v, $data);
 
         if (! $this->editingId) {
@@ -252,24 +266,6 @@ new #[Title('Clients')] class extends Component {
         'inactive' => 'bg-zinc-100 text-zinc-600 ring-zinc-500/15 dark:bg-white/5 dark:text-zinc-400',
     ];
     $dots = ['active' => 'bg-emerald-500', 'inactive' => 'bg-zinc-400'];
-    $tiers = [
-        'basic' => [
-            'chip' => 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-300',
-            'card' => 'from-emerald-50 ring-emerald-200/80 hover:ring-emerald-300 hover:shadow-[0_18px_40px_-24px_rgb(5_150_105/0.45)] dark:from-emerald-500/[0.07] dark:ring-emerald-500/20',
-        ],
-        'standard' => [
-            'chip' => 'bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-600/20 dark:bg-brand-500/15 dark:text-brand-200',
-            'card' => 'from-brand-50 ring-brand-200/80 hover:ring-brand-300 hover:shadow-[0_18px_40px_-24px_rgb(49_81_254/0.45)] dark:from-brand-500/[0.09] dark:ring-brand-500/25',
-        ],
-        'premium' => [
-            'chip' => 'bg-linear-to-r from-amber-300 via-yellow-200 to-amber-300 text-amber-950 shadow-sm shadow-amber-500/30 ring-1 ring-inset ring-amber-500/40',
-            'card' => 'from-amber-100/70 ring-amber-300 hover:ring-amber-400 hover:shadow-[0_18px_40px_-22px_rgb(217_119_6/0.55)] dark:from-amber-400/[0.1] dark:ring-amber-400/40',
-        ],
-        'enterprise' => [
-            'chip' => 'bg-linear-to-r from-zinc-900 to-slate-700 text-cyan-100 shadow-sm shadow-zinc-900/30 ring-1 ring-inset ring-white/10 dark:from-white dark:to-slate-200 dark:text-zinc-900',
-            'card' => 'from-slate-100 ring-slate-300 hover:ring-slate-400 hover:shadow-[0_18px_40px_-22px_rgb(15_23_42/0.5)] dark:from-white/[0.06] dark:ring-white/20',
-        ],
-    ];
     $avatars = [
         'bg-brand-100 text-brand-700', 'bg-amber-100 text-amber-800', 'bg-emerald-100 text-emerald-800',
         'bg-rose-100 text-rose-800', 'bg-sky-100 text-sky-800', 'bg-violet-100 text-violet-800',
@@ -416,9 +412,9 @@ new #[Title('Clients')] class extends Component {
                     $bar = $done ? 'bg-emerald-500' : ($client->progress < 34 ? 'bg-amber-400' : 'bg-brand-500');
                 @endphp
                 @php
-                    $tier = Client::PACKAGES[$client->package] ?? null;
+                    $pkg = $client->package;
                 @endphp
-                <article wire:key="client-{{ $client->id }}" wire:sort:item="{{ $client->id }}" class="{{ $tier ? $tiers[$client->package]['card'] : 'from-zinc-50 ring-zinc-200/80 hover:ring-zinc-300 hover:shadow-[0_18px_40px_-24px_rgb(24_24_27/0.3)] dark:from-white/[0.02] dark:ring-white/10' }} flex flex-col rounded-lg bg-white bg-linear-to-b via-white via-45% to-white ring-1 transition duration-300 hover:-translate-y-0.5 dark:bg-zinc-950 dark:via-zinc-950 dark:to-zinc-950">
+                <article wire:key="client-{{ $client->id }}" wire:sort:item="{{ $client->id }}" class="{{ $pkg ? $pkg->theme()['card'] : 'from-zinc-50 ring-zinc-200/80 hover:ring-zinc-300 hover:shadow-[0_18px_40px_-24px_rgb(24_24_27/0.3)] dark:from-white/[0.02] dark:ring-white/10' }} flex flex-col rounded-lg bg-white bg-linear-to-b via-white via-45% to-white ring-1 transition duration-300 hover:-translate-y-0.5 dark:bg-zinc-950 dark:via-zinc-950 dark:to-zinc-950">
                     <div class="flex flex-col gap-4 p-4">
                         <div class="flex items-center gap-3">
                             <button type="button" wire:sort:handle class="-ms-2 -me-1.5 flex h-10 w-5 shrink-0 cursor-grab items-center justify-center rounded text-zinc-300 transition hover:bg-zinc-100 hover:text-zinc-500 active:cursor-grabbing dark:text-zinc-600 dark:hover:bg-white/5" aria-label="{{ __('Drag to change priority') }}" title="{{ __('Drag to change priority') }}">
@@ -472,10 +468,10 @@ new #[Title('Clients')] class extends Component {
                         @endif
 
                         <div class="flex items-center justify-between gap-3">
-                            @if ($tier)
-                                <span class="{{ $tiers[$client->package]['chip'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold">
-                                    <flux:icon :icon="$tier['icon']" variant="micro" class="size-3.5" />
-                                    {{ __($tier['label']) }}
+                            @if ($pkg)
+                                <span class="{{ $pkg->theme()['chip'] }} inline-flex max-w-[60%] items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold">
+                                    <flux:icon :icon="$pkg->icon" variant="micro" class="size-3.5 shrink-0" />
+                                    <span class="truncate">{{ $pkg->name }}</span>
                                 </span>
                             @else
                                 <span class="text-xs text-zinc-400">{{ __('No package') }}</span>
@@ -556,10 +552,10 @@ new #[Title('Clients')] class extends Component {
                             </td>
                             <td class="px-5 py-3 text-zinc-600 tabular-nums dark:text-zinc-300">{{ $client->phone ?? '-' }}</td>
                             <td class="px-5 py-3">
-                                @if ($tier = Client::PACKAGES[$client->package] ?? null)
-                                    <span class="{{ $tiers[$client->package]['chip'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold">
-                                        <flux:icon :icon="$tier['icon']" variant="micro" class="size-3.5" />
-                                        {{ __($tier['label']) }}
+                                @if ($pkg = $client->package)
+                                    <span class="{{ $pkg->theme()['chip'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold">
+                                        <flux:icon :icon="$pkg->icon" variant="micro" class="size-3.5" />
+                                        {{ $pkg->name }}
                                     </span>
                                 @else
                                     <span class="text-zinc-400">-</span>
@@ -637,12 +633,6 @@ new #[Title('Clients')] class extends Component {
         $seg = 'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition';
         $segOn = 'bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-800 dark:text-white dark:ring-white/10';
         $segOff = 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-white';
-        $tierPick = [
-            'basic' => 'text-emerald-600 ring-emerald-500 bg-emerald-50 dark:bg-emerald-500/10',
-            'standard' => 'text-brand-600 ring-brand-500 bg-brand-50 dark:bg-brand-500/10',
-            'premium' => 'text-amber-600 ring-amber-400 bg-amber-50 dark:bg-amber-500/10',
-            'enterprise' => 'text-slate-700 ring-slate-500 bg-slate-100 dark:bg-white/10 dark:text-slate-200',
-        ];
     @endphp
     <flux:modal name="client-form" class="w-full max-w-2xl overflow-hidden p-0!" :closable="false">
         <form
@@ -721,18 +711,28 @@ new #[Title('Clients')] class extends Component {
                 <div x-show="tab === 'package'" x-cloak class="flex flex-col gap-4">
                     <div>
                         <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Package') }}</span>
-                        <div class="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
+                        <div class="mt-2 grid grid-cols-[repeat(auto-fill,minmax(6.25rem,1fr))] gap-2">
                             <button type="button" @click="$wire.package = ''" class="flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-xs font-medium ring-1 transition" :class="! $wire.package ? 'bg-zinc-100 text-zinc-800 ring-2 ring-zinc-400 dark:bg-white/10 dark:text-white' : 'text-zinc-500 ring-zinc-200 hover:ring-zinc-300 dark:ring-white/10'">
                                 <flux:icon.minus-circle variant="mini" class="size-5" />{{ __('None') }}
                             </button>
-                            @foreach (Client::PACKAGES as $key => $p)
-                                <button type="button" @click="$wire.package = '{{ $key }}'" class="flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-xs font-semibold ring-1 transition" :class="$wire.package === '{{ $key }}' ? @js($tierPick[$key].' ring-2') : 'text-zinc-500 ring-zinc-200 hover:ring-zinc-300 dark:ring-white/10'">
-                                    <flux:icon :icon="$p['icon']" variant="mini" class="size-5" />{{ __($p['label']) }}
+                            @foreach ($this->packageOptions as $p)
+                                <button
+                                    type="button"
+                                    wire:key="pick-{{ $p->id }}"
+                                    @click="$wire.package = '{{ $p->id }}'; @if ($p->price !== null) $wire.price = '{{ rtrim(rtrim((string) $p->price, '0'), '.') }}'; $wire.billing_cycle = '{{ $p->billing_cycle }}'; @endif"
+                                    class="flex min-w-0 flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-xs font-semibold ring-1 transition"
+                                    :class="$wire.package == '{{ $p->id }}' ? @js($p->theme()['pick']) : 'text-zinc-500 ring-zinc-200 hover:ring-zinc-300 dark:ring-white/10'"
+                                    title="{{ $p->formattedPrice() }}"
+                                >
+                                    <flux:icon :icon="$p->icon" variant="mini" class="size-5" />
+                                    <span class="w-full truncate text-center">{{ $p->name }}</span>
                                 </button>
                             @endforeach
                         </div>
                         <flux:error name="package" />
                     </div>
+
+                    <p class="-mt-2 text-xs text-zinc-400">{{ __('Picking a package fills in its price and billing. You can still change them.') }} <a href="{{ route('packages.index') }}" wire:navigate class="font-medium text-brand-600 hover:underline dark:text-brand-300">{{ __('Manage packages') }}</a></p>
 
                     <div class="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
                         <flux:input wire:model="price" type="number" min="0" step="0.01" inputmode="decimal" :label="__('Price (:currency)', ['currency' => config('app.currency')])" placeholder="25000" />

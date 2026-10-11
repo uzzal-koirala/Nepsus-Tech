@@ -254,28 +254,11 @@ new #[Title('Client profile')] class extends Component {
 
 @php
     $c = $client;
-    $tier = Client::PACKAGES[$c->package] ?? null;
+    $pkg = $c->package;
+    $theme = $pkg?->theme();
     $stats = $this->stats;
     $cycles = ['monthly' => __('/mo'), 'yearly' => __('/yr'), 'one_time' => ' · '.__('one-time')];
 
-    $covers = [
-        'basic' => 'from-emerald-400 via-emerald-500 to-teal-600',
-        'standard' => 'from-brand-400 via-brand-500 to-brand-700',
-        'premium' => 'from-amber-300 via-yellow-200 to-amber-500',
-        'enterprise' => 'from-zinc-950 via-slate-800 to-slate-600',
-    ];
-    $tierChips = [
-        'basic' => 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-300',
-        'standard' => 'bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-600/20 dark:bg-brand-500/15 dark:text-brand-200',
-        'premium' => 'bg-linear-to-r from-amber-300 via-yellow-200 to-amber-300 text-amber-950 shadow-sm shadow-amber-500/30 ring-1 ring-inset ring-amber-500/40',
-        'enterprise' => 'bg-linear-to-r from-zinc-900 to-slate-700 text-cyan-100 shadow-sm shadow-zinc-900/30 ring-1 ring-inset ring-white/10 dark:from-white dark:to-slate-200 dark:text-zinc-900',
-    ];
-    $tierIcon = [
-        'basic' => 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300',
-        'standard' => 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300',
-        'premium' => 'bg-amber-100 text-amber-600 dark:bg-amber-400/15 dark:text-amber-300',
-        'enterprise' => 'bg-zinc-900 text-cyan-200 dark:bg-white dark:text-zinc-900',
-    ];
     $badges = [
         'active' => 'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-500/10 dark:text-emerald-300',
         'inactive' => 'bg-zinc-100 text-zinc-600 ring-zinc-500/15 dark:bg-white/5 dark:text-zinc-400',
@@ -317,10 +300,10 @@ new #[Title('Client profile')] class extends Component {
 
     {{-- Header --}}
     <header class="{{ $panel }} overflow-hidden">
-        <div class="{{ $covers[$c->package] ?? 'from-zinc-200 via-zinc-100 to-zinc-300 dark:from-zinc-800 dark:via-zinc-900 dark:to-zinc-800' }} relative h-28 bg-linear-to-r sm:h-32">
+        <div class="{{ $theme['cover'] ?? 'from-zinc-200 via-zinc-100 to-zinc-300 dark:from-zinc-800 dark:via-zinc-900 dark:to-zinc-800' }} relative h-28 bg-linear-to-r sm:h-32">
             <div class="absolute inset-0 opacity-30 [background-image:radial-gradient(white_1px,transparent_1px)] [background-size:18px_18px] [mask-image:linear-gradient(to_left,black,transparent_70%)]"></div>
-            @if ($tier)
-                <flux:icon :icon="$tier['icon']" class="absolute -right-4 -bottom-8 size-40 text-white/20" />
+            @if ($pkg)
+                <flux:icon :icon="$pkg->icon" class="absolute -right-4 -bottom-8 size-40 opacity-20" />
             @endif
         </div>
 
@@ -358,10 +341,10 @@ new #[Title('Client profile')] class extends Component {
                     <span class="{{ $dots[$c->status] }} size-1.5 rounded-full"></span>
                     {{ __($c->status) }}
                 </span>
-                @if ($tier)
-                    <span class="{{ $tierChips[$c->package] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold">
-                        <flux:icon :icon="$tier['icon']" variant="micro" class="size-3.5" />
-                        {{ __($tier['label']) }}
+                @if ($pkg)
+                    <span class="{{ $theme['chip'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold">
+                        <flux:icon :icon="$pkg->icon" variant="micro" class="size-3.5" />
+                        {{ $pkg->name }}
                     </span>
                 @endif
                 @if ($c->phone)
@@ -378,10 +361,10 @@ new #[Title('Client profile')] class extends Component {
     <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div class="{{ $panel }} flex flex-col gap-4 p-5">
             <div class="flex items-center gap-3">
-                <span class="{{ $iconTile }} {{ $tierIcon[$c->package] ?? 'bg-zinc-100 text-zinc-500 dark:bg-white/5' }}">
-                    <flux:icon :icon="$tier['icon'] ?? 'cube'" variant="mini" class="size-4.5" />
+                <span class="{{ $iconTile }} {{ $theme['icon'] ?? 'bg-zinc-100 text-zinc-500 dark:bg-white/5' }}">
+                    <flux:icon :icon="$pkg->icon ?? 'cube'" variant="mini" class="size-4.5" />
                 </span>
-                <p class="text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ $tier ? __(':tier package', ['tier' => __($tier['label'])]) : __('Package') }}</p>
+                <p class="text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ $pkg ? __(':name package', ['name' => $pkg->name]) : __('Package') }}</p>
             </div>
             @if ($c->price !== null)
                 <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $c->formattedPrice() }}<span class="text-sm font-normal text-zinc-400">{{ $cycles[$c->billing_cycle] ?? '' }}</span></p>

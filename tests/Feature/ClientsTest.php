@@ -90,6 +90,7 @@ class ClientsTest extends TestCase
     {
         $this->actingAs(User::factory()->create());
 
+        $premium = \App\Models\Package::factory()->create(['name' => 'Premium', 'price' => 40000]);
         Client::factory()->create(['name' => 'Asha Koirala', 'status' => 'inactive']);
         Client::factory()->create(['name' => 'Bikram Thapa', 'status' => 'active']);
 
@@ -101,10 +102,10 @@ class ClientsTest extends TestCase
             ->call('save')
             ->assertHasErrors(['email'])
             ->set('email', 'sita@example.com')
-            ->set('package', 'gold')
+            ->set('package', '999')
             ->call('save')
             ->assertHasErrors(['package'])
-            ->set('package', 'premium')
+            ->set('package', (string) $premium->id)
             ->set('price', '25000')
             ->set('billing_cycle', 'monthly')
             ->set('progress', 140)
@@ -133,7 +134,8 @@ class ClientsTest extends TestCase
         $sita = Client::where('email', 'sita@example.com')->firstOrFail();
         $this->assertSame('active', $sita->status);
         $this->assertSame(60, $sita->progress);
-        $this->assertSame('premium', $sita->package);
+        $this->assertSame($premium->id, $sita->package_id);
+        $this->assertSame('Premium', $sita->package->name);
         $this->assertSame(['instagram' => 'https://instagram.com/sita'], $sita->socialLinks());
 
         Livewire::test('pages::clients')

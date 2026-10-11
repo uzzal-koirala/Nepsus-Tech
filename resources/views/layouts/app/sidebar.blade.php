@@ -18,6 +18,7 @@
                         ],
                         __('Workspace') => [
                             ['icon' => 'building-office-2', 'label' => __('Clients'), 'route' => 'clients.index'],
+                            ['icon' => 'cube', 'label' => __('Packages'), 'route' => 'packages.index'],
                             ['icon' => 'folder', 'label' => __('Projects')],
                             ['icon' => 'check-circle', 'label' => __('Tasks')],
                         ],
