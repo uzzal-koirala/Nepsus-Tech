@@ -133,16 +133,3 @@ select:focus[data-flux-control] {
     background: rgb(255 255 255 / 0.06);
     color: var(--color-white);
 }
-
-/* Hand-drawn underline that draws itself in */
-@media (prefers-reduced-motion: no-preference) {
-    .draw path {
-        stroke-dasharray: 1;
-        stroke-dashoffset: 1;
-        animation: draw 0.9s 0.5s cubic-bezier(0.65, 0, 0.35, 1) forwards;
-    }
-}
-
-@keyframes draw {
-    to { stroke-dashoffset: 0; }
-}
