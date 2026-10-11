@@ -52,6 +52,10 @@
 }
 
 @layer base {
+    body {
+        letter-spacing: -0.011em;
+    }
+
 
     *,
     ::after,

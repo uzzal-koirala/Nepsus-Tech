@@ -61,7 +61,7 @@
                    class="text-sm text-center text-red-600 dark:text-red-400"></p>
             </div>
 
-            <div class="relative my-6">
+            <div class="relative mt-5 mb-1">
                 <div class="absolute inset-0 flex items-center">
                     <div class="w-full border-t border-zinc-200 dark:border-zinc-700"></div>
                 </div>

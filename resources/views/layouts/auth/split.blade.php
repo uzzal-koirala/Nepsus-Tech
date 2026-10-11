@@ -23,7 +23,7 @@
                     </div>
 
                     <h2 class="mt-8 hidden max-w-xs text-4xl leading-[1.05] font-semibold tracking-[-0.03em] text-balance text-white lg:block">
-                        {{ __('Every client. Every task.') }} <span class="text-sun">{{ __('One place.') }}</span>
+                        {{ __('Every client.') }}<br>{{ __('Every task.') }}<br><span class="text-sun">{{ __('One place.') }}</span>
                     </h2>
 
                     <img
