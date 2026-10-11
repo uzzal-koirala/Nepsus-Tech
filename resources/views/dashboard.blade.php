@@ -2,7 +2,7 @@
     <div class="stagger mx-auto flex w-full max-w-6xl flex-col gap-6">
         <header class="flex flex-col gap-1">
             <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ now()->translatedFormat('l, j F Y') }}</p>
-            <h1 class="text-2xl font-semibold tracking-normal text-zinc-900 uppercase sm:text-3xl dark:text-white">
+            <h1 class="text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-3xl dark:text-white">
                 {{ __('Welcome back, :name', ['name' => str(auth()->user()->name)->before(' ')]) }}
             </h1>
         </header>
