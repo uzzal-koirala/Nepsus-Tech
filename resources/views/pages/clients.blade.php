@@ -177,16 +177,16 @@ new #[Title('Clients')] class extends Component {
         'bg-brand-100 text-brand-700', 'bg-amber-100 text-amber-800', 'bg-emerald-100 text-emerald-800',
         'bg-rose-100 text-rose-800', 'bg-sky-100 text-sky-800', 'bg-violet-100 text-violet-800',
     ];
-    $cycles = ['monthly' => __('/ month'), 'yearly' => __('/ year'), 'one_time' => __('one-time')];
+    $cycles = ['monthly' => __('/mo'), 'yearly' => __('/yr'), 'one_time' => ' · '.__('one-time')];
     $socials = [
-        'facebook' => ['label' => 'Facebook', 'class' => 'bg-[#1877F2]/10 text-[#1877F2] hover:bg-[#1877F2] hover:text-white'],
-        'instagram' => ['label' => 'Instagram', 'class' => 'bg-[#E4405F]/10 text-[#E4405F] hover:bg-[#E4405F] hover:text-white'],
-        'tiktok' => ['label' => 'TikTok', 'class' => 'bg-zinc-900/[0.06] text-zinc-900 hover:bg-zinc-900 hover:text-white dark:bg-white/10 dark:text-white dark:hover:bg-white dark:hover:text-zinc-900'],
-        'google' => ['label' => __('Google Business Profile'), 'class' => 'bg-[#4285F4]/10 text-[#4285F4] hover:bg-[#4285F4] hover:text-white'],
+        'facebook' => ['label' => 'Facebook', 'class' => 'hover:bg-[#1877F2]/10 hover:text-[#1877F2]'],
+        'instagram' => ['label' => 'Instagram', 'class' => 'hover:bg-[#E4405F]/10 hover:text-[#E4405F]'],
+        'tiktok' => ['label' => 'TikTok', 'class' => 'hover:bg-zinc-900/[0.06] hover:text-zinc-900 dark:hover:bg-white/10 dark:hover:text-white'],
+        'google' => ['label' => __('Google Business Profile'), 'class' => 'hover:bg-[#4285F4]/10 hover:text-[#4285F4]'],
     ];
 @endphp
 
-<div class="mx-auto flex w-full max-w-7xl flex-col gap-6">
+<div class="flex w-full flex-col gap-6">
     {{-- Header --}}
     <header class="flex flex-wrap items-end justify-between gap-4">
         <div class="flex flex-col gap-1">
@@ -265,28 +265,25 @@ new #[Title('Clients')] class extends Component {
             @endif
         </div>
     @elseif ($view === 'grid')
-        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[1800px]:grid-cols-5">
             @foreach ($this->clients as $client)
                 @php
                     $done = $client->progress >= 100;
                     $bar = $done ? 'bg-emerald-500' : ($client->progress < 34 ? 'bg-amber-400' : 'bg-brand-500');
                 @endphp
-                <article wire:key="client-{{ $client->id }}" class="flex flex-col overflow-hidden rounded-lg bg-white ring-1 ring-zinc-200/80 transition duration-300 hover:shadow-[0_16px_36px_-22px_rgb(49_81_254/0.5)] hover:ring-brand-300 dark:bg-zinc-950 dark:ring-white/10 dark:hover:ring-brand-500/50">
-                    {{-- Header --}}
-                    <div class="flex items-start gap-3 p-4">
-                        <span class="{{ $avatars[$client->id % count($avatars)] }} flex size-10 shrink-0 items-center justify-center rounded-md text-sm font-semibold">
+                <article wire:key="client-{{ $client->id }}" class="flex flex-col gap-4 rounded-lg bg-white p-4 ring-1 ring-zinc-200/80 transition duration-300 hover:shadow-[0_16px_36px_-22px_rgb(49_81_254/0.5)] hover:ring-brand-300 dark:bg-zinc-950 dark:ring-white/10 dark:hover:ring-brand-500/50">
+                    <div class="flex items-center gap-3">
+                        <span class="{{ $avatars[$client->id % count($avatars)] }} relative flex size-10 shrink-0 items-center justify-center rounded-md text-sm font-semibold">
                             {{ $client->initials() }}
+                            <span class="{{ $dots[$client->status] }} absolute -end-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-white dark:ring-zinc-950" title="{{ ucfirst(__($client->status)) }}"></span>
+                            <span class="sr-only">{{ __($client->status) }}</span>
                         </span>
                         <div class="min-w-0 flex-1">
                             <h3 class="truncate leading-snug font-semibold text-zinc-900 dark:text-white">{{ $client->name }}</h3>
                             <p class="truncate text-[0.8125rem] text-zinc-500 dark:text-zinc-400">{{ $client->company ?? __('Independent') }}</p>
                         </div>
-                        <span class="{{ $badges[$client->status] }} mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5 text-[0.6875rem] font-medium capitalize ring-1 ring-inset">
-                            <span class="{{ $dots[$client->status] }} size-1.5 rounded-full"></span>
-                            {{ __($client->status) }}
-                        </span>
                         <flux:dropdown align="end">
-                            <flux:button variant="ghost" size="sm" icon="ellipsis-vertical" class="-me-2 -mt-1" :aria-label="__('Actions for :name', ['name' => $client->name])" />
+                            <flux:button variant="ghost" size="sm" icon="ellipsis-vertical" class="-me-2" :aria-label="__('Actions for :name', ['name' => $client->name])" />
                             <flux:menu>
                                 <flux:menu.item icon="pencil-square" wire:click="edit({{ $client->id }})">{{ __('Edit') }}</flux:menu.item>
                                 <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete({{ $client->id }})">{{ __('Delete') }}</flux:menu.item>
@@ -294,56 +291,39 @@ new #[Title('Clients')] class extends Component {
                         </flux:dropdown>
                     </div>
 
-                    {{-- Package, price, progress --}}
-                    <div class="flex flex-col gap-4 border-t border-zinc-100 px-4 py-4 dark:border-white/5">
-                        <div class="flex items-end justify-between gap-3">
-                            <div class="min-w-0">
-                                <p class="text-xs text-zinc-500 dark:text-zinc-400">{{ __('Package') }}</p>
-                                <p class="mt-0.5 truncate text-sm font-medium text-zinc-900 dark:text-white">{{ $client->package ?? __('No package yet') }}</p>
-                            </div>
-                            @if ($client->price !== null)
-                                <p class="shrink-0 text-end">
-                                    <span class="block text-lg leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $client->formattedPrice() }}</span>
-                                    <span class="text-xs text-zinc-500">{{ $cycles[$client->billing_cycle] ?? '' }}</span>
-                                </p>
-                            @endif
-                        </div>
-
-                        <div>
-                            <div class="flex items-center justify-between text-xs">
-                                <span class="text-zinc-500 dark:text-zinc-400">{{ __('Work progress') }}</span>
-                                @if ($done)
-                                    <span class="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
-                                        <flux:icon.check-circle variant="micro" class="size-3.5" />
-                                        {{ __('Completed') }}
-                                    </span>
-                                @else
-                                    <span class="font-medium text-zinc-700 tabular-nums dark:text-zinc-200">{{ $client->progress }}%</span>
-                                @endif
-                            </div>
-                            <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10" role="progressbar" aria-valuenow="{{ $client->progress }}" aria-valuemin="0" aria-valuemax="100" aria-label="{{ __('Work progress') }}">
-                                <div class="{{ $bar }} h-full rounded-full transition-[width] duration-500" style="width: {{ $client->progress }}%"></div>
-                            </div>
-                        </div>
+                    <div class="flex items-baseline justify-between gap-3">
+                        <p class="min-w-0 truncate text-sm text-zinc-600 dark:text-zinc-300">{{ $client->package ?? __('No package') }}</p>
+                        @if ($client->price !== null)
+                            <p class="shrink-0 whitespace-nowrap">
+                                <span class="font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $client->formattedPrice() }}</span><span class="text-xs text-zinc-400">{{ $cycles[$client->billing_cycle] ?? '' }}</span>
+                            </p>
+                        @endif
                     </div>
 
-                    {{-- Footer --}}
-                    <div class="mt-auto flex items-center justify-between gap-3 border-t border-zinc-100 bg-zinc-50/70 px-4 py-2.5 dark:border-white/5 dark:bg-white/[0.02]">
+                    <div class="flex items-center gap-3" title="{{ __('Work progress') }}">
+                        <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10" role="progressbar" aria-valuenow="{{ $client->progress }}" aria-valuemin="0" aria-valuemax="100" aria-label="{{ __('Work progress') }}">
+                            <div class="{{ $bar }} h-full rounded-full" style="width: {{ $client->progress }}%"></div>
+                        </div>
+                        @if ($done)
+                            <flux:icon.check-circle variant="mini" class="size-4 text-emerald-500" />
+                        @else
+                            <span class="w-8 text-end text-xs font-medium text-zinc-500 tabular-nums">{{ $client->progress }}%</span>
+                        @endif
+                    </div>
+
+                    <div class="mt-auto flex items-center justify-between gap-3 border-t border-zinc-100 pt-3 dark:border-white/5">
                         @if ($client->phone)
-                            <a href="tel:{{ preg_replace('/[^\d+]/', '', $client->phone) }}" class="flex min-w-0 items-center gap-2 text-sm font-medium text-zinc-700 tabular-nums hover:text-brand-600 dark:text-zinc-200">
+                            <a href="tel:{{ preg_replace('/[^\d+]/', '', $client->phone) }}" class="flex min-w-0 items-center gap-2 text-sm text-zinc-600 tabular-nums hover:text-brand-600 dark:text-zinc-300">
                                 <flux:icon.phone variant="micro" class="size-3.5 shrink-0 text-zinc-400" />
                                 <span class="truncate">{{ $client->phone }}</span>
                             </a>
                         @else
-                            <span class="flex items-center gap-2 text-sm text-zinc-400">
-                                <flux:icon.phone variant="micro" class="size-3.5" />
-                                {{ __('No phone') }}
-                            </span>
+                            <span class="text-sm text-zinc-400">{{ __('No phone') }}</span>
                         @endif
 
-                        <div class="flex shrink-0 items-center gap-1">
+                        <div class="-me-1.5 flex shrink-0 items-center">
                             @foreach ($client->socialLinks() as $network => $link)
-                                <a href="{{ $link }}" target="_blank" rel="noopener noreferrer" class="{{ $socials[$network]['class'] }} flex size-7 items-center justify-center rounded-md transition duration-200" title="{{ $socials[$network]['label'] }}">
+                                <a href="{{ $link }}" target="_blank" rel="noopener noreferrer" class="{{ $socials[$network]['class'] }} flex size-7 items-center justify-center rounded-md text-zinc-400 transition duration-200" title="{{ $socials[$network]['label'] }}">
                                     <x-social-icon :name="$network" class="size-3.5" />
                                     <span class="sr-only">{{ $socials[$network]['label'] }}</span>
                                 </a>
@@ -401,7 +381,7 @@ new #[Title('Clients')] class extends Component {
                             <td class="px-5 py-3">
                                 <div class="flex gap-1">
                                     @foreach ($client->socialLinks() as $network => $link)
-                                        <a href="{{ $link }}" target="_blank" rel="noopener noreferrer" class="{{ $socials[$network]['class'] }} flex size-7 items-center justify-center rounded-md transition duration-200" title="{{ $socials[$network]['label'] }}">
+                                        <a href="{{ $link }}" target="_blank" rel="noopener noreferrer" class="{{ $socials[$network]['class'] }} flex size-7 items-center justify-center rounded-md text-zinc-400 transition duration-200" title="{{ $socials[$network]['label'] }}">
                                             <x-social-icon :name="$network" class="size-3.5" />
                                             <span class="sr-only">{{ $socials[$network]['label'] }}</span>
                                         </a>
