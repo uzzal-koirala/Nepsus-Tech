@@ -3,45 +3,51 @@
     <head>
         @include('partials.head')
     </head>
-    <body class="min-h-screen bg-zinc-200/70 font-sans antialiased dark:bg-brand-950">
-        <div class="flex min-h-dvh items-center justify-center p-4 sm:p-8">
-            <div class="relative grid w-full max-w-5xl overflow-hidden rounded-3xl bg-white p-6 shadow-sm sm:p-10 lg:min-h-[44rem] lg:grid-cols-2 lg:grid-rows-[1fr_auto] lg:gap-x-16 lg:gap-y-6 lg:p-12 dark:bg-zinc-900">
-                {{-- Watermark --}}
-                <x-app-logo-icon class="pointer-events-none absolute -top-16 -left-20 hidden size-[22rem] opacity-[0.07] grayscale lg:block dark:opacity-[0.05]" aria-hidden="true" />
+    <body class="min-h-screen bg-canvas font-sans antialiased dark:bg-brand-950">
+        <div class="flex min-h-dvh items-center justify-center p-3 sm:p-6 lg:p-10">
+            <div class="grid w-full max-w-6xl gap-3 rounded-[2rem] bg-white p-3 shadow-[0_40px_100px_-40px_rgb(49_81_254/0.35)] lg:min-h-[44rem] lg:grid-cols-[1.05fr_1fr] dark:bg-zinc-900 dark:shadow-none">
+                {{-- Brand panel --}}
+                <aside class="grain relative isolate flex h-80 flex-col overflow-hidden rounded-[1.5rem] bg-brand-500 p-5 sm:h-96 sm:p-6 lg:h-auto lg:p-8">
+                    {{-- Dot grid --}}
+                    <div class="absolute inset-0 -z-10 opacity-25 [background-image:radial-gradient(white_1px,transparent_1px)] [background-size:24px_24px] [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]"></div>
+                    {{-- Depth glow --}}
+                    <div class="absolute -bottom-40 left-1/2 -z-10 size-[36rem] -translate-x-1/2 rounded-full bg-brand-800/60 blur-3xl"></div>
+                    {{-- Sun (from the logo) --}}
+                    <div class="absolute top-[42%] left-1/2 -z-10 size-56 -translate-x-1/2 rounded-full bg-sun shadow-[0_0_120px_20px_rgb(255_194_14/0.35)] sm:size-72 lg:top-[40%] lg:size-[24rem]"></div>
+                    {{-- Triangle (from the logo) --}}
+                    <svg class="absolute top-[30%] right-[8%] -z-10 w-12 text-sun motion-safe:animate-float lg:w-16" viewBox="0 0 100 100" aria-hidden="true">
+                        <path d="M14 8 92 42a6 6 0 0 1 .6 10.8L18 94a6 6 0 0 1-8.8-6.2L5.4 14.4A6 6 0 0 1 14 8Z" fill="currentColor" />
+                    </svg>
 
-                {{-- Brand side --}}
-                <div class="relative hidden flex-col lg:flex">
-                    <a href="{{ route('home') }}" class="flex size-10 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 transition hover:border-brand-300 hover:text-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300" aria-label="{{ __('Back to home') }}" wire:navigate>
-                        <flux:icon.arrow-left variant="micro" />
-                    </a>
-
-                    <div class="relative -mx-4 my-4 min-h-[24rem] flex-1">
-                        <img src="{{ asset('images/auth-crew.webp') }}" alt="" class="absolute inset-0 size-full object-contain object-bottom drop-shadow-xl">
+                    <div class="flex items-start justify-between">
+                        <img src="{{ asset('images/nepsus-logo.png') }}" alt="Nepsus Tech" class="h-12 w-auto rounded-xl ring-1 ring-white/25 lg:h-14">
+                        <a href="{{ route('home') }}" class="flex size-10 items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/30 backdrop-blur-md transition hover:bg-white/25 active:scale-95" aria-label="{{ __('Back to home') }}" wire:navigate>
+                            <flux:icon.arrow-left variant="micro" />
+                        </a>
                     </div>
 
-                    <div class="max-w-sm">
-                        <img src="{{ asset('images/nepsus-logo.png') }}" alt="Nepsus Tech" class="h-16 w-auto">
-                        <p class="mt-5 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
-                            {{ __('Nepsus Tech is your client and task workspace. Keep every client, project and task in one place, from first contact to final delivery.') }}
-                        </p>
-                    </div>
-                </div>
+                    <h2 class="mt-8 hidden max-w-xs text-4xl leading-[1.05] font-semibold tracking-[-0.03em] text-balance text-white lg:block">
+                        {{ __('Every client. Every task.') }} <span class="text-sun">{{ __('One place.') }}</span>
+                    </h2>
 
-                {{-- Form side --}}
-                <div class="relative flex flex-col justify-center">
-                    <a href="{{ route('home') }}" class="mb-8 self-start lg:hidden" wire:navigate>
-                        <img src="{{ asset('images/nepsus-logo.png') }}" alt="Nepsus Tech" class="h-16 w-auto">
-                    </a>
+                    <img
+                        src="{{ asset('images/auth-crew.webp') }}"
+                        alt="{{ __('Three cartoon characters in sunglasses: two bunnies and an owl') }}"
+                        class="absolute inset-x-0 bottom-0 mx-auto h-[78%] w-auto max-w-none drop-shadow-[0_24px_30px_rgb(18_26_66/0.45)] lg:h-[72%]"
+                    >
+                </aside>
 
-                    <div class="w-full lg:max-w-sm">
+                {{-- Form --}}
+                <main class="flex flex-col px-3 pt-8 pb-4 sm:px-10 lg:px-14 lg:pt-12">
+                    <div class="mx-auto my-auto w-full max-w-sm">
                         {{ $slot }}
                     </div>
-                </div>
 
-                {{-- Footer --}}
-                <p class="relative mt-10 text-xs text-zinc-400 lg:col-span-2 lg:mt-0 lg:self-end lg:text-end dark:text-zinc-500">
-                    &copy; {{ date('Y') }} Nepsus Tech &middot; {{ __('All rights reserved.') }}
-                </p>
+                    <footer class="mt-10 flex flex-wrap justify-between gap-2 text-xs text-zinc-400 dark:text-zinc-500">
+                        <span>&copy; {{ date('Y') }} Nepsus Tech</span>
+                        <span>{{ __('Client & Task Management') }}</span>
+                    </footer>
+                </main>
             </div>
         </div>
 

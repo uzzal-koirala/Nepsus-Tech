@@ -1,8 +1,8 @@
 <x-layouts::auth :title="__('Log in')">
-    <div class="flex flex-col gap-6">
+    <div class="stagger flex flex-col gap-7">
         <div class="flex flex-col gap-2">
-            <h1 class="text-3xl font-medium tracking-tight text-zinc-900 dark:text-white">{{ __('Log in') }}</h1>
-            <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ __('Welcome back. Sign in with your work email to manage your clients and tasks.') }}</p>
+            <h1 class="text-[2rem] leading-tight font-semibold tracking-[-0.03em] text-balance text-zinc-900 dark:text-white">{{ __('Welcome back') }}</h1>
+            <p class="text-sm leading-relaxed text-pretty text-zinc-500 dark:text-zinc-400">{{ __('Sign in with your work email to pick up where your team left off.') }}</p>
         </div>
 
         <!-- Session Status -->
@@ -22,7 +22,7 @@
                 required
                 autofocus
                 autocomplete="email"
-                placeholder="email@example.com"
+                placeholder="you@company.com"
             />
 
             <!-- Password -->
@@ -47,14 +47,14 @@
             <!-- Remember Me -->
             <flux:checkbox name="remember" :label="__('Keep me signed in')" :checked="old('remember')" />
 
-            <flux:button variant="primary" type="submit" class="w-full" data-test="login-button">
+            <flux:button variant="primary" type="submit" class="h-11 w-full shadow-lg shadow-brand-500/25 transition active:scale-[0.98]" data-test="login-button">
                 {{ __('Sign in') }}
             </flux:button>
         </form>
 
         <p class="text-sm text-zinc-600 dark:text-zinc-400">
             {{ __('Not signed up yet?') }}
-            <flux:link :href="route('register')" wire:navigate>{{ __('Register now') }}</flux:link>
+            <flux:link :href="route('register')" wire:navigate>{{ __('Create an account') }}</flux:link>
         </p>
     </div>
 </x-layouts::auth>
