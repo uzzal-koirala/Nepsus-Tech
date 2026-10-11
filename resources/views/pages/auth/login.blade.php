@@ -51,10 +51,5 @@
                 {{ __('Sign in') }}
             </flux:button>
         </form>
-
-        <p class="text-sm text-zinc-600 dark:text-zinc-400">
-            {{ __('Not signed up yet?') }}
-            <flux:link :href="route('register')" wire:navigate>{{ __('Create an account') }}</flux:link>
-        </p>
     </div>
 </x-layouts::auth>
