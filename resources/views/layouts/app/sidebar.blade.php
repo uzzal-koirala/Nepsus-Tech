@@ -4,7 +4,7 @@
         @include('partials.head')
     </head>
     <body class="min-h-screen bg-canvas font-sans antialiased dark:bg-zinc-900">
-        <flux:sidebar sticky collapsible class="border-e border-zinc-200/80 bg-white dark:border-white/5 dark:bg-zinc-950">
+        <flux:sidebar sticky collapsible class="app-sidebar border-e border-zinc-200/80 bg-white lg:top-3 lg:m-3 lg:h-[calc(100dvh-1.5rem)] lg:max-h-[calc(100dvh-1.5rem)] lg:rounded-3xl lg:border lg:shadow-[0_20px_50px_-30px_rgb(49_81_254/0.35)] dark:border-white/5 dark:bg-zinc-950 dark:shadow-none">
             <flux:sidebar.header>
                 <x-app-logo :sidebar="true" href="{{ route('dashboard') }}" wire:navigate />
                 <flux:sidebar.collapse />
@@ -51,13 +51,25 @@
 
             <flux:spacer />
 
+            {{-- Workspace card --}}
+            <div class="grain relative isolate mt-6 overflow-hidden rounded-2xl bg-brand-500 p-4 text-white in-data-flux-sidebar-collapsed-desktop:hidden">
+                <div class="absolute -top-10 -right-10 -z-10 size-20 rounded-full bg-sun"></div>
+                <div class="absolute inset-0 -z-10 opacity-20 [background-image:radial-gradient(white_1px,transparent_1px)] [background-size:16px_16px]"></div>
+                <p class="text-xs font-medium text-brand-100">{{ __('Up next') }}</p>
+                <p class="mt-1 pe-6 text-sm leading-snug font-semibold text-balance">{{ __('Client profiles, projects and task boards') }}</p>
+                <p class="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-[0.6875rem] font-medium ring-1 ring-white/20">
+                    <span class="size-1.5 rounded-full bg-sun"></span>
+                    {{ __('In progress') }}
+                </p>
+            </div>
+
             <flux:sidebar.nav>
                 <flux:sidebar.item icon="cog-6-tooth" :href="route('profile.edit')" :current="request()->routeIs('profile.edit', 'security.edit', 'appearance.edit')" wire:navigate>
                     {{ __('Settings') }}
                 </flux:sidebar.item>
             </flux:sidebar.nav>
 
-            <div class="border-t border-zinc-200/80 pt-3 dark:border-white/10">
+            <div class="rounded-2xl bg-zinc-50 p-1.5 ring-1 ring-zinc-200/70 in-data-flux-sidebar-collapsed-desktop:bg-transparent in-data-flux-sidebar-collapsed-desktop:p-0 in-data-flux-sidebar-collapsed-desktop:ring-0 dark:bg-white/5 dark:ring-white/5">
                 <flux:dropdown position="top" align="start">
                     <button type="button" class="flex w-full items-center gap-3 rounded-xl p-1.5 text-start transition hover:bg-zinc-100 in-data-flux-sidebar-collapsed-desktop:justify-center in-data-flux-sidebar-collapsed-desktop:p-0 dark:hover:bg-white/5" data-test="sidebar-menu-button">
                         <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-sun text-sm font-semibold text-brand-950">

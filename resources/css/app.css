@@ -112,3 +112,24 @@ select:focus[data-flux-control] {
     mix-blend-mode: overlay;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
+
+/* App sidebar */
+.app-sidebar [data-flux-sidebar-item] {
+    height: 2.5rem;
+    border-radius: 0.75rem;
+    transition: background-color 150ms, color 150ms, box-shadow 150ms;
+}
+.app-sidebar [data-flux-sidebar-item]:not([data-current]):hover {
+    background: var(--color-brand-50);
+    color: var(--color-brand-600);
+}
+.app-sidebar [data-flux-sidebar-item][data-current] {
+    background: var(--color-brand-500);
+    border-color: transparent;
+    color: var(--color-white);
+    box-shadow: 0 10px 24px -10px rgb(49 81 254 / 0.7);
+}
+.dark .app-sidebar [data-flux-sidebar-item]:not([data-current]):hover {
+    background: rgb(255 255 255 / 0.06);
+    color: var(--color-white);
+}
