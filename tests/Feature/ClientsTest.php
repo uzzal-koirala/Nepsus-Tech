@@ -51,7 +51,7 @@ class ClientsTest extends TestCase
         \Illuminate\Support\Facades\Storage::fake('public');
         $this->actingAs(User::factory()->create());
 
-        $client = Client::factory()->create(['name' => 'Sita Gurung', 'notes' => 'Prefers WhatsApp']);
+        $client = Client::factory()->create(['name' => 'Sita Gurung', 'notes' => 'Prefers WhatsApp', 'package_id' => \App\Models\Package::first()->id]);
 
         $page = Livewire::test('pages::clients')
             ->call('edit', $client->id)
@@ -102,6 +102,18 @@ class ClientsTest extends TestCase
         Livewire::test('pages::clients')->assertSee('Month ends')->assertSee('14 Kartik')->assertSee('19 days left');
     }
 
+    public function test_a_package_must_be_chosen_when_packages_exist(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        Livewire::test('pages::clients')
+            ->call('create')
+            ->set('name', 'Ram Thapa')
+            ->call('save')
+            ->assertHasErrors(['package' => 'required'])
+            ->assertSet('formTab', 'package');
+    }
+
     public function test_form_jumps_to_the_step_with_the_first_error(): void
     {
         $this->actingAs(User::factory()->create());
@@ -138,7 +150,7 @@ class ClientsTest extends TestCase
         $this->assertSame([$c->id, $b->id, $a->id], Client::orderBy('position')->pluck('id')->all());
 
         // New clients start at the top.
-        $page->set('name', 'Delta')->call('save');
+        $page->set('name', 'Delta')->set('package', (string) \App\Models\Package::first()->id)->call('save');
         $this->assertSame('Delta', Client::orderBy('position')->value('name'));
     }
 

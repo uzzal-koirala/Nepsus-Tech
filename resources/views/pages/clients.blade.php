@@ -226,7 +226,7 @@ new #[Title('Clients')] class extends Component {
             'phone' => ['nullable', 'string', 'max:50'],
             'clientStatus' => ['required', Rule::in(Client::STATUSES)],
             'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
-            'package' => ['nullable', Rule::exists('packages', 'id')],
+            'package' => [Rule::requiredIf(fn () => Package::where('is_active', true)->exists()), 'nullable', Rule::exists('packages', 'id')],
             'price' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
             'billing_cycle' => ['required', Rule::in(Client::BILLING_CYCLES)],
             'progress' => ['required', 'integer', 'min:0', 'max:100'],
@@ -857,69 +857,67 @@ new #[Title('Clients')] class extends Component {
                             <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Package') }}</span>
                             <a href="{{ route('packages.index') }}" wire:navigate class="text-xs font-medium text-brand-600 hover:underline dark:text-brand-300">{{ __('Manage packages') }}</a>
                         </div>
-                        <div class="relative mt-2">
-                            <div class="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pt-1 pb-3 [scrollbar-width:thin]">
-                                {{-- No package --}}
-                                <button
-                                    type="button"
-                                    @click="$wire.package = ''"
-                                    class="relative flex w-32 shrink-0 snap-start flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-3 py-4 text-center transition duration-200 hover:-translate-y-0.5"
-                                    :class="! $wire.package ? 'border-zinc-400 bg-zinc-50 dark:border-white/40 dark:bg-white/5' : 'border-zinc-200 hover:border-zinc-300 dark:border-white/10'"
-                                >
-                                    <span class="flex size-10 items-center justify-center rounded-xl bg-zinc-100 text-zinc-400 dark:bg-white/5"><flux:icon.minus variant="mini" class="size-5" /></span>
-                                    <span>
-                                        <span class="block text-sm font-semibold text-zinc-800 dark:text-white">{{ __('No package') }}</span>
-                                        <span class="block text-xs text-zinc-400">{{ __('Custom work') }}</span>
-                                    </span>
-                                    <span class="absolute top-2 right-2 flex size-5 items-center justify-center rounded-full bg-zinc-800 text-white dark:bg-white dark:text-zinc-900" x-show="! $wire.package" x-cloak>
-                                        <flux:icon.check variant="micro" class="size-3.5" />
-                                    </span>
-                                </button>
-
+                        @php
+                            $cycleShort = ['monthly' => '/mo', 'yearly' => '/yr', 'one_time' => ' one-time'];
+                        @endphp
+                        <div class="relative mt-2" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.stop="open = false">
+                            <button
+                                type="button"
+                                @click="open = ! open"
+                                class="flex h-12 w-full items-center gap-3 rounded-xl border bg-white px-3 text-start shadow-xs transition dark:bg-white/5"
+                                :class="open ? 'border-brand-400 ring-2 ring-brand-500/20' : 'border-zinc-200 hover:border-zinc-300 dark:border-white/10'"
+                                :aria-expanded="open"
+                                aria-haspopup="listbox"
+                            >
+                                <span class="flex items-center gap-2 text-sm text-zinc-400" x-show="! $wire.package">
+                                    <span class="flex size-8 items-center justify-center rounded-lg bg-zinc-100 dark:bg-white/5"><flux:icon.cube variant="mini" class="size-4" /></span>
+                                    {{ __('Choose a package') }}
+                                </span>
                                 @foreach ($this->packageOptions as $p)
-                                    @php
-                                        $pt = $p->theme();
-                                    @endphp
+                                    <span class="flex min-w-0 flex-1 items-center gap-3" x-show="$wire.package == '{{ $p->id }}'" x-cloak>
+                                        <span class="{{ $p->theme()['icon'] }} flex size-8 shrink-0 items-center justify-center rounded-lg"><flux:icon :icon="$p->icon" variant="mini" class="size-4" /></span>
+                                        <span class="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $p->name }}</span>
+                                        <span class="shrink-0 text-xs text-zinc-500 tabular-nums">{{ $p->formattedPrice() ? $p->formattedPrice().($cycleShort[$p->billing_cycle] ?? '') : __('Custom price') }}</span>
+                                    </span>
+                                @endforeach
+                                <flux:icon.chevron-down variant="micro" class="ms-auto size-4 shrink-0 text-zinc-400 transition" ::class="open && 'rotate-180'" />
+                            </button>
+
+                            <div
+                                x-show="open"
+                                x-transition.origin.top
+                                x-cloak
+                                role="listbox"
+                                class="absolute inset-x-0 top-full z-30 mt-1.5 max-h-64 overflow-y-auto rounded-xl bg-white p-1.5 shadow-[0_20px_45px_-20px_rgb(15_23_42/0.4)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10"
+                            >
+                                @forelse ($this->packageOptions as $p)
                                     <button
                                         type="button"
-                                        wire:key="pick-{{ $p->id }}"
-                                        @click="$wire.package = '{{ $p->id }}'; @if ($p->price !== null) $wire.price = '{{ rtrim(rtrim((string) $p->price, '0'), '.') }}'; $wire.billing_cycle = '{{ $p->billing_cycle }}'; @endif"
-                                        class="group relative flex w-44 shrink-0 snap-start flex-col overflow-hidden rounded-2xl bg-white text-start ring-1 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_-20px_rgb(15_23_42/0.45)] dark:bg-zinc-900"
-                                        :class="$wire.package == '{{ $p->id }}' ? @js($pt['pick'].' shadow-[0_16px_32px_-20px_rgb(15_23_42/0.45)]') : 'ring-zinc-200 dark:ring-white/10'"
+                                        role="option"
+                                        wire:key="opt-{{ $p->id }}"
+                                        @click="$wire.package = '{{ $p->id }}'; @if ($p->price !== null) $wire.price = '{{ rtrim(rtrim((string) $p->price, '0'), '.') }}'; $wire.billing_cycle = '{{ $p->billing_cycle }}'; @endif open = false"
+                                        class="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-start transition"
+                                        :class="$wire.package == '{{ $p->id }}' ? 'bg-brand-50 dark:bg-brand-500/10' : 'hover:bg-zinc-50 dark:hover:bg-white/5'"
+                                        :aria-selected="$wire.package == '{{ $p->id }}'"
                                     >
-                                        {{-- Cover --}}
-                                        <span class="{{ $pt['cover'] }} relative flex h-16 items-end bg-linear-to-br px-3 pb-2.5">
-                                            <span class="absolute inset-0 opacity-20 [background-image:radial-gradient(currentColor_1px,transparent_1px)] [background-size:12px_12px]"></span>
-                                            <flux:icon :icon="$p->icon" class="absolute -right-3 -bottom-3 size-16 opacity-20" />
-                                            <span class="relative flex size-9 items-center justify-center rounded-lg bg-white/25 ring-1 ring-white/40 backdrop-blur">
-                                                <flux:icon :icon="$p->icon" variant="mini" class="size-4.5" />
-                                            </span>
-                                            <span class="absolute top-2 right-2 flex size-5 items-center justify-center rounded-full bg-white text-zinc-900 shadow-sm" x-show="$wire.package == '{{ $p->id }}'" x-cloak>
-                                                <flux:icon.check variant="micro" class="size-3.5" />
-                                            </span>
-                                        </span>
-
-                                        {{-- Details --}}
-                                        <span class="flex flex-1 flex-col gap-0.5 px-3 py-2.5">
-                                            <span class="truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $p->name }}</span>
-                                            <span class="truncate text-xs tabular-nums">
-                                                @if ($p->price !== null)
-                                                    <span class="font-semibold text-zinc-800 dark:text-zinc-100">{{ $p->formattedPrice() }}</span><span class="text-zinc-400">{{ ['monthly' => '/mo', 'yearly' => '/yr', 'one_time' => ' once'][$p->billing_cycle] ?? '' }}</span>
-                                                @else
-                                                    <span class="text-zinc-400">{{ __('Custom price') }}</span>
-                                                @endif
-                                            </span>
-                                            @if ($first = ($p->features[0] ?? null))
-                                                <span class="mt-1 flex items-center gap-1 truncate text-[0.6875rem] text-zinc-500">
-                                                    <flux:icon.check variant="micro" class="size-3 shrink-0 opacity-70" />
-                                                    <span class="truncate">{{ $first }}</span>
-                                                </span>
+                                        <span class="{{ $p->theme()['icon'] }} flex size-8 shrink-0 items-center justify-center rounded-lg"><flux:icon :icon="$p->icon" variant="mini" class="size-4" /></span>
+                                        <span class="min-w-0 flex-1">
+                                            <span class="block truncate text-sm font-medium text-zinc-900 dark:text-white">{{ $p->name }}</span>
+                                            @if ($p->description)
+                                                <span class="block truncate text-xs text-zinc-400">{{ $p->description }}</span>
                                             @endif
                                         </span>
+                                        <span class="shrink-0 text-xs font-medium text-zinc-600 tabular-nums dark:text-zinc-300">{{ $p->formattedPrice() ? $p->formattedPrice().($cycleShort[$p->billing_cycle] ?? '') : __('Custom price') }}</span>
+                                        <flux:icon.check variant="micro" class="size-4 shrink-0 text-brand-600 dark:text-brand-300" x-show="$wire.package == '{{ $p->id }}'" />
+                                        <span class="size-4 shrink-0" x-show="$wire.package != '{{ $p->id }}'"></span>
                                     </button>
-                                @endforeach
+                                @empty
+                                    <p class="px-3 py-4 text-center text-sm text-zinc-500">
+                                        {{ __('No packages yet.') }}
+                                        <a href="{{ route('packages.index') }}" wire:navigate class="font-medium text-brand-600 hover:underline">{{ __('Create one') }}</a>
+                                    </p>
+                                @endforelse
                             </div>
-                            <div class="pointer-events-none absolute inset-y-0 right-0 w-8 bg-linear-to-l from-white dark:from-zinc-800"></div>
                         </div>
                         <flux:error name="package" />
                     </div>
