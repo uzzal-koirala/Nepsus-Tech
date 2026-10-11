@@ -523,15 +523,32 @@ new #[Title('Client profile')] class extends Component {
                             </thead>
                             <tbody class="divide-y divide-zinc-100 border-t border-zinc-100 dark:divide-white/5 dark:border-white/5">
                                 @foreach ($this->payments as $payment)
-                                    @php($ps = $payment->status())
+                                    @php
+                                        $ps = $payment->status();
+                                    @endphp
                                     <tr wire:key="payment-{{ $payment->id }}" class="transition hover:bg-zinc-50/70 dark:hover:bg-white/[0.02]">
                                         <td class="px-5 py-3 text-zinc-700 dark:text-zinc-200" title="{{ $payment->due_date?->format('j M Y') }}">{{ $payment->due_date?->toNepali() ?: '-' }}</td>
                                         <td class="px-5 py-3 text-zinc-500 tabular-nums">{{ $payment->reference ?? '-' }}</td>
                                         <td class="px-5 py-3 text-zinc-500">{{ $payment->method ?? '-' }}</td>
                                         <td class="px-5 py-3 text-end font-semibold text-zinc-900 tabular-nums dark:text-white">{{ Client::money($payment->amount) }}</td>
                                         <td class="px-5 py-3 whitespace-nowrap">
-                                            <span class="{{ $payBadges[$ps] }} inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset">
-                                                {{ ['paid' => __('Paid'), 'pending' => __('Pending'), 'overdue' => __('Overdue')][$ps] }}
+                                            @php
+                                                $inDays = $payment->dueInDays();
+                                                $soon = $ps === 'pending' && $inDays !== null && $inDays <= \App\Models\Payment::REMIND_DAYS;
+                                            @endphp
+                                            <span @class([
+                                                'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset',
+                                                $payBadges[$ps] => ! $soon,
+                                                'bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-300' => $soon,
+                                            ])>
+                                                @if ($soon)
+                                                    <flux:icon.bell-alert variant="micro" class="size-3" />
+                                                    {{ $inDays === 0 ? __('Due today') : trans_choice('Due tomorrow|Due in :count days', $inDays) }}
+                                                @elseif ($ps === 'overdue')
+                                                    {{ trans_choice('Overdue :count day|Overdue :count days', abs($inDays)) }}
+                                                @else
+                                                    {{ ['paid' => __('Paid'), 'pending' => __('Pending')][$ps] }}
+                                                @endif
                                             </span>
                                             @if ($payment->paid_at)
                                                 <span class="ms-1 text-xs text-zinc-400" title="{{ $payment->paid_at->format('j M Y') }}">{{ $payment->paid_at->toNepali(withYear: false) }}</span>

@@ -72,6 +72,7 @@ new #[Title('Clients')] class extends Component {
     public function clients()
     {
         return Client::query()
+            ->withNextPayment()
             ->when($this->status !== 'all', fn ($q) => $q->where('status', $this->status))
             ->when($this->search !== '', fn ($q) => $q->where(fn ($q) => $q
                 ->where('name', 'like', "%{$this->search}%")
@@ -399,7 +400,9 @@ new #[Title('Clients')] class extends Component {
                     $done = $client->progress >= 100;
                     $bar = $done ? 'bg-emerald-500' : ($client->progress < 34 ? 'bg-amber-400' : 'bg-brand-500');
                 @endphp
-                @php($tier = Client::PACKAGES[$client->package] ?? null)
+                @php
+                    $tier = Client::PACKAGES[$client->package] ?? null;
+                @endphp
                 <article wire:key="client-{{ $client->id }}" wire:sort:item="{{ $client->id }}" class="{{ $tier ? $tiers[$client->package]['card'] : 'from-zinc-50 ring-zinc-200/80 hover:ring-zinc-300 hover:shadow-[0_18px_40px_-24px_rgb(24_24_27/0.3)] dark:from-white/[0.02] dark:ring-white/10' }} flex flex-col rounded-lg bg-white bg-linear-to-b via-white via-45% to-white ring-1 transition duration-300 hover:-translate-y-0.5 dark:bg-zinc-950 dark:via-zinc-950 dark:to-zinc-950">
                     <div class="flex flex-col gap-4 p-4">
                         <div class="flex items-center gap-3">
@@ -425,6 +428,34 @@ new #[Title('Clients')] class extends Component {
                             </flux:dropdown>
                         </div>
 
+                        @if ($alert = $client->paymentAlert())
+                            @php
+                                $alertStyles = [
+                                    'overdue' => 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/30',
+                                    'today' => 'bg-orange-50 text-orange-700 ring-orange-200 dark:bg-orange-500/10 dark:text-orange-300 dark:ring-orange-500/30',
+                                    'soon' => 'bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30',
+                                ];
+                            @endphp
+                            <div class="{{ $alertStyles[$alert['tone']] }} flex items-center gap-2 rounded-md px-2.5 py-2 text-xs ring-1 ring-inset" title="{{ $alert['date']->format('j M Y') }}">
+                                @if ($alert['tone'] === 'today')
+                                    <span class="relative flex size-2 shrink-0"><span class="absolute inline-flex size-full animate-ping rounded-full bg-orange-400 opacity-75"></span><span class="relative inline-flex size-2 rounded-full bg-orange-500"></span></span>
+                                @else
+                                    <flux:icon :icon="$alert['tone'] === 'overdue' ? 'exclamation-triangle' : 'bell-alert'" variant="micro" class="size-3.5 shrink-0" />
+                                @endif
+                                <span class="min-w-0 truncate font-medium">
+                                    @if ($alert['tone'] === 'overdue')
+                                        {{ trans_choice('Overdue by :count day|Overdue by :count days', $alert['days']) }}
+                                    @elseif ($alert['tone'] === 'today')
+                                        {{ __('Due today') }}
+                                    @else
+                                        {{ trans_choice('Due tomorrow|Due in :count days', $alert['days']) }}
+                                        <span class="font-normal opacity-75">· {{ $alert['date']->toNepali(withYear: false) }}</span>
+                                    @endif
+                                </span>
+                                <span class="ms-auto shrink-0 font-semibold tabular-nums">{{ $alert['amount'] }}</span>
+                            </div>
+                        @endif
+
                         <div class="flex items-center justify-between gap-3">
                             @if ($tier)
                                 <span class="{{ $tiers[$client->package]['chip'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold">
@@ -441,7 +472,9 @@ new #[Title('Clients')] class extends Component {
                             @endif
                         </div>
 
-                        @php($done = $client->progress >= 100)
+                        @php
+                            $done = $client->progress >= 100;
+                        @endphp
                         <div class="flex items-center gap-3" title="{{ __('Work progress') }}">
                             <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10" role="progressbar" aria-valuenow="{{ $client->progress }}" aria-valuemin="0" aria-valuemax="100" aria-label="{{ __('Work progress') }}">
                                 <div @class(['h-full rounded-full', 'bg-emerald-500' => $done, 'bg-amber-400' => $client->progress < 34, 'bg-brand-500' => ! $done && $client->progress >= 34]) style="width: {{ $client->progress }}%"></div>
@@ -521,6 +554,16 @@ new #[Title('Clients')] class extends Component {
                                 @if ($client->price !== null)
                                     <span class="font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $client->formattedPrice() }}</span>
                                     <span class="text-xs text-zinc-500">{{ $cycles[$client->billing_cycle] ?? '' }}</span>
+                                    @if ($alert = $client->paymentAlert())
+                                        <span @class([
+                                            'mt-0.5 block text-xs font-medium',
+                                            'text-rose-600 dark:text-rose-400' => $alert['tone'] === 'overdue',
+                                            'text-orange-600 dark:text-orange-400' => $alert['tone'] === 'today',
+                                            'text-amber-600 dark:text-amber-400' => $alert['tone'] === 'soon',
+                                        ])>
+                                            {{ match ($alert['tone']) { 'overdue' => trans_choice('Overdue :count day|Overdue :count days', $alert['days']), 'today' => __('Due today'), default => trans_choice('Due tomorrow|Due in :count days', $alert['days']) } }}
+                                        </span>
+                                    @endif
                                 @else
                                     <span class="text-zinc-400">-</span>
                                 @endif

@@ -17,6 +17,35 @@ class ClientsTest extends TestCase
         $this->get(route('clients.index'))->assertRedirect(route('login'));
     }
 
+    public function test_cards_remind_about_payments_due_within_a_week_or_overdue(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $soon = Client::factory()->create(['name' => 'Soon Client']);
+        $soon->payments()->create(['amount' => 25000, 'due_date' => today()->addDays(3)]);
+        $soon->payments()->create(['amount' => 9000, 'due_date' => today()->addDays(30)]);
+
+        $late = Client::factory()->create(['name' => 'Late Client']);
+        $late->payments()->create(['amount' => 8000, 'due_date' => today()->subDays(2)]);
+
+        $later = Client::factory()->create(['name' => 'Later Client']);
+        $later->payments()->create(['amount' => 5000, 'due_date' => today()->addDays(20)]);
+
+        $paid = Client::factory()->create(['name' => 'Paid Client']);
+        $paid->payments()->create(['amount' => 5000, 'due_date' => today()->addDays(2), 'paid_at' => now()]);
+
+        $this->assertSame(['tone' => 'soon', 'days' => 3], array_intersect_key(Client::withNextPayment()->find($soon->id)->paymentAlert(), ['tone' => 0, 'days' => 0]));
+        $this->assertSame('overdue', Client::withNextPayment()->find($late->id)->paymentAlert()['tone']);
+        $this->assertNull(Client::withNextPayment()->find($later->id)->paymentAlert());
+        $this->assertNull(Client::withNextPayment()->find($paid->id)->paymentAlert());
+
+        Livewire::test('pages::clients')
+            ->assertSee('Due in 3 days')
+            ->assertSee('NPR 25,000')
+            ->assertSee('Overdue by 2 days')
+            ->assertDontSee('Due in 20 days');
+    }
+
     public function test_dragging_a_card_changes_its_priority(): void
     {
         $this->actingAs(User::factory()->create());

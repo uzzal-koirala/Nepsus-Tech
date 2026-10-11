@@ -30,6 +30,17 @@ class Payment extends Model
         return $this->belongsTo(Client::class);
     }
 
+    /** Show a reminder this many days before a payment is due. */
+    public const REMIND_DAYS = 7;
+
+    /**
+     * Days until the due date: negative when late, null when paid or undated.
+     */
+    public function dueInDays(): ?int
+    {
+        return $this->paid_at || ! $this->due_date ? null : (int) today()->diffInDays($this->due_date, false);
+    }
+
     /**
      * paid, overdue or pending.
      */

@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Database\Factories\ClientFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Str;
 
 #[Fillable([
@@ -64,6 +67,46 @@ class Client extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(Document::class);
+    }
+
+    /**
+     * Adds next_due_date and next_due_amount: the earliest unpaid payment.
+     */
+    public function scopeWithNextPayment(Builder $query): void
+    {
+        $next = fn (string $column) => Payment::select($column)
+            ->whereColumn('client_id', 'clients.id')
+            ->whereNull('paid_at')
+            ->whereNotNull('due_date')
+            ->orderBy('due_date')
+            ->limit(1);
+
+        $query->addSelect(['next_due_date' => $next('due_date'), 'next_due_amount' => $next('amount')]);
+    }
+
+    /**
+     * Reminder for the next unpaid payment when it is late or due within Payment::REMIND_DAYS.
+     * Needs the withNextPayment scope.
+     *
+     * @return array{tone: 'overdue'|'today'|'soon', days: int, date: CarbonInterface, amount: string}|null
+     */
+    public function paymentAlert(): ?array
+    {
+        if (! $this->next_due_date) {
+            return null;
+        }
+
+        $date = Date::parse($this->next_due_date);
+        $days = (int) today()->diffInDays($date, false);
+
+        $tone = match (true) {
+            $days < 0 => 'overdue',
+            $days === 0 => 'today',
+            $days <= Payment::REMIND_DAYS => 'soon',
+            default => null,
+        };
+
+        return $tone ? ['tone' => $tone, 'days' => abs($days), 'date' => $date, 'amount' => self::money($this->next_due_amount)] : null;
     }
 
     /**
