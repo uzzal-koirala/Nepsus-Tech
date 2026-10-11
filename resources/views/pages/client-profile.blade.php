@@ -310,8 +310,8 @@ new #[Title('Client profile')] class extends Component {
         <div class="flex flex-col gap-5 px-5 pb-5 sm:px-6">
             <div class="flex flex-wrap items-end justify-between gap-4">
                 <div class="flex min-w-0 items-end gap-4">
-                    <span class="relative -mt-10 flex size-20 shrink-0 items-center justify-center rounded-2xl bg-brand-100 text-2xl font-semibold text-brand-700 shadow-lg ring-4 ring-white dark:bg-brand-500/30 dark:text-white dark:ring-zinc-950">
-                        {{ $c->initials() }}
+                    <span class="relative -mt-10 shrink-0">
+                        <x-client-avatar :client="$c" tint="bg-brand-100 text-brand-700 dark:bg-brand-500/30 dark:text-white" class="size-20 rounded-2xl text-2xl shadow-lg ring-4 ring-white dark:ring-zinc-950" />
                         <span class="{{ $dots[$c->status] }} absolute -end-1 -bottom-1 size-4 rounded-full ring-[3px] ring-white dark:ring-zinc-950"></span>
                     </span>
                     <div class="min-w-0 pt-3">

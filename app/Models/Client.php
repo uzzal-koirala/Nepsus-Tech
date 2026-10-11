@@ -12,10 +12,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 #[Fillable([
-    'name', 'company', 'email', 'phone', 'status', 'position', 'notes',
+    'name', 'company', 'avatar_path', 'email', 'phone', 'status', 'position', 'notes',
     'package_id', 'price', 'billing_cycle', 'progress',
     'contract_start', 'contract_end', 'agreement_signed_at',
     'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url',
@@ -46,6 +47,16 @@ class Client extends Model
             'contract_end' => 'date',
             'agreement_signed_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::deleted(fn (Client $client) => $client->avatar_path && Storage::disk('public')->delete($client->avatar_path));
+    }
+
+    public function avatarUrl(): ?string
+    {
+        return $this->avatar_path ? Storage::disk('public')->url($this->avatar_path) : null;
     }
 
     public function package(): BelongsTo

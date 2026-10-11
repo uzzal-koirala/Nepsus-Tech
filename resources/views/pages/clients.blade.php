@@ -10,9 +10,12 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 use Livewire\WithPagination;
+use Illuminate\Support\Facades\Storage;
 
 new #[Title('Clients')] class extends Component {
+    use WithFileUploads;
     use WithPagination;
 
     #[Url(except: '')]
@@ -35,7 +38,9 @@ new #[Title('Clients')] class extends Component {
     public string $email = '';
     public string $phone = '';
     public string $clientStatus = 'active';
-    public string $notes = '';
+    public $photo = null;
+    public ?string $currentPhoto = null;
+    public bool $removePhoto = false;
     public string $package = '';
     public string $price = '';
     public string $billing_cycle = 'monthly';
@@ -49,9 +54,27 @@ new #[Title('Clients')] class extends Component {
     public string $formTab = 'details';
 
     private const FORM_TABS = [
-        'details' => ['name', 'company', 'phone', 'clientStatus', 'email', 'notes'],
+        'details' => ['photo', 'name', 'company', 'phone', 'clientStatus', 'email'],
         'package' => ['package', 'price', 'billing_cycle', 'progress', 'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url'],
     ];
+
+    public function updatedPhoto(): void
+    {
+        $this->removePhoto = false;
+
+        try {
+            $this->validateOnly('photo', ['photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048']]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->reset('photo'); // never try to preview a rejected file
+            throw $e;
+        }
+    }
+
+    public function clearPhoto(): void
+    {
+        $this->reset('photo');
+        $this->removePhoto = true;
+    }
 
     public function mount(): void
     {
@@ -176,7 +199,9 @@ new #[Title('Clients')] class extends Component {
         $this->price = $client->price === null ? '' : rtrim(rtrim((string) $client->price, '0'), '.');
         $this->package = (string) $client->package_id;
 
-        foreach (['name', 'company', 'email', 'phone', 'notes', ...array_values(Client::SOCIALS)] as $field) {
+        $this->currentPhoto = $client->avatarUrl();
+
+        foreach (['name', 'company', 'email', 'phone', ...array_values(Client::SOCIALS)] as $field) {
             $this->{$field} = (string) $client->{$field};
         }
 
@@ -200,7 +225,7 @@ new #[Title('Clients')] class extends Component {
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'clientStatus' => ['required', Rule::in(Client::STATUSES)],
-            'notes' => ['nullable', 'string', 'max:5000'],
+            'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
             'package' => ['nullable', Rule::exists('packages', 'id')],
             'price' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
             'billing_cycle' => ['required', Rule::in(Client::BILLING_CYCLES)],
@@ -213,7 +238,7 @@ new #[Title('Clients')] class extends Component {
 
         $data['status'] = $data['clientStatus'];
         $data['package_id'] = $data['package'] ?: null;
-        unset($data['clientStatus'], $data['package']);
+        unset($data['clientStatus'], $data['package'], $data['photo']);
         $data = array_map(fn ($v) => $v === '' ? null : $v, $data);
 
         if (! $this->editingId) {
@@ -221,6 +246,14 @@ new #[Title('Clients')] class extends Component {
         }
 
         $client = Client::updateOrCreate(['id' => $this->editingId], $data);
+
+        if ($this->photo || $this->removePhoto) {
+            if ($client->avatar_path) {
+                Storage::disk('public')->delete($client->avatar_path);
+            }
+
+            $client->update(['avatar_path' => $this->photo ? $this->photo->store('clients/avatars', 'public') : null]);
+        }
 
         if ($this->open) {
             $this->redirectRoute('clients.show', $client, navigate: true);
@@ -250,7 +283,7 @@ new #[Title('Clients')] class extends Component {
 
     private function resetForm(): void
     {
-        $this->reset('editingId', 'name', 'company', 'email', 'phone', 'notes', 'package', 'price', 'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url');
+        $this->reset('editingId', 'name', 'company', 'email', 'phone', 'photo', 'currentPhoto', 'removePhoto', 'package', 'price', 'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url');
         $this->clientStatus = 'active';
         $this->billing_cycle = 'monthly';
         $this->progress = 0;
@@ -420,8 +453,8 @@ new #[Title('Clients')] class extends Component {
                             <button type="button" wire:sort:handle class="-ms-2 -me-1.5 flex h-10 w-5 shrink-0 cursor-grab items-center justify-center rounded text-zinc-300 transition hover:bg-zinc-100 hover:text-zinc-500 active:cursor-grabbing dark:text-zinc-600 dark:hover:bg-white/5" aria-label="{{ __('Drag to change priority') }}" title="{{ __('Drag to change priority') }}">
                                 <flux:icon.grip-vertical variant="micro" class="size-4" />
                             </button>
-                            <span class="{{ $avatars[$client->id % count($avatars)] }} relative flex size-10 shrink-0 items-center justify-center rounded-md text-sm font-semibold ring-1 ring-black/5">
-                                {{ $client->initials() }}
+                            <span class="relative shrink-0">
+                                <x-client-avatar :client="$client" :tint="$avatars[$client->id % count($avatars)]" class="size-10 rounded-md text-sm ring-1 ring-black/5" />
                                 <span class="{{ $dots[$client->status] }} absolute -end-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-white dark:ring-zinc-950" title="{{ ucfirst(__($client->status)) }}"></span>
                                 <span class="sr-only">{{ __($client->status) }}</span>
                             </span>
@@ -560,7 +593,7 @@ new #[Title('Clients')] class extends Component {
                                     <button type="button" wire:sort:handle class="-ms-2 flex h-8 w-5 shrink-0 cursor-grab items-center justify-center rounded text-zinc-300 hover:text-zinc-500 active:cursor-grabbing dark:text-zinc-600" aria-label="{{ __('Drag to change priority') }}">
                                         <flux:icon.grip-vertical variant="micro" class="size-4" />
                                     </button>
-                                    <span class="{{ $avatars[$client->id % count($avatars)] }} flex size-9 shrink-0 items-center justify-center rounded-lg text-xs font-semibold">{{ $client->initials() }}</span>
+                                    <x-client-avatar :client="$client" :tint="$avatars[$client->id % count($avatars)]" class="size-9 rounded-lg text-xs" />
                                     <div class="min-w-0">
                                         <a href="{{ route('clients.show', $client) }}" wire:navigate class="block truncate font-medium text-zinc-900 hover:text-brand-600 dark:text-white">{{ $client->name }}</a>
                                         <p class="truncate text-xs text-zinc-500">{{ $client->company ?? __('Independent') }}</p>
@@ -647,7 +680,7 @@ new #[Title('Clients')] class extends Component {
     {{-- Create / edit --}}
     @php
         $formTabs = [
-            'details' => ['label' => __('Details'), 'hint' => __('Contact details'), 'fields' => ['name', 'company', 'phone', 'clientStatus', 'email', 'notes']],
+            'details' => ['label' => __('Details'), 'hint' => __('Contact details'), 'fields' => ['photo', 'name', 'company', 'phone', 'clientStatus', 'email']],
             'package' => ['label' => __('Package & social'), 'hint' => __('Plan, price and profiles'), 'fields' => ['package', 'price', 'billing_cycle', 'progress', 'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url']],
         ];
         $seg = 'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition';
@@ -712,6 +745,82 @@ new #[Title('Clients')] class extends Component {
             <div class="px-6 py-6">
                 {{-- Step 1: details --}}
                 <div x-show="tab === 'details'" class="grid gap-4 sm:grid-cols-2">
+                    {{-- Profile picture --}}
+                    <div
+                        x-data="{
+                            drag: false,
+                            uploading: false,
+                            progress: 0,
+                            upload(file) {
+                                if (! file) return;
+                                this.uploading = true;
+                                $wire.upload('photo', file, () => { this.uploading = false; this.progress = 0 }, () => { this.uploading = false }, (e) => { this.progress = e.detail.progress });
+                            },
+                            get initials() {
+                                const parts = ($wire.name || '').trim().split(/\s+/).filter(Boolean);
+                                return parts.length ? (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() : '';
+                            },
+                        }"
+                        x-on:livewire-upload-start="uploading = true"
+                        x-on:livewire-upload-progress="progress = $event.detail.progress"
+                        x-on:livewire-upload-finish="uploading = false; progress = 0"
+                        x-on:livewire-upload-error="uploading = false"
+                        @dragover.prevent="drag = true"
+                        @dragleave.prevent="drag = false"
+                        @drop.prevent="drag = false; upload($event.dataTransfer.files[0])"
+                        class="flex items-center gap-5 rounded-2xl border border-dashed p-4 transition duration-200 sm:col-span-2"
+                        :class="drag ? 'border-brand-400 bg-brand-50/70 dark:bg-brand-500/10' : 'border-zinc-200 bg-zinc-50/60 dark:border-white/10 dark:bg-white/[0.02]'"
+                    >
+                        {{-- Avatar with gradient ring --}}
+                        <div class="relative shrink-0">
+                            <div class="rounded-full bg-linear-to-br from-brand-400 via-brand-500 to-sun p-[3px] shadow-[0_10px_24px_-12px_rgb(49_81_254/0.6)]">
+                                <div class="flex size-20 items-center justify-center overflow-hidden rounded-full bg-white ring-2 ring-white dark:bg-zinc-900 dark:ring-zinc-900">
+                                    @if ($photo && method_exists($photo, 'temporaryUrl'))
+                                        <img src="{{ $photo->temporaryUrl() }}" alt="" class="size-full object-cover">
+                                    @elseif ($currentPhoto && ! $removePhoto)
+                                        <img src="{{ $currentPhoto }}" alt="" class="size-full object-cover">
+                                    @else
+                                        <span class="text-2xl font-semibold text-brand-600 dark:text-brand-300" x-show="initials" x-text="initials"></span>
+                                        <flux:icon.user class="size-9 text-zinc-300 dark:text-zinc-600" x-show="! initials" />
+                                    @endif
+                                </div>
+                            </div>
+
+                            {{-- Upload progress ring --}}
+                            <svg x-show="uploading" x-cloak class="absolute inset-0 size-full -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
+                                <circle cx="50" cy="50" r="47" fill="none" stroke="currentColor" stroke-width="6" class="text-white/70" />
+                                <circle cx="50" cy="50" r="47" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" pathLength="100" class="text-brand-500 transition-[stroke-dashoffset] duration-200" stroke-dasharray="100" :stroke-dashoffset="100 - progress" />
+                            </svg>
+
+                            <label class="absolute -right-0.5 -bottom-0.5 flex size-8 cursor-pointer items-center justify-center rounded-full bg-brand-500 text-white shadow-md ring-[3px] ring-white transition hover:scale-110 hover:bg-brand-600 dark:ring-zinc-900" title="{{ __('Upload photo') }}">
+                                <flux:icon.camera variant="micro" class="size-4" />
+                                <input type="file" wire:model="photo" accept="image/png,image/jpeg,image/webp" class="sr-only" aria-label="{{ __('Upload profile picture') }}">
+                            </label>
+                        </div>
+
+                        <div class="min-w-0 flex-1">
+                            <p class="text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Profile picture') }}</p>
+                            <p class="mt-0.5 text-xs text-zinc-500" x-show="! uploading">{{ __('Drag a logo or photo here, or choose one.') }}</p>
+                            <p class="mt-0.5 text-xs font-medium text-brand-600 tabular-nums dark:text-brand-300" x-show="uploading" x-cloak>{{ __('Uploading') }} <span x-text="progress"></span>%</p>
+
+                            <div class="mt-2.5 flex flex-wrap items-center gap-2">
+                                <label class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-xs ring-1 ring-zinc-200 transition hover:bg-zinc-50 hover:ring-zinc-300 dark:bg-white/5 dark:text-zinc-200 dark:ring-white/10">
+                                    <flux:icon.arrow-up-tray variant="micro" class="size-3.5" />
+                                    {{ ($photo || ($currentPhoto && ! $removePhoto)) ? __('Change photo') : __('Upload photo') }}
+                                    <input type="file" wire:model="photo" accept="image/png,image/jpeg,image/webp" class="sr-only">
+                                </label>
+                                @if ($photo || ($currentPhoto && ! $removePhoto))
+                                    <button type="button" wire:click="clearPhoto" class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-500 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10">
+                                        <flux:icon.trash variant="micro" class="size-3.5" />
+                                        {{ __('Remove') }}
+                                    </button>
+                                @endif
+                                <span class="text-[0.6875rem] text-zinc-400">{{ __('JPG, PNG or WebP · max 2 MB') }}</span>
+                            </div>
+                            <flux:error name="photo" />
+                        </div>
+                    </div>
+
                     <flux:input wire:model="name" icon="user" :label="__('Client name')" :placeholder="__('e.g. Sita Gurung')" required class="sm:col-span-2" />
                     <flux:input wire:model="company" icon="building-office-2" :label="__('Company')" :placeholder="__('e.g. Himalayan Cafe')" />
                     <flux:input wire:model="phone" icon="phone" type="tel" :label="__('Phone')" placeholder="98XXXXXXXX" />
@@ -739,9 +848,6 @@ new #[Title('Clients')] class extends Component {
                         <flux:error name="clientStatus" />
                     </div>
 
-                    <div class="sm:col-span-2">
-                        <flux:textarea wire:model="notes" :label="__('Notes')" rows="2" :placeholder="__('Anything the team should know about this client')" />
-                    </div>
                 </div>
 
                 {{-- Step 2: package & social --}}

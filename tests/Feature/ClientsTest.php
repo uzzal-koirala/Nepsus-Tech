@@ -46,6 +46,37 @@ class ClientsTest extends TestCase
             ->assertDontSee('Due in 20 days');
     }
 
+    public function test_profile_picture_can_be_uploaded_replaced_and_removed_without_touching_notes(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+        $this->actingAs(User::factory()->create());
+
+        $client = Client::factory()->create(['name' => 'Sita Gurung', 'notes' => 'Prefers WhatsApp']);
+
+        $page = Livewire::test('pages::clients')
+            ->call('edit', $client->id)
+            ->set('photo', \Illuminate\Http\UploadedFile::fake()->create('notes.pdf', 10, 'application/pdf'))
+            ->assertHasErrors(['photo'])
+            ->set('photo', \Illuminate\Http\UploadedFile::fake()->image('logo.png', 200, 200))
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $first = $client->fresh()->avatar_path;
+        \Illuminate\Support\Facades\Storage::disk('public')->assertExists($first);
+        $this->assertSame('Prefers WhatsApp', $client->fresh()->notes);
+        $page->assertSee($client->fresh()->avatarUrl());
+
+        // Replacing deletes the old file.
+        $page->call('edit', $client->id)->set('photo', \Illuminate\Http\UploadedFile::fake()->image('new.png'))->call('save');
+        \Illuminate\Support\Facades\Storage::disk('public')->assertMissing($first);
+
+        // Removing clears it.
+        $second = $client->fresh()->avatar_path;
+        $page->call('edit', $client->id)->call('clearPhoto')->call('save');
+        $this->assertNull($client->fresh()->avatar_path);
+        \Illuminate\Support\Facades\Storage::disk('public')->assertMissing($second);
+    }
+
     public function test_billing_period_end_follows_the_nepali_calendar(): void
     {
         $this->travelTo('2026-10-12'); // 26 Ashoj 2083
