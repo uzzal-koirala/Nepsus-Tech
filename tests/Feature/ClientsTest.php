@@ -83,22 +83,27 @@ class ClientsTest extends TestCase
         $bs = fn (int $y, int $m, int $d) => \App\Support\NepaliDate::toAd($y, $m, $d);
 
         // Started 15 Bhadra: months run 15th to 14th, so this month ends 14 Kartik.
-        $monthly = Client::factory()->make(['status' => 'active', 'billing_cycle' => 'monthly', 'contract_start' => $bs(2083, 5, 15)]);
+        $monthly = Client::factory()->make(['status' => 'active', 'billing_months' => 1, 'contract_start' => $bs(2083, 5, 15)]);
         $this->assertSame('14 Kartik 2083', $monthly->periodEnd()->toNepali());
 
         // Started on the 32nd of Asar: Ashoj only has 31 days, so it renews on the 31st and ends on the 30th.
-        $clamped = Client::factory()->make(['status' => 'active', 'billing_cycle' => 'monthly', 'contract_start' => $bs(2083, 3, 32)]);
+        $clamped = Client::factory()->make(['status' => 'active', 'billing_months' => 1, 'contract_start' => $bs(2083, 3, 32)]);
         $this->assertSame('30 Ashoj 2083', $clamped->periodEnd()->toNepali());
 
         // Yearly from 10 Asar 2082: this year ends 9 Asar 2084.
-        $yearly = Client::factory()->make(['status' => 'active', 'billing_cycle' => 'yearly', 'contract_start' => $bs(2082, 3, 10)]);
+        $yearly = Client::factory()->make(['status' => 'active', 'billing_months' => 12, 'contract_start' => $bs(2082, 3, 10)]);
         $this->assertSame('9 Asar 2084', $yearly->periodEnd()->toNepali());
 
-        $this->assertNull(Client::factory()->make(['status' => 'active', 'billing_cycle' => 'one_time'])->periodEnd());
-        $this->assertNull(Client::factory()->make(['status' => 'inactive', 'billing_cycle' => 'monthly', 'contract_start' => $bs(2083, 5, 15)])->periodEnd());
+        // Every 3 months from 15 Bhadra: renewals on 15 Mangsir, so this period ends 14 Mangsir.
+        $quarterly = Client::factory()->make(['status' => 'active', 'billing_months' => 3, 'contract_start' => $bs(2083, 5, 15)]);
+        $this->assertSame('14 Mangsir 2083', $quarterly->periodEnd()->toNepali());
+        $this->assertSame('/3 mo', $quarterly->billingSuffix());
+
+        $this->assertNull(Client::factory()->make(['status' => 'active', 'billing_months' => null])->periodEnd());
+        $this->assertNull(Client::factory()->make(['status' => 'inactive', 'billing_months' => 1, 'contract_start' => $bs(2083, 5, 15)])->periodEnd());
 
         $this->actingAs(User::factory()->create());
-        Client::factory()->create(['name' => 'Monthly Client', 'status' => 'active', 'billing_cycle' => 'monthly', 'contract_start' => $bs(2083, 5, 15)]);
+        Client::factory()->create(['name' => 'Monthly Client', 'status' => 'active', 'billing_months' => 1, 'contract_start' => $bs(2083, 5, 15)]);
         Livewire::test('pages::clients')->assertSee('Month ends')->assertSee('14 Kartik')->assertSee('19 days left');
     }
 
@@ -125,11 +130,11 @@ class ClientsTest extends TestCase
             ->set('formTab', 'details')
             ->set('package', (string) \App\Models\Package::first()->id)
             ->set('agreementStart', '2026-08-31')
-            ->set('agreementMonths', '0')
+            ->set('agreementEnd', '2026-01-01')
             ->call('save')
-            ->assertHasErrors(['agreementMonths'])
+            ->assertHasErrors(['agreementEnd'])
             ->assertSet('formTab', 'package')
-            ->set('agreementMonths', '12')
+            ->set('agreementEnd', '2027-08-31')
             ->set('name', '')
             ->call('save')
             ->assertSet('formTab', 'details');
@@ -149,13 +154,15 @@ class ClientsTest extends TestCase
         Livewire::test('pages::clients')
             ->call('edit', $client->id)
             ->assertSet('agreementStart', '2026-08-31')
-            ->assertSet('agreementMonths', '6')
-            ->set('agreementMonths', '3')
+            ->set('agreementEnd', '2026-11-30')
+            ->set('oneTime', true)
+            ->set('billingMonths', '')
             ->call('save')
             ->assertHasNoErrors();
 
         $client->refresh();
         $this->assertSame('14 Mangsir 2083', $client->contract_end->toNepali());
+        $this->assertNull($client->billing_months);
         $this->assertSame('https://instagram.com/keep-me', $client->instagram_url);
     }
 
@@ -201,13 +208,16 @@ class ClientsTest extends TestCase
             ->assertHasErrors(['package'])
             ->set('package', (string) $premium->id)
             ->set('price', '25000')
-            ->set('billing_cycle', 'monthly')
+            ->set('billingMonths', '0')
+            ->call('save')
+            ->assertHasErrors(['billingMonths'])
+            ->set('billingMonths', '3')
             ->set('progress', 140)
             ->call('save')
             ->assertHasErrors(['progress'])
             ->set('progress', 60)
             ->set('agreementStart', '2026-08-31') // 15 Bhadra 2083
-            ->set('agreementMonths', '12')
+            ->set('agreementEnd', '2027-08-31')   // 14 Bhadra 2084
             ->set('clientStatus', 'lead')
             ->call('save')
             ->assertHasErrors(['clientStatus'])
@@ -231,6 +241,8 @@ class ClientsTest extends TestCase
         $this->assertSame('15 Bhadra 2083', $sita->contract_start->toNepali());
         $this->assertSame('14 Bhadra 2084', $sita->contract_end->toNepali());
         $this->assertSame(12, $sita->agreementMonths());
+        $this->assertSame(3, $sita->billing_months);
+        $this->assertSame('Billed every 3 months', $sita->billingText());
 
         Livewire::test('pages::clients')
             ->call('confirmDelete', $sita->id)

@@ -17,7 +17,7 @@ use Illuminate\Support\Str;
 
 #[Fillable([
     'name', 'company', 'avatar_path', 'email', 'phone', 'status', 'position', 'notes',
-    'package_id', 'price', 'billing_cycle', 'progress',
+    'package_id', 'price', 'billing_months', 'progress',
     'contract_start', 'contract_end', 'agreement_signed_at',
     'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url',
 ])]
@@ -28,7 +28,14 @@ class Client extends Model
 
     public const STATUSES = ['active', 'inactive'];
 
+    /** Billing choices for packages; clients store a number of months instead. */
     public const BILLING_CYCLES = ['monthly', 'yearly', 'one_time'];
+
+    /** Package billing cycle => client billing months (null = one-time). */
+    public static function monthsForCycle(?string $cycle): ?int
+    {
+        return ['monthly' => 1, 'yearly' => 12][$cycle] ?? null;
+    }
 
     /** Social profile columns, keyed by icon name. */
     public const SOCIALS = [
@@ -43,6 +50,7 @@ class Client extends Model
         return [
             'price' => 'decimal:2',
             'progress' => 'integer',
+            'billing_months' => 'integer',
             'contract_start' => 'date',
             'contract_end' => 'date',
             'agreement_signed_at' => 'datetime',
@@ -128,33 +136,51 @@ class Client extends Model
     {
         $anchor = $this->contract_start ?? $this->created_at;
 
-        if ($this->status !== 'active' || ! in_array($this->billing_cycle, ['monthly', 'yearly']) || ! $anchor || ! $start = NepaliDate::fromAd($anchor)) {
+        if ($this->status !== 'active' || ! $this->billing_months || ! $anchor || ! $start = NepaliDate::fromAd($anchor)) {
             return null;
         }
 
-        [, $anchorMonth, $day] = $start;
+        // Renewals fall on the start date plus whole billing periods; the current period ends the day before the next one.
+        [$startYear, $startMonth] = $start;
         [$year, $month] = NepaliDate::fromAd(today());
-        $step = $this->billing_cycle === 'yearly' ? 12 : 1;
+        $elapsed = ($year * 12 + $month) - ($startYear * 12 + $startMonth);
+        $step = $this->billing_months;
 
-        // Begin a step before today's month, then walk forward to the first renewal after today.
-        if ($step === 12) {
-            [$year, $month] = [$year - 1, $anchorMonth];
-        } else {
-            [$year, $month] = $month === 1 ? [$year - 1, 12] : [$year, $month - 1];
-        }
+        for ($k = max(1, intdiv(max(0, $elapsed), $step)); $k <= intdiv(max(0, $elapsed), $step) + 3; $k++) {
+            $renewal = NepaliDate::addMonths($anchor, $k * $step);
 
-        for ($i = 0; $i < 4; $i++) {
-            $renewal = NepaliDate::toAd($year, $month, min($day, NepaliDate::monthLength($year, $month)));
-
-            if ($renewal->greaterThan(today()) && $renewal->greaterThan($anchor)) {
+            if ($renewal->greaterThan(today())) {
                 return $renewal->subDay();
             }
-
-            $month += $step;
-            [$year, $month] = [$year + intdiv($month - 1, 12), ($month - 1) % 12 + 1];
         }
 
         return null;
+    }
+
+    /**
+     * Short suffix after a price: "/mo", "/yr", "/3 mo" or " one-time".
+     */
+    public function billingSuffix(): string
+    {
+        return match ($this->billing_months) {
+            null => ' · '.__('one-time'),
+            1 => __('/mo'),
+            12 => __('/yr'),
+            default => '/'.$this->billing_months.' '.__('mo'),
+        };
+    }
+
+    /**
+     * "Billed every month", "Billed every 3 months", "One-time payment".
+     */
+    public function billingText(): string
+    {
+        return match ($this->billing_months) {
+            null => __('One-time payment'),
+            1 => __('Billed every month'),
+            12 => __('Billed every year'),
+            default => __('Billed every :count months', ['count' => $this->billing_months]),
+        };
     }
 
     /**

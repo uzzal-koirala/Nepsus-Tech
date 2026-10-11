@@ -114,11 +114,28 @@ document.addEventListener('alpine:init', () => {
             return t && t.y === this.viewY && t.m === this.viewM && t.d === day;
         },
 
+        up: false,
+
         toggle() {
             const base = this.selected ?? adToBs(isoToday());
             this.viewY = base.y;
             this.viewM = base.m;
+
             this.open = !this.open;
+
+            if (this.open) {
+                // Open downwards first; if the calendar would run off the bottom of the screen
+                // and fits above the field, flip it upwards.
+                this.up = false;
+                this.$nextTick(() => {
+                    const panel = this.$refs.panel?.getBoundingClientRect();
+                    const field = this.$root.getBoundingClientRect();
+
+                    if (panel && panel.bottom > window.innerHeight - 8 && field.top > panel.height + 8) {
+                        this.up = true;
+                    }
+                });
+            }
         },
 
         shift(step) {

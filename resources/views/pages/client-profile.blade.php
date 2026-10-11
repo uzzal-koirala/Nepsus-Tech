@@ -367,11 +367,11 @@ new #[Title('Client profile')] class extends Component {
                 <p class="text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ $pkg ? __(':name package', ['name' => $pkg->name]) : __('Package') }}</p>
             </div>
             @if ($c->price !== null)
-                <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $c->formattedPrice() }}<span class="text-sm font-normal text-zinc-400">{{ $cycles[$c->billing_cycle] ?? '' }}</span></p>
+                <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $c->formattedPrice() }}<span class="text-sm font-normal text-zinc-400">{{ $c->billingSuffix() }}</span></p>
             @else
                 <p class="text-[1.625rem] leading-none font-semibold text-zinc-300 dark:text-zinc-600">{{ __('Not set') }}</p>
             @endif
-            <p class="mt-auto text-xs text-zinc-500">{{ ['monthly' => __('Billed every month'), 'yearly' => __('Billed every year'), 'one_time' => __('One-time payment')][$c->billing_cycle] ?? '' }}</p>
+            <p class="mt-auto text-xs text-zinc-500">{{ $c->billingText() }}</p>
         </div>
 
         <div class="{{ $panel }} flex flex-col gap-4 p-5">
@@ -658,7 +658,7 @@ new #[Title('Client profile')] class extends Component {
                         __('Phone') => $c->phone,
                         __('Email') => $c->email,
                         __('Company') => $c->company,
-                        __('Billing') => ['monthly' => __('Monthly'), 'yearly' => __('Yearly'), 'one_time' => __('One-time')][$c->billing_cycle] ?? null,
+                        __('Billing') => $c->billingText(),
                         __('Work progress') => $c->progress.'%',
                         __('Added') => $c->created_at->toNepali(),
                     ] as $label => $value)

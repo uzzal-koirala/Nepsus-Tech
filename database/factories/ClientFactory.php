@@ -29,7 +29,7 @@ class ClientFactory extends Factory
             'notes' => fake()->optional(0.4)->sentence(),
             'package_id' => null,
             'price' => fake()->optional(0.85)->randomElement([10000, 20000, 40000, 75000]),
-            'billing_cycle' => fake()->randomElement(Client::BILLING_CYCLES),
+            'billing_months' => fake()->randomElement([1, 1, 1, 3, 6, 12, null]),
             'progress' => fake()->randomElement([0, 10, 25, 40, 55, 70, 85, 100]),
             'facebook_url' => fake()->optional(0.8)->passthrough("https://facebook.com/{$handle}"),
             'instagram_url' => fake()->optional(0.7)->passthrough("https://instagram.com/{$handle}"),

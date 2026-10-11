@@ -44,17 +44,18 @@ new #[Title('Clients')] class extends Component {
     public bool $removePhoto = false;
     public string $package = '';
     public string $price = '';
-    public string $billing_cycle = 'monthly';
+    public string $billingMonths = '1';
+    public bool $oneTime = false;
     public int $progress = 0;
     public string $agreementStart = '';
-    public string $agreementMonths = '12';
+    public string $agreementEnd = '';
 
     /** Step shown in the add/edit form. */
     public string $formTab = 'details';
 
     private const FORM_TABS = [
         'details' => ['photo', 'name', 'company', 'phone', 'clientStatus', 'email'],
-        'package' => ['package', 'price', 'billing_cycle', 'agreementStart', 'agreementMonths', 'progress'],
+        'package' => ['package', 'price', 'billingMonths', 'oneTime', 'agreementStart', 'agreementEnd', 'progress'],
     ];
 
     public function updatedPhoto(): void
@@ -136,9 +137,9 @@ new #[Title('Clients')] class extends Component {
         return [
             'active' => (clone $active)->count(),
             'inactive' => Client::where('status', 'inactive')->count(),
-            'monthly' => (float) (clone $active)->where('billing_cycle', 'monthly')->sum('price')
-                + (float) (clone $active)->where('billing_cycle', 'yearly')->sum('price') / 12,
-            'paying' => (clone $active)->whereIn('billing_cycle', ['monthly', 'yearly'])->whereNotNull('price')->count(),
+            'monthly' => $recurring = (clone $active)->whereNotNull('billing_months')->whereNotNull('price')->get(['price', 'billing_months'])
+                ->sum(fn ($c) => (float) $c->price / max(1, $c->billing_months)),
+            'paying' => (clone $active)->whereNotNull('billing_months')->whereNotNull('price')->count(),
             'received' => (float) Payment::whereBetween('paid_at', [$monthStart, $monthEnd])->sum('amount'),
             'receivedCount' => Payment::whereBetween('paid_at', [$monthStart, $monthEnd])->count(),
             'outstanding' => (float) (clone $unpaid)->sum('amount'),
@@ -193,14 +194,15 @@ new #[Title('Clients')] class extends Component {
         $this->resetForm();
         $this->editingId = $client->id;
         $this->clientStatus = $client->status;
-        $this->billing_cycle = $client->billing_cycle ?? 'monthly';
+        $this->billingMonths = (string) ($client->billing_months ?? 1);
+        $this->oneTime = $client->billing_months === null;
         $this->progress = $client->progress;
         $this->price = $client->price === null ? '' : rtrim(rtrim((string) $client->price, '0'), '.');
         $this->package = (string) $client->package_id;
 
         $this->currentPhoto = $client->avatarUrl();
         $this->agreementStart = (string) $client->contract_start?->toDateString();
-        $this->agreementMonths = (string) ($client->agreementMonths() ?? '');
+        $this->agreementEnd = (string) $client->contract_end?->toDateString();
 
         foreach (['name', 'company', 'email', 'phone'] as $field) {
             $this->{$field} = (string) $client->{$field};
@@ -227,21 +229,21 @@ new #[Title('Clients')] class extends Component {
             'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
             'package' => [Rule::requiredIf(fn () => Package::where('is_active', true)->exists()), 'nullable', Rule::exists('packages', 'id')],
             'price' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
-            'billing_cycle' => ['required', Rule::in(Client::BILLING_CYCLES)],
+            'oneTime' => ['boolean'],
+            'billingMonths' => ['exclude_if:oneTime,true', 'required', 'integer', 'min:1', 'max:120'],
             'progress' => ['required', 'integer', 'min:0', 'max:100'],
-            'agreementStart' => ['nullable', 'date'],
-            'agreementMonths' => ['nullable', 'required_with:agreementStart', 'integer', 'min:1', 'max:120'],
+            'agreementStart' => ['nullable', 'date', 'required_with:agreementEnd'],
+            'agreementEnd' => ['nullable', 'date', 'after_or_equal:agreementStart'],
         ]);
 
         $data['status'] = $data['clientStatus'];
         $data['package_id'] = $data['package'] ?: null;
-        unset($data['clientStatus'], $data['package'], $data['photo'], $data['agreementStart'], $data['agreementMonths']);
+        $data['billing_months'] = $this->oneTime ? null : (int) $this->billingMonths;
+        unset($data['clientStatus'], $data['package'], $data['photo'], $data['oneTime'], $data['billingMonths'], $data['agreementStart'], $data['agreementEnd']);
         $data = array_map(fn ($v) => $v === '' ? null : $v, $data);
 
-        // Agreement: a start date plus a length in months gives the contract period.
-        $start = $this->agreementStart ? Date::parse($this->agreementStart) : null;
-        $data['contract_start'] = $start;
-        $data['contract_end'] = $start ? NepaliDate::periodEndAfter($start, (int) $this->agreementMonths) : null;
+        $data['contract_start'] = $this->agreementStart ?: null;
+        $data['contract_end'] = $this->agreementEnd ?: null;
 
         if (! $this->editingId) {
             $data['position'] = (int) Client::min('position') - 1; // new clients start at the top
@@ -285,9 +287,8 @@ new #[Title('Clients')] class extends Component {
 
     private function resetForm(): void
     {
-        $this->reset('editingId', 'name', 'company', 'email', 'phone', 'photo', 'currentPhoto', 'removePhoto', 'package', 'price', 'agreementStart', 'agreementMonths');
+        $this->reset('editingId', 'name', 'company', 'email', 'phone', 'photo', 'currentPhoto', 'removePhoto', 'package', 'price', 'billingMonths', 'oneTime', 'agreementStart', 'agreementEnd');
         $this->clientStatus = 'active';
-        $this->billing_cycle = 'monthly';
         $this->progress = 0;
         $this->formTab = 'details';
         $this->resetErrorBag();
@@ -513,7 +514,7 @@ new #[Title('Clients')] class extends Component {
                             @endif
                             @if ($client->price !== null)
                                 <p class="whitespace-nowrap">
-                                    <span class="text-lg font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $client->formattedPrice() }}</span><span class="text-xs text-zinc-400">{{ $cycles[$client->billing_cycle] ?? '' }}</span>
+                                    <span class="text-lg font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $client->formattedPrice() }}</span><span class="text-xs text-zinc-400">{{ $client->billingSuffix() }}</span>
                                 </p>
                             @endif
                         </div>
@@ -529,7 +530,7 @@ new #[Title('Clients')] class extends Component {
                             ]) title="{{ $periodEnd->format('j M Y') }}">
                                 <span class="inline-flex min-w-0 items-center gap-1.5">
                                     <flux:icon.calendar-days variant="micro" class="size-3.5 shrink-0 opacity-70" />
-                                    <span class="truncate">{{ $client->billing_cycle === 'yearly' ? __('Year ends') : __('Month ends') }} <span class="font-medium text-zinc-700 dark:text-zinc-200">{{ $periodEnd->toNepali(withYear: false) }}</span></span>
+                                    <span class="truncate">{{ match ($client->billing_months) { 1 => __('Month ends'), 12 => __('Year ends'), default => __('Period ends') } }} <span class="font-medium text-zinc-700 dark:text-zinc-200">{{ $periodEnd->toNepali(withYear: false) }}</span></span>
                                 </span>
                                 <span class="shrink-0 font-medium tabular-nums">{{ $daysLeft === 0 ? __('ends today') : trans_choice(':count day left|:count days left', $daysLeft) }}</span>
                             </div>
@@ -616,7 +617,7 @@ new #[Title('Clients')] class extends Component {
                             <td class="px-5 py-3 text-end whitespace-nowrap">
                                 @if ($client->price !== null)
                                     <span class="font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $client->formattedPrice() }}</span>
-                                    <span class="text-xs text-zinc-500">{{ $cycles[$client->billing_cycle] ?? '' }}</span>
+                                    <span class="text-xs text-zinc-500">{{ $client->billingSuffix() }}</span>
                                     @if ($periodEnd = $client->periodEnd())
                                         <span class="mt-0.5 block text-xs text-zinc-400" title="{{ $periodEnd->format('j M Y') }}">{{ __('ends') }} {{ $periodEnd->toNepali(withYear: false) }}</span>
                                     @endif
@@ -683,7 +684,7 @@ new #[Title('Clients')] class extends Component {
     @php
         $formTabs = [
             'details' => ['label' => __('Details'), 'hint' => __('Contact details'), 'fields' => ['photo', 'name', 'company', 'phone', 'clientStatus', 'email']],
-            'package' => ['label' => __('Package & agreement'), 'hint' => __('Plan, price and contract'), 'fields' => ['package', 'price', 'billing_cycle', 'agreementStart', 'agreementMonths', 'progress']],
+            'package' => ['label' => __('Package & agreement'), 'hint' => __('Plan, price and contract'), 'fields' => ['package', 'price', 'billingMonths', 'oneTime', 'agreementStart', 'agreementEnd', 'progress']],
         ];
         $seg = 'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition';
         $segOn = 'bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-800 dark:text-white dark:ring-white/10';
@@ -692,7 +693,7 @@ new #[Title('Clients')] class extends Component {
         $optionOn = 'bg-brand-50/60 ring-2 ring-brand-500 dark:bg-brand-500/10';
         $optionOff = 'bg-white ring-zinc-200 hover:ring-zinc-300 dark:bg-white/[0.03] dark:ring-white/10 dark:hover:ring-white/20';
     @endphp
-    <flux:modal name="client-form" class="w-full max-w-2xl overflow-hidden rounded-2xl! p-0!" :closable="false">
+    <flux:modal name="client-form" class="w-full max-w-2xl rounded-2xl! p-0!" :closable="false">
         <form
             wire:submit="save"
             x-data="{
@@ -703,7 +704,7 @@ new #[Title('Clients')] class extends Component {
             class="flex flex-col"
         >
             {{-- Header --}}
-            <div class="relative isolate overflow-hidden bg-linear-to-br from-brand-500 to-brand-700 px-6 pt-6 pb-5 text-white">
+            <div class="relative isolate overflow-hidden rounded-t-2xl bg-linear-to-br from-brand-500 to-brand-700 px-6 pt-6 pb-5 text-white">
                 <div class="absolute -top-14 -right-10 -z-10 size-40 rounded-full bg-sun/90"></div>
                 <div class="absolute inset-0 -z-10 opacity-20 [background-image:radial-gradient(white_1px,transparent_1px)] [background-size:16px_16px] [mask-image:linear-gradient(to_right,black,transparent_70%)]"></div>
 
@@ -864,14 +865,22 @@ new #[Title('Clients')] class extends Component {
                     x-cloak
                     class="flex flex-col"
                     x-data="{
-                        get agreementEnd() {
-                            const months = parseInt($wire.agreementMonths);
-                            return window.NepaliCalendar && $wire.agreementStart && months > 0
-                                ? NepaliCalendar.formatBs(NepaliCalendar.periodEndAfter($wire.agreementStart, months))
-                                : '';
-                        },
-                        get agreementStartLabel() {
-                            return window.NepaliCalendar ? NepaliCalendar.formatBs($wire.agreementStart) : '';
+                        get agreement() {
+                            const C = window.NepaliCalendar;
+                            const start = $wire.agreementStart, end = $wire.agreementEnd;
+                            if (! C || ! start || ! end || end < start) return null;
+                            let months = null;
+                            for (let n = 1; n <= 120; n++) {
+                                const e = C.periodEndAfter(start, n);
+                                if (e === end) { months = n; break; }
+                                if (! e || e > end) break;
+                            }
+                            const days = Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1;
+                            return {
+                                from: C.formatBs(start),
+                                to: C.formatBs(end),
+                                length: months ? (months === 12 ? '1 year' : months % 12 === 0 ? (months / 12) + ' years' : months + (months === 1 ? ' month' : ' months')) : days + ' days',
+                            };
                         },
                     }"
                 >
@@ -927,7 +936,7 @@ new #[Title('Clients')] class extends Component {
                                             type="button"
                                             role="option"
                                             wire:key="opt-{{ $p->id }}"
-                                            @click="$wire.package = '{{ $p->id }}'; @if ($p->price !== null) $wire.price = '{{ rtrim(rtrim((string) $p->price, '0'), '.') }}'; $wire.billing_cycle = '{{ $p->billing_cycle }}'; @endif open = false"
+                                            @click="$wire.package = '{{ $p->id }}'; @if ($p->price !== null) $wire.price = '{{ rtrim(rtrim((string) $p->price, '0'), '.') }}'; $wire.billingMonths = '{{ \App\Models\Client::monthsForCycle($p->billing_cycle) ?? 1 }}'; $wire.oneTime = {{ \App\Models\Client::monthsForCycle($p->billing_cycle) === null ? 'true' : 'false' }}; @endif open = false"
                                             class="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-start transition"
                                             :class="$wire.package == '{{ $p->id }}' ? 'bg-brand-50 dark:bg-brand-500/10' : 'hover:bg-zinc-50 dark:hover:bg-white/5'"
                                             :aria-selected="$wire.package == '{{ $p->id }}'"
@@ -964,7 +973,7 @@ new #[Title('Clients')] class extends Component {
                         <div class="min-w-0 flex-1 pb-6">
                             <h3 class="{{ $stepTitle }}">{{ __('Price & billing') }}</h3>
                             <p class="{{ $stepHint }}">{{ __('Filled in from the package. Change it for this client if needed.') }}</p>
-                            <div class="mt-2.5 grid gap-3 sm:grid-cols-[1fr_auto]">
+                            <div class="mt-2.5 grid gap-3 sm:grid-cols-2">
                                 <flux:field>
                                     <flux:input.group>
                                         <flux:input.group.prefix>{{ config('app.currency') }}</flux:input.group.prefix>
@@ -972,11 +981,22 @@ new #[Title('Clients')] class extends Component {
                                     </flux:input.group>
                                     <flux:error name="price" />
                                 </flux:field>
-                                <div class="flex gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-white/5">
-                                    @foreach (['monthly' => 'Monthly', 'yearly' => 'Yearly', 'one_time' => 'One-time'] as $value => $label)
-                                        <button type="button" @click="$wire.billing_cycle = '{{ $value }}'" class="{{ $seg }} whitespace-nowrap" :class="$wire.billing_cycle === '{{ $value }}' ? @js($segOn) : @js($segOff)">{{ __($label) }}</button>
-                                    @endforeach
-                                </div>
+                                <flux:field>
+                                    <flux:input.group>
+                                        <flux:input.group.prefix>{{ __('Every') }}</flux:input.group.prefix>
+                                        <flux:input wire:model="billingMonths" type="number" min="1" max="120" step="1" inputmode="numeric" placeholder="1" :aria-label="__('Billing period in months')" x-bind:disabled="$wire.oneTime" />
+                                        <flux:input.group.suffix>{{ __('month(s)') }}</flux:input.group.suffix>
+                                    </flux:input.group>
+                                    <flux:error name="billingMonths" />
+                                </flux:field>
+                            </div>
+                            <div class="mt-2.5 flex flex-wrap items-center justify-between gap-2">
+                                <flux:checkbox wire:model="oneTime" :label="__('One-time payment')" />
+                                <p class="text-xs text-zinc-500" x-show="! $wire.oneTime">
+                                    <span x-show="$wire.billingMonths == 1">{{ __('Billed every month') }}</span>
+                                    <span x-show="$wire.billingMonths == 12">{{ __('Billed every year') }}</span>
+                                    <span x-show="$wire.billingMonths > 1 && $wire.billingMonths != 12">{{ __('Billed every') }} <span x-text="$wire.billingMonths"></span> {{ __('months') }}</span>
+                                </p>
                             </div>
                         </div>
                     </section>
@@ -996,38 +1016,21 @@ new #[Title('Clients')] class extends Component {
                             </div>
                             <p class="{{ $stepHint }}">{{ __('When the contract starts and how long it runs.') }}</p>
 
-                            <div class="mt-2.5 flex flex-col gap-2.5">
-                                <x-nepali-date wire:model="agreementStart" :placeholder="__('Agreement date')" />
-                                <div>
-                                    <div class="flex flex-wrap items-center gap-1.5">
-                                        @foreach ([1, 3, 6, 12, 24] as $m)
-                                            <button
-                                                type="button"
-                                                @click="$wire.agreementMonths = '{{ $m }}'"
-                                                class="h-10 rounded-lg px-3 text-sm font-medium ring-1 transition"
-                                                :class="$wire.agreementMonths == '{{ $m }}' ? 'bg-brand-500 text-white ring-brand-500 shadow-sm shadow-brand-500/30' : 'bg-white text-zinc-600 ring-zinc-200 hover:ring-zinc-300 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10'"
-                                            >{{ $m === 12 ? __('1 yr') : ($m === 24 ? __('2 yrs') : $m.' '.__('mo')) }}</button>
-                                        @endforeach
-                                        <label class="flex h-10 items-center gap-1.5 rounded-lg bg-white px-2.5 text-sm text-zinc-500 ring-1 ring-zinc-200 focus-within:ring-2 focus-within:ring-brand-500 dark:bg-white/5 dark:ring-white/10">
-                                            <input type="number" min="1" max="120" wire:model="agreementMonths" class="w-10 border-0 bg-transparent p-0 text-sm text-zinc-900 focus:ring-0 focus:outline-none dark:text-white" aria-label="{{ __('Months') }}">
-                                            {{ __('months') }}
-                                        </label>
-                                    </div>
-                                    <flux:error name="agreementMonths" />
-                                </div>
+                            <div class="mt-2.5 grid gap-3 sm:grid-cols-2">
+                                <x-nepali-date wire:model="agreementStart" :label="__('Start date')" />
+                                <x-nepali-date wire:model="agreementEnd" :label="__('End date')" />
                             </div>
-                            <flux:error name="agreementStart" />
 
-                            <div class="mt-3 flex items-center gap-2.5 rounded-lg bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800 ring-1 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20" x-show="agreementEnd" x-cloak>
+                            <div class="mt-3 flex items-center gap-2.5 rounded-lg bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800 ring-1 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20" x-show="agreement" x-cloak>
                                 <flux:icon.document-check variant="micro" class="size-4 shrink-0" />
                                 <span>
-                                    <span class="font-semibold" x-text="agreementStartLabel"></span>
+                                    <span class="font-semibold" x-text="agreement?.from"></span>
                                     <span class="opacity-60">→</span>
-                                    <span class="font-semibold" x-text="agreementEnd"></span>
-                                    <span class="opacity-75">· <span x-text="$wire.agreementMonths"></span> {{ __('months') }}</span>
+                                    <span class="font-semibold" x-text="agreement?.to"></span>
+                                    <span class="opacity-75">· <span x-text="agreement?.length"></span></span>
                                 </span>
                             </div>
-                            <p class="mt-3 text-xs text-zinc-400" x-show="! agreementEnd">{{ __('Pick the agreement date to see when it ends. You can also add this later on the client\'s profile.') }}</p>
+                            <p class="mt-3 text-xs text-zinc-400" x-show="! agreement">{{ __('Pick both dates to see the agreement length. You can also add this later on the client\'s profile.') }}</p>
                         </div>
                     </section>
 
@@ -1050,7 +1053,7 @@ new #[Title('Clients')] class extends Component {
             </div>
 
             {{-- Footer --}}
-            <div class="flex items-center justify-between gap-2 border-t border-zinc-100 bg-zinc-50/70 px-6 py-4 dark:border-white/5 dark:bg-white/[0.02]">
+            <div class="flex items-center justify-between gap-2 rounded-b-2xl border-t border-zinc-100 bg-zinc-50/70 px-6 py-4 dark:border-white/5 dark:bg-white/[0.02]">
                 <div>
                     <flux:button variant="ghost" icon="arrow-left" x-show="step === 2" x-cloak @click="tab = 'details'">{{ __('Back') }}</flux:button>
                     <span class="flex items-center gap-1.5 text-xs text-zinc-400" x-show="step === 1">
