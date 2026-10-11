@@ -5,7 +5,7 @@
     </head>
     <body class="min-h-screen bg-zinc-200/70 font-sans antialiased dark:bg-brand-950">
         <div class="flex min-h-dvh items-center justify-center p-4 sm:p-8">
-            <div class="relative grid w-full max-w-5xl overflow-hidden rounded-3xl bg-white p-6 shadow-sm sm:p-10 lg:min-h-[36rem] lg:grid-cols-2 lg:grid-rows-[1fr_auto] lg:gap-x-16 lg:gap-y-6 lg:p-12 dark:bg-zinc-900">
+            <div class="relative grid w-full max-w-5xl overflow-hidden rounded-3xl bg-white p-6 shadow-sm sm:p-10 lg:min-h-[44rem] lg:grid-cols-2 lg:grid-rows-[1fr_auto] lg:gap-x-16 lg:gap-y-6 lg:p-12 dark:bg-zinc-900">
                 {{-- Watermark --}}
                 <x-app-logo-icon class="pointer-events-none absolute -top-16 -left-20 hidden size-[22rem] opacity-[0.07] grayscale lg:block dark:opacity-[0.05]" aria-hidden="true" />
 
@@ -15,7 +15,11 @@
                         <flux:icon.arrow-left variant="micro" />
                     </a>
 
-                    <div class="mt-auto max-w-sm">
+                    <div class="relative -mx-4 my-4 min-h-[24rem] flex-1">
+                        <img src="{{ asset('images/auth-crew.webp') }}" alt="" class="absolute inset-0 size-full object-contain object-bottom drop-shadow-xl">
+                    </div>
+
+                    <div class="max-w-sm">
                         <img src="{{ asset('images/nepsus-logo.png') }}" alt="Nepsus Tech" class="h-16 w-auto">
                         <p class="mt-5 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
                             {{ __('Nepsus Tech is your client and task workspace. Keep every client, project and task in one place, from first contact to final delivery.') }}
