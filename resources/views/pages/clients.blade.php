@@ -747,11 +747,13 @@ new #[Title('Clients')] class extends Component {
                         </div>
                     </div>
 
-                    <div class="flex items-center gap-4 rounded-xl bg-zinc-50 px-4 py-3 ring-1 ring-zinc-100 dark:bg-white/[0.03] dark:ring-white/5">
-                        <label for="client-progress" class="shrink-0 text-sm font-medium text-zinc-800 dark:text-white">{{ __('Work progress') }}</label>
-                        <input id="client-progress" type="range" min="0" max="100" step="5" x-model.number="$wire.progress" class="min-w-0 flex-1 accent-brand-500">
-                        <span class="w-10 text-end text-sm font-semibold text-brand-600 tabular-nums dark:text-brand-300"><span x-text="$wire.progress"></span>%</span>
-                    </div>
+                    @if ($editingId)
+                        <div class="flex items-center gap-4 rounded-xl bg-zinc-50 px-4 py-3 ring-1 ring-zinc-100 dark:bg-white/[0.03] dark:ring-white/5">
+                            <label for="client-progress" class="shrink-0 text-sm font-medium text-zinc-800 dark:text-white">{{ __('Work progress') }}</label>
+                            <input id="client-progress" type="range" min="0" max="100" step="5" x-model.number="$wire.progress" class="min-w-0 flex-1 accent-brand-500">
+                            <span class="w-10 text-end text-sm font-semibold text-brand-600 tabular-nums dark:text-brand-300"><span x-text="$wire.progress"></span>%</span>
+                        </div>
+                    @endif
 
                     <div class="grid gap-3 sm:grid-cols-2">
                         @foreach ([
