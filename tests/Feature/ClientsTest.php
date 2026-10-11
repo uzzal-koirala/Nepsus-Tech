@@ -46,6 +46,25 @@ class ClientsTest extends TestCase
             ->assertDontSee('Due in 20 days');
     }
 
+    public function test_form_jumps_to_the_step_with_the_first_error(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        Livewire::test('pages::clients')
+            ->call('create')
+            ->assertSet('formTab', 'details')
+            ->set('name', 'Sita Gurung')
+            ->set('formTab', 'details')
+            ->set('instagram_url', 'not a url')
+            ->call('save')
+            ->assertHasErrors(['instagram_url'])
+            ->assertSet('formTab', 'social')
+            ->set('instagram_url', '')
+            ->set('name', '')
+            ->call('save')
+            ->assertSet('formTab', 'details');
+    }
+
     public function test_dragging_a_card_changes_its_priority(): void
     {
         $this->actingAs(User::factory()->create());
