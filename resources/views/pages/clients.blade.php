@@ -50,10 +50,6 @@ new #[Title('Clients')] class extends Component {
     public string $billingMonths = '1';
     public string $serviceType = 'social_media';
     public string $videoCount = '1';
-    public string $paymentPlan = '';
-    public string $installments = '3';
-    public bool $advancePaid = false;
-    public bool $hasPayments = false;
     public int $progress = 0;
     public string $agreementStart = '';
     public string $agreementEnd = '';
@@ -235,9 +231,6 @@ new #[Title('Clients')] class extends Component {
         $this->billingMonths = (string) ($client->billing_months ?? 1);
         $this->serviceType = $client->service_type ?? 'social_media';
         $this->videoCount = (string) ($client->video_count ?? 1);
-        $this->paymentPlan = (string) $client->payment_plan;
-        $this->installments = (string) ($client->installments ?? 3);
-        $this->hasPayments = $client->payments()->exists();
         $this->progress = $client->progress;
         $this->price = $client->price === null ? '' : rtrim(rtrim((string) $client->price, '0'), '.');
         $this->package = (string) $client->package_id;
@@ -274,9 +267,6 @@ new #[Title('Clients')] class extends Component {
             'serviceType' => ['required', Rule::in(array_keys(Client::SERVICE_TYPES))],
             'billingMonths' => ['exclude_unless:serviceType,social_media', 'required', 'integer', 'min:1', 'max:120'],
             'videoCount' => ['exclude_unless:serviceType,video', 'required', 'integer', 'min:1', 'max:1000'],
-            'paymentPlan' => ['nullable', Rule::in(array_keys(Client::PAYMENT_PLANS))],
-            'installments' => ['exclude_unless:paymentPlan,installments', 'required', 'integer', 'min:2', 'max:36'],
-            'advancePaid' => ['boolean'],
             'progress' => ['required', 'integer', 'min:0', 'max:100'],
             'agreementStart' => ['nullable', 'date', 'required_with:agreementEnd'],
             'agreementEnd' => ['nullable', 'date', 'after_or_equal:agreementStart'],
@@ -287,9 +277,7 @@ new #[Title('Clients')] class extends Component {
         $data['service_type'] = $this->serviceType;
         $data['billing_months'] = $this->serviceType === 'social_media' ? (int) $this->billingMonths : null;
         $data['video_count'] = $this->serviceType === 'video' ? (int) $this->videoCount : null;
-        $data['payment_plan'] = $this->paymentPlan ?: null;
-        $data['installments'] = $this->paymentPlan === 'installments' ? (int) $this->installments : null;
-        unset($data['clientStatus'], $data['package'], $data['photo'], $data['serviceType'], $data['billingMonths'], $data['videoCount'], $data['agreementStart'], $data['agreementEnd'], $data['paymentPlan'], $data['advancePaid']); // 'installments' is also the column name, so it stays
+        unset($data['clientStatus'], $data['package'], $data['photo'], $data['serviceType'], $data['billingMonths'], $data['videoCount'], $data['agreementStart'], $data['agreementEnd']);
         $data = array_map(fn ($v) => $v === '' ? null : $v, $data);
 
         $data['contract_start'] = $this->agreementStart ?: null;
@@ -300,19 +288,6 @@ new #[Title('Clients')] class extends Component {
         }
 
         $client = Client::updateOrCreate(['id' => $this->editingId], $data);
-
-        if ($client->payment_plan && $client->totalValue() > 0 && ! $client->payments()->exists()) {
-            $start = $client->contract_start ?? today();
-
-            foreach (Client::paymentSchedule($client->totalValue(), $client->payment_plan, $start, $client->contract_end, (int) $client->installments) as $i => $row) {
-                $client->payments()->create([
-                    'amount' => $row['amount'],
-                    'due_date' => $row['due'],
-                    'note' => $row['label'],
-                    'paid_at' => $i === 0 && $this->advancePaid && $client->payment_plan !== 'after_work' ? now() : null,
-                ]);
-            }
-        }
 
         if ($this->photo || $this->removePhoto) {
             if ($client->avatar_path) {
@@ -350,7 +325,7 @@ new #[Title('Clients')] class extends Component {
 
     private function resetForm(): void
     {
-        $this->reset('editingId', 'name', 'company', 'email', 'phone', 'photo', 'currentPhoto', 'removePhoto', 'package', 'price', 'billingMonths', 'serviceType', 'videoCount', 'agreementStart', 'agreementEnd', 'paymentPlan', 'installments', 'advancePaid', 'hasPayments');
+        $this->reset('editingId', 'name', 'company', 'email', 'phone', 'photo', 'currentPhoto', 'removePhoto', 'package', 'price', 'billingMonths', 'serviceType', 'videoCount', 'agreementStart', 'agreementEnd');
         $this->clientStatus = 'active';
         $this->progress = 0;
         $this->formTab = 'details';
@@ -759,7 +734,7 @@ new #[Title('Clients')] class extends Component {
     @php
         $formTabs = [
             'details' => ['label' => __('Details'), 'hint' => __('Contact details'), 'fields' => ['photo', 'name', 'company', 'phone', 'clientStatus', 'email']],
-            'package' => ['label' => __('Service & payment'), 'hint' => __('What they buy and how they pay'), 'fields' => ['serviceType', 'package', 'price', 'billingMonths', 'videoCount', 'agreementStart', 'agreementEnd', 'paymentPlan', 'installments', 'progress']],
+            'package' => ['label' => __('Service & payment'), 'hint' => __('What they buy and how they pay'), 'fields' => ['serviceType', 'package', 'price', 'billingMonths', 'videoCount', 'agreementStart', 'agreementEnd', 'progress']],
         ];
         $seg = 'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition';
         $segOn = 'bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-800 dark:text-white dark:ring-white/10';
@@ -947,28 +922,6 @@ new #[Title('Clients')] class extends Component {
                     x-cloak
                     class="flex flex-col"
                     x-data="{
-                        money(n) { return @js(config('app.currency')) + ' ' + Math.round(n).toLocaleString('en-US') },
-                        get schedule() {
-                            const C = window.NepaliCalendar;
-                            const plan = $wire.paymentPlan;
-                            const price = Number($wire.price);
-                            if (! C || ! plan || ! price) return [];
-                            const total = Math.round($wire.serviceType === 'video' ? price * Math.max(1, Number($wire.videoCount) || 1) : price);
-                            const today = new Date(); const iso = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())).toISOString().slice(0, 10);
-                            const start = $wire.agreementStart || iso;
-                            const end = $wire.agreementEnd || C.addMonths(start, 1);
-                            if (plan === 'full_advance') return [{ label: @js(__('Full advance')), date: C.formatBs(start), amount: total }];
-                            if (plan === 'half_advance') {
-                                const first = Math.round(total / 2);
-                                return [{ label: @js(__('Advance (50%)')), date: C.formatBs(start), amount: first }, { label: @js(__('Balance (50%)')), date: C.formatBs(end), amount: total - first }];
-                            }
-                            if (plan === 'installments') {
-                                const n = Math.min(36, Math.max(2, parseInt($wire.installments) || 2));
-                                const part = Math.floor(total / n);
-                                return Array.from({ length: n }, (_, i) => ({ label: @js(__('Installment')) + ' ' + (i + 1) + ' / ' + n, date: C.formatBs(C.addMonths(start, i)), amount: i === n - 1 ? total - part * (n - 1) : part }));
-                            }
-                            return [{ label: @js(__('On completion')), date: C.formatBs(end), amount: total }];
-                        },
                         get agreement() {
                             const C = window.NepaliCalendar;
                             const start = $wire.agreementStart, end = $wire.agreementEnd;
@@ -1139,9 +1092,11 @@ new #[Title('Clients')] class extends Component {
                     <section class="flex gap-4">
                         <div class="flex flex-col items-center">
                             <span class="{{ $stepDot }}">{{ ++$n }}</span>
-                            <span class="{{ $stepLine }}"></span>
+                            @if ($editingId)
+                                <span class="{{ $stepLine }}"></span>
+                            @endif
                         </div>
-                        <div class="min-w-0 flex-1 pb-6">
+                        <div class="min-w-0 flex-1 {{ $editingId ? 'pb-6' : '' }}">
                             <div class="flex items-baseline justify-between gap-2">
                                 <h3 class="{{ $stepTitle }}">
                                     <span x-show="$wire.serviceType === 'social_media'">{{ __('Package period') }}</span>
@@ -1169,75 +1124,6 @@ new #[Title('Clients')] class extends Component {
                                 </span>
                             </div>
                             <p class="mt-3 text-xs text-zinc-400" x-show="! agreement">{{ __('Pick both dates to see the agreement length. You can also add this later on the client\'s profile.') }}</p>
-                        </div>
-                    </section>
-
-                    {{-- 4. Payment plan --}}
-                    <section class="flex gap-4">
-                        <div class="flex flex-col items-center">
-                            <span class="{{ $stepDot }}">{{ ++$n }}</span>
-                            @if ($editingId)
-                                <span class="{{ $stepLine }}"></span>
-                            @endif
-                        </div>
-                        <div class="min-w-0 flex-1 {{ $editingId ? 'pb-6' : '' }}">
-                            <div class="flex items-baseline justify-between gap-2">
-                                <h3 class="{{ $stepTitle }}">{{ __('Payment plan') }}</h3>
-                                <span class="text-[0.6875rem] text-zinc-400">{{ __('Optional') }}</span>
-                            </div>
-                            <p class="{{ $stepHint }}">{{ __('How the client pays. We create the payment schedule for you.') }}</p>
-
-                            @if ($hasPayments)
-                                <div class="mt-2.5 flex items-start gap-2.5 rounded-lg bg-zinc-50 px-3 py-2.5 text-xs text-zinc-600 ring-1 ring-zinc-100 dark:bg-white/[0.03] dark:text-zinc-300 dark:ring-white/5">
-                                    <flux:icon.information-circle variant="micro" class="mt-px size-4 shrink-0 text-brand-500" />
-                                    <span>{{ __('This client already has payments, so no new schedule will be created. Manage them on the client\'s profile.') }}</span>
-                                </div>
-                            @else
-                                <div class="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                    @foreach (Client::PAYMENT_PLANS as $key => $plan)
-                                        <button
-                                            type="button"
-                                            @click="$wire.paymentPlan = $wire.paymentPlan === '{{ $key }}' ? '' : '{{ $key }}'"
-                                            class="relative flex flex-col items-start gap-1 rounded-xl p-3 text-start ring-1 transition duration-200"
-                                            :class="$wire.paymentPlan === '{{ $key }}' ? 'bg-brand-50/70 ring-2 ring-brand-500 dark:bg-brand-500/10' : 'bg-white ring-zinc-200 hover:ring-zinc-300 dark:bg-white/[0.03] dark:ring-white/10'"
-                                        >
-                                            <flux:icon :icon="$plan['icon']" variant="mini" class="size-4.5" ::class="$wire.paymentPlan === '{{ $key }}' ? 'text-brand-600 dark:text-brand-300' : 'text-zinc-400'" />
-                                            <span class="text-sm font-semibold text-zinc-900 dark:text-white">{{ __($plan['label']) }}</span>
-                                            <span class="text-[0.6875rem] leading-tight text-zinc-500">{{ __($plan['hint']) }}</span>
-                                        </button>
-                                    @endforeach
-                                </div>
-                                <flux:error name="paymentPlan" />
-
-                                <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2" x-show="$wire.paymentPlan" x-cloak>
-                                    <flux:field x-show="$wire.paymentPlan === 'installments'" class="w-56">
-                                        <flux:input.group>
-                                            <flux:input wire:model="installments" type="number" min="2" max="36" step="1" inputmode="numeric" :aria-label="__('Number of installments')" />
-                                            <flux:input.group.suffix>{{ __('installments') }}</flux:input.group.suffix>
-                                        </flux:input.group>
-                                        <flux:error name="installments" />
-                                    </flux:field>
-                                    <flux:checkbox wire:model="advancePaid" x-show="$wire.paymentPlan !== 'after_work'" :label="__('Advance / first payment already received')" />
-                                </div>
-
-                                {{-- Live schedule --}}
-                                <div class="mt-3 overflow-hidden rounded-xl ring-1 ring-zinc-200/80 dark:ring-white/10" x-show="schedule.length" x-cloak>
-                                    <template x-for="(row, i) in schedule" :key="i">
-                                        <div class="flex items-center gap-3 border-b border-zinc-100 px-3 py-2 text-sm last:border-0 dark:border-white/5">
-                                            <span class="flex size-6 shrink-0 items-center justify-center rounded-full text-[0.6875rem] font-semibold"
-                                                  :class="i === 0 && $wire.advancePaid && $wire.paymentPlan !== 'after_work' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-zinc-100 text-zinc-500 dark:bg-white/5'"
-                                                  x-text="i + 1"></span>
-                                            <span class="min-w-0 flex-1">
-                                                <span class="block truncate text-zinc-800 dark:text-zinc-100" x-text="row.label"></span>
-                                                <span class="block text-xs text-zinc-400" x-text="row.date"></span>
-                                            </span>
-                                            <span class="text-xs font-medium text-emerald-600 dark:text-emerald-400" x-show="i === 0 && $wire.advancePaid && $wire.paymentPlan !== 'after_work'">{{ __('Received') }}</span>
-                                            <span class="font-semibold text-zinc-900 tabular-nums dark:text-white" x-text="money(row.amount)"></span>
-                                        </div>
-                                    </template>
-                                </div>
-                                <p class="mt-2 text-xs text-zinc-400" x-show="$wire.paymentPlan && ! schedule.length" x-cloak>{{ __('Enter a price to see the schedule.') }}</p>
-                            @endif
                         </div>
                     </section>
 

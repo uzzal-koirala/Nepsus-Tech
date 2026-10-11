@@ -4,6 +4,7 @@ use App\Models\Client;
 use App\Models\Document;
 use App\Models\Payment;
 use Flux\Flux;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -23,6 +24,13 @@ new #[Title('Client profile')] class extends Component {
     public string $payMethod = '';
     public string $payReference = '';
     public bool $payPaid = false;
+
+    public string $planType = 'half_advance';
+    public string $planAmount = '';
+    public string $planStart = '';
+    public string $planEnd = '';
+    public string $planInstallments = '3';
+    public bool $planAdvancePaid = false;
 
     public string $contractStart = '';
     public string $contractEnd = '';
@@ -113,6 +121,70 @@ new #[Title('Client profile')] class extends Component {
     }
 
     // Payments
+
+    // Payment plan
+
+    public function openPlan(): void
+    {
+        $this->planType = $this->client->payment_plan ?? 'half_advance';
+        $this->planAmount = (string) ($this->client->totalValue() ?? '');
+        $this->planStart = (string) ($this->client->contract_start ?? today())->toDateString();
+        $this->planEnd = (string) $this->client->contract_end?->toDateString();
+        $this->planInstallments = (string) ($this->client->installments ?? 3);
+        $this->planAdvancePaid = false;
+        $this->resetErrorBag();
+
+        Flux::modal('payment-plan')->show();
+    }
+
+    /** Payments the plan will add, recalculated as the fields change. */
+    #[Computed]
+    public function planPreview(): array
+    {
+        $amount = (float) $this->planAmount;
+
+        if ($amount <= 0 || ! $this->planStart || ! array_key_exists($this->planType, Client::PAYMENT_PLANS)) {
+            return [];
+        }
+
+        try {
+            $start = Date::parse($this->planStart);
+            $end = $this->planEnd ? Date::parse($this->planEnd) : null;
+        } catch (\Throwable) {
+            return [];
+        }
+
+        return Client::paymentSchedule($amount, $this->planType, $start, $end, max(2, min(36, (int) $this->planInstallments)));
+    }
+
+    public function savePlan(): void
+    {
+        $this->validate([
+            'planType' => ['required', Rule::in(array_keys(Client::PAYMENT_PLANS))],
+            'planAmount' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
+            'planStart' => ['required', 'date'],
+            'planEnd' => ['nullable', 'date', 'after_or_equal:planStart'],
+            'planInstallments' => ['exclude_unless:planType,installments', 'required', 'integer', 'min:2', 'max:36'],
+            'planAdvancePaid' => ['boolean'],
+        ]);
+
+        foreach ($this->planPreview as $i => $row) {
+            $this->client->payments()->create([
+                'amount' => $row['amount'],
+                'due_date' => $row['due'],
+                'note' => $row['label'],
+                'paid_at' => $i === 0 && $this->planAdvancePaid && $this->planType !== 'after_work' ? now() : null,
+            ]);
+        }
+
+        $this->client->update([
+            'payment_plan' => $this->planType,
+            'installments' => $this->planType === 'installments' ? (int) $this->planInstallments : null,
+        ]);
+
+        Flux::modal('payment-plan')->close();
+        Flux::toast(variant: 'success', text: trans_choice(':count payment added to the schedule.|:count payments added to the schedule.', count($this->planPreview)));
+    }
 
     public function newPayment(): void
     {
@@ -485,14 +557,20 @@ new #[Title('Client profile')] class extends Component {
                         <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Payments') }}</h2>
                         <span class="rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-500 tabular-nums dark:bg-white/5">{{ $this->payments->count() }}</span>
                     </div>
-                    <flux:button size="sm" icon="plus" wire:click="newPayment" data-test="record-payment-button">{{ __('Record payment') }}</flux:button>
+                    <div class="flex items-center gap-2">
+                        <flux:button size="sm" variant="ghost" icon="calendar-days" wire:click="openPlan" data-test="payment-plan-button">{{ __('Payment plan') }}</flux:button>
+                        <flux:button size="sm" icon="plus" wire:click="newPayment" data-test="record-payment-button">{{ __('Record payment') }}</flux:button>
+                    </div>
                 </div>
 
                 @if ($this->payments->isEmpty())
                     <div class="flex flex-col items-center gap-3 px-5 py-12 text-center">
                         <span class="{{ $iconTile }} bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10"><flux:icon.banknotes variant="mini" class="size-4.5" /></span>
                         <p class="text-sm text-zinc-500">{{ __('No payments recorded yet.') }}</p>
-                        <flux:button size="sm" variant="primary" icon="plus" wire:click="newPayment">{{ __('Record the first payment') }}</flux:button>
+                        <div class="flex flex-wrap justify-center gap-2">
+                            <flux:button size="sm" variant="primary" icon="calendar-days" wire:click="openPlan">{{ __('Set up a payment plan') }}</flux:button>
+                            <flux:button size="sm" icon="plus" wire:click="newPayment">{{ __('Record a payment') }}</flux:button>
+                        </div>
                     </div>
                 @else
                     <div class="overflow-x-auto">
@@ -690,6 +768,97 @@ new #[Title('Client profile')] class extends Component {
             <div class="flex justify-end gap-2">
                 <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
                 <flux:button type="submit" variant="primary" data-test="save-task-button">{{ __('Add task') }}</flux:button>
+            </div>
+        </form>
+    </flux:modal>
+
+    {{-- Payment plan --}}
+    <flux:modal name="payment-plan" class="w-full max-w-xl">
+        <form wire:submit="savePlan" class="flex flex-col gap-5">
+            <div>
+                <flux:heading size="lg">{{ __('Payment plan') }}</flux:heading>
+                <flux:text class="mt-1">{{ __('Choose how :name pays. The payments are added to the list below.', ['name' => $c->name]) }}</flux:text>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+                @foreach (Client::PAYMENT_PLANS as $key => $plan)
+                    <button
+                        type="button"
+                        wire:click="$set('planType', '{{ $key }}')"
+                        @class([
+                            'relative flex items-start gap-3 rounded-xl p-3 text-start ring-1 transition duration-200',
+                            'bg-brand-50/70 ring-2 ring-brand-500 dark:bg-brand-500/10' => $planType === $key,
+                            'bg-white ring-zinc-200 hover:ring-zinc-300 dark:bg-white/[0.03] dark:ring-white/10' => $planType !== $key,
+                        ])
+                    >
+                        <span @class(['flex size-8 shrink-0 items-center justify-center rounded-lg', 'bg-brand-500 text-white' => $planType === $key, 'bg-zinc-100 text-zinc-500 dark:bg-white/5' => $planType !== $key])>
+                            <flux:icon :icon="$plan['icon']" variant="mini" class="size-4" />
+                        </span>
+                        <span class="min-w-0">
+                            <span class="block text-sm font-semibold text-zinc-900 dark:text-white">{{ __($plan['label']) }}</span>
+                            <span class="block text-xs text-zinc-500">{{ __($plan['hint']) }}</span>
+                        </span>
+                    </button>
+                @endforeach
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+                <flux:field class="sm:col-span-2">
+                    <flux:label>{{ __('Total amount') }}</flux:label>
+                    <flux:input.group>
+                        <flux:input.group.prefix>{{ config('app.currency') }}</flux:input.group.prefix>
+                        <flux:input wire:model.live.debounce.400ms="planAmount" type="number" min="0" step="1" inputmode="decimal" />
+                    </flux:input.group>
+                    <flux:error name="planAmount" />
+                </flux:field>
+                <x-nepali-date wire:model.live="planStart" :label="__('Start date')" />
+                <x-nepali-date wire:model.live="planEnd" :label="__('End date')" />
+                @if ($planType === 'installments')
+                    <flux:field>
+                        <flux:label>{{ __('Number of installments') }}</flux:label>
+                        <flux:input.group>
+                            <flux:input wire:model.live.debounce.400ms="planInstallments" type="number" min="2" max="36" step="1" />
+                            <flux:input.group.suffix>{{ __('monthly') }}</flux:input.group.suffix>
+                        </flux:input.group>
+                        <flux:error name="planInstallments" />
+                    </flux:field>
+                @endif
+            </div>
+
+            @if ($planType !== 'after_work')
+                <flux:checkbox wire:model.live="planAdvancePaid" :label="__('Advance / first payment already received')" />
+            @endif
+
+            @if ($this->planPreview)
+                <div class="overflow-hidden rounded-xl ring-1 ring-zinc-200/80 dark:ring-white/10">
+                    @foreach ($this->planPreview as $i => $row)
+                        @php
+                            $received = $i === 0 && $planAdvancePaid && $planType !== 'after_work';
+                        @endphp
+                        <div class="flex items-center gap-3 border-b border-zinc-100 px-3 py-2 text-sm last:border-0 dark:border-white/5">
+                            <span @class(['flex size-6 shrink-0 items-center justify-center rounded-full text-[0.6875rem] font-semibold', 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' => $received, 'bg-zinc-100 text-zinc-500 dark:bg-white/5' => ! $received])>{{ $i + 1 }}</span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block truncate text-zinc-800 dark:text-zinc-100">{{ $row['label'] }}</span>
+                                <span class="block text-xs text-zinc-400" title="{{ $row['due']->format('j M Y') }}">{{ $row['due']->toNepali() }}</span>
+                            </span>
+                            @if ($received)
+                                <span class="text-xs font-medium text-emerald-600 dark:text-emerald-400">{{ __('Received') }}</span>
+                            @endif
+                            <span class="font-semibold text-zinc-900 tabular-nums dark:text-white">{{ Client::money($row['amount']) }}</span>
+                        </div>
+                    @endforeach
+                </div>
+            @else
+                <p class="text-xs text-zinc-400">{{ __('Enter the amount and start date to see the payments.') }}</p>
+            @endif
+
+            @if ($this->payments->isNotEmpty())
+                <p class="-mt-2 text-xs text-amber-700 dark:text-amber-400">{{ trans_choice('This client already has :count payment. These will be added on top.|This client already has :count payments. These will be added on top.', $this->payments->count()) }}</p>
+            @endif
+
+            <div class="flex justify-end gap-2">
+                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
+                <flux:button type="submit" variant="primary" icon="check" data-test="save-plan-button">{{ __('Add payments') }}</flux:button>
             </div>
         </form>
     </flux:modal>

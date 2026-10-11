@@ -85,6 +85,55 @@ class ClientProfileTest extends TestCase
         $this->assertSame('Prefers WhatsApp', $client->fresh()->notes);
     }
 
+    public function test_payment_plans_add_the_schedule_from_the_profile(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        // Website, half advance already received: 50% paid now, 50% due on the end date.
+        $site = Client::factory()->create([
+            'service_type' => 'website', 'price' => 150000, 'billing_months' => null,
+            'contract_start' => '2026-08-31', 'contract_end' => '2026-11-30',
+        ]);
+
+        Livewire::test('pages::client-profile', ['client' => $site])
+            ->call('openPlan')
+            ->assertSet('planAmount', '150000')
+            ->assertSet('planStart', '2026-08-31')
+            ->set('planType', 'half_advance')
+            ->set('planAdvancePaid', true)
+            ->call('savePlan')
+            ->assertHasNoErrors();
+
+        $payments = $site->payments()->orderBy('due_date')->get();
+        $this->assertCount(2, $payments);
+        $this->assertEquals([75000, 75000], $payments->pluck('amount')->map(fn ($a) => (float) $a)->all());
+        $this->assertNotNull($payments[0]->paid_at);
+        $this->assertNull($payments[1]->paid_at);
+        $this->assertSame('2026-11-30', $payments[1]->due_date->toDateString());
+        $this->assertSame('half_advance', $site->fresh()->payment_plan);
+
+        // Video, 3 installments of the video total: one per Nepali month, adding up exactly.
+        $video = Client::factory()->create(['service_type' => 'video', 'price' => 25000, 'video_count' => 4, 'billing_months' => null]);
+
+        Livewire::test('pages::client-profile', ['client' => $video])
+            ->call('openPlan')
+            ->assertSet('planAmount', '100000')
+            ->set('planStart', '2026-08-31') // 15 Bhadra 2083
+            ->set('planType', 'installments')
+            ->set('planInstallments', '1')
+            ->call('savePlan')
+            ->assertHasErrors(['planInstallments'])
+            ->set('planInstallments', '3')
+            ->assertSee('15 Kartik 2083')
+            ->call('savePlan')
+            ->assertHasNoErrors();
+
+        $rows = $video->payments()->orderBy('due_date')->get();
+        $this->assertCount(3, $rows);
+        $this->assertSame(100000.0, (float) $rows->sum('amount'));
+        $this->assertSame(['15 Bhadra 2083', '15 Ashoj 2083', '15 Kartik 2083'], $rows->map(fn ($r) => $r->due_date->toNepali())->all());
+    }
+
     public function test_another_clients_task_cannot_be_changed_from_this_profile(): void
     {
         $this->actingAs(User::factory()->create());
