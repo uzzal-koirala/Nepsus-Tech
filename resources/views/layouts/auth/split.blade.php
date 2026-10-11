@@ -21,12 +21,12 @@
                         </a>
                     </div>
 
-                    <div class="reveal relative z-10 mt-14 hidden lg:block">
+                    <div class="reveal relative z-10 mt-14 hidden text-center lg:block">
                         <h2 class="text-[2.75rem] leading-[1.05] font-semibold tracking-[-0.035em]">
                             {{ __('All your client work,') }}<br>
                             <span class="text-brand-200">{{ __('in one place.') }}</span>
                         </h2>
-                        <p class="mt-5 max-w-[19rem] text-[0.9375rem] leading-relaxed text-brand-100/90">
+                        <p class="mx-auto mt-5 max-w-[19rem] text-[0.9375rem] leading-relaxed text-brand-100/90">
                             {{ __('Clients, projects and tasks for the whole Nepsus Tech team.') }}
                         </p>
                     </div>
