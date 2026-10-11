@@ -13,10 +13,10 @@
                     {{-- Depth glow --}}
                     <div class="absolute -bottom-40 left-1/2 -z-10 size-[36rem] -translate-x-1/2 rounded-full bg-brand-800/60 blur-3xl"></div>
                     {{-- Orbit rings --}}
-                    <div class="absolute -bottom-56 left-1/2 -z-10 hidden size-[46rem] -translate-x-1/2 rounded-full border border-white/10 lg:block"></div>
-                    <div class="absolute -bottom-40 left-1/2 -z-10 hidden size-[36rem] -translate-x-1/2 rounded-full border border-white/15 lg:block"></div>
+                    <div class="absolute -right-60 -bottom-64 -z-10 hidden size-[46rem] rounded-full border border-white/10 lg:block"></div>
+                    <div class="absolute -right-40 -bottom-44 -z-10 hidden size-[36rem] rounded-full border border-white/15 lg:block"></div>
                     {{-- Sun (from the logo) --}}
-                    <div class="absolute top-[42%] left-1/2 -z-10 size-56 -translate-x-1/2 rounded-full bg-sun shadow-[0_0_120px_20px_rgb(255_194_14/0.35)] sm:size-72 lg:top-auto lg:-bottom-16 lg:size-[22rem]"></div>
+                    <div class="absolute top-[42%] left-1/2 -z-10 size-56 -translate-x-1/2 rounded-full bg-sun shadow-[0_0_120px_20px_rgb(255_194_14/0.35)] sm:size-72 lg:top-auto lg:-right-12 lg:-bottom-16 lg:left-auto lg:size-[22rem] lg:translate-x-0"></div>
 
                     <div class="flex items-start justify-between">
                         <img src="{{ asset('images/nepsus-logo.png') }}" alt="Nepsus Tech" class="h-12 w-auto rounded-xl ring-1 ring-white/25 lg:h-14">
@@ -25,11 +25,22 @@
                         </a>
                     </div>
 
-                    <div class="mt-8 hidden max-w-sm lg:block">
-                        <h2 class="text-4xl leading-[1.05] font-semibold tracking-[-0.03em] text-balance text-white">
-                            {{ __('Every client.') }}<br>{{ __('Every task.') }}<br><span class="text-sun">{{ __('One place.') }}</span>
+                    <div class="relative z-10 mt-10 hidden lg:block">
+                        <p class="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white ring-1 ring-white/20 backdrop-blur">
+                            <span class="size-1.5 rounded-full bg-sun"></span>
+                            {{ __('Client & task management') }}
+                        </p>
+                        <h2 class="mt-5 text-[3.25rem] leading-[0.98] font-bold tracking-[-0.03em] text-white">
+                            {{ __('Every client.') }}<br>
+                            <span class="text-white/55">{{ __('Every task.') }}</span><br>
+                            <span class="relative inline-block text-sun">
+                                {{ __('One place.') }}
+                                <svg class="draw absolute -bottom-4 left-0 h-3 w-full" viewBox="0 0 300 16" preserveAspectRatio="none" aria-hidden="true">
+                                    <path d="M4 11C70 4 190 1 296 8" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round" pathLength="1" />
+                                </svg>
+                            </span>
                         </h2>
-                        <p class="mt-4 max-w-xs text-sm leading-relaxed text-brand-100">
+                        <p class="mt-7 max-w-[15rem] text-sm leading-relaxed text-brand-100">
                             {{ __('Nepsus Tech keeps your clients, projects and team in one shared workspace.') }}
                         </p>
                     </div>
@@ -37,31 +48,8 @@
                     <img
                         src="{{ asset('images/auth-crew.webp') }}"
                         alt="{{ __('Three cartoon characters in sunglasses: two bunnies and an owl') }}"
-                        class="absolute inset-x-0 bottom-0 mx-auto h-[78%] w-auto max-w-none drop-shadow-[0_24px_30px_rgb(18_26_66/0.45)] lg:h-[56%]"
+                        class="absolute inset-x-0 bottom-0 mx-auto h-[78%] w-auto max-w-none drop-shadow-[0_24px_30px_rgb(18_26_66/0.45)] lg:right-0 lg:left-auto lg:mx-0 lg:h-[62%]"
                     >
-
-                    {{-- Product preview: task card --}}
-                    <div class="absolute right-6 bottom-[30%] hidden w-56 rotate-3 rounded-2xl bg-white p-4 text-zinc-900 shadow-[0_24px_50px_-20px_rgb(18_26_66/0.7)] lg:block" aria-hidden="true">
-                        <div class="flex items-center justify-between">
-                            <span class="rounded-md bg-brand-50 px-2 py-0.5 text-[0.6875rem] font-semibold text-brand-600">{{ __('Task') }}</span>
-                            <span class="size-2 rounded-full bg-sun"></span>
-                        </div>
-                        <p class="mt-2.5 text-sm font-semibold">{{ __('Send project proposal') }}</p>
-                        <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-100">
-                            <div class="h-full w-2/3 rounded-full bg-brand-500"></div>
-                        </div>
-                        <div class="mt-3 flex items-center justify-between">
-                            <div class="flex -space-x-1.5">
-                                <span class="size-6 rounded-full bg-sun ring-2 ring-white"></span>
-                                <span class="size-6 rounded-full bg-brand-300 ring-2 ring-white"></span>
-                                <span class="size-6 rounded-full bg-zinc-800 ring-2 ring-white"></span>
-                            </div>
-                            <span class="inline-flex items-center gap-1 text-[0.6875rem] font-medium text-emerald-600">
-                                <flux:icon.check-circle variant="micro" class="size-3.5" />
-                                {{ __('On track') }}
-                            </span>
-                        </div>
-                    </div>
 
                     {{-- Product preview: notification --}}
                     <div class="absolute bottom-8 left-6 hidden -rotate-2 items-center gap-3 rounded-2xl bg-brand-950/40 py-2.5 ps-2.5 pe-5 text-white shadow-[0_16px_40px_-16px_rgb(18_26_66/0.8)] ring-1 ring-white/20 backdrop-blur-md lg:flex" aria-hidden="true">
