@@ -516,8 +516,8 @@ new #[Title('Clients')] class extends Component {
                                 <span class="sr-only">{{ __($client->status) }}</span>
                             </span>
                             <div class="min-w-0 flex-1">
-                                <h3 class="truncate leading-snug font-semibold text-zinc-900 dark:text-white"><a href="{{ route('clients.show', $client) }}" wire:navigate class="hover:text-brand-600 dark:hover:text-brand-300">{{ $client->name }}</a></h3>
-                                <p class="truncate text-[0.8125rem] text-zinc-500 dark:text-zinc-400">{{ $client->company ?? __('Independent') }}</p>
+                                <h3 class="truncate leading-snug font-semibold text-zinc-900 dark:text-white"><a href="{{ route('clients.show', $client) }}" wire:navigate class="hover:text-brand-600 dark:hover:text-brand-300">{{ $client->displayName() }}</a></h3>
+                                <p class="flex items-center gap-1 truncate text-[0.8125rem] text-zinc-500 dark:text-zinc-400"><flux:icon.user variant="micro" class="size-3 shrink-0 opacity-60" /><span class="truncate">{{ $client->contactName() }}</span></p>
                             </div>
                             <flux:dropdown align="end">
                                 <flux:button variant="ghost" size="sm" icon="ellipsis-vertical" class="-me-2" :aria-label="__('Actions for :name', ['name' => $client->name])" />
@@ -655,8 +655,8 @@ new #[Title('Clients')] class extends Component {
                                     </button>
                                     <x-client-avatar :client="$client" :tint="$avatars[$client->id % count($avatars)]" class="size-9 rounded-lg text-xs" />
                                     <div class="min-w-0">
-                                        <a href="{{ route('clients.show', $client) }}" wire:navigate class="block truncate font-medium text-zinc-900 hover:text-brand-600 dark:text-white">{{ $client->name }}</a>
-                                        <p class="truncate text-xs text-zinc-500">{{ $client->company ?? __('Independent') }}</p>
+                                        <a href="{{ route('clients.show', $client) }}" wire:navigate class="block truncate font-medium text-zinc-900 hover:text-brand-600 dark:text-white">{{ $client->displayName() }}</a>
+                                        <p class="truncate text-xs text-zinc-500">{{ $client->contactName() }}</p>
                                     </div>
                                 </div>
                             </td>

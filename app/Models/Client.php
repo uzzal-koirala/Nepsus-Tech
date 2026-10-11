@@ -290,11 +290,27 @@ class Client extends Model
     }
 
     /**
-     * Get the client's initials.
+     * Main name on cards and lists: the business when there is one, otherwise the person.
+     */
+    public function displayName(): string
+    {
+        return $this->company ?: $this->name;
+    }
+
+    /**
+     * Second line under the business name: the contact person.
+     */
+    public function contactName(): string
+    {
+        return $this->company ? $this->name : __('Individual client');
+    }
+
+    /**
+     * Get the client's initials (of the business name when there is one).
      */
     public function initials(): string
     {
-        $initials = Str::initials($this->name, true);
+        $initials = Str::initials($this->displayName(), true);
 
         return Str::length($initials) > 1
             ? Str::substr($initials, 0, 1).Str::substr($initials, -1)
