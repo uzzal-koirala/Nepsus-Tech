@@ -32,8 +32,16 @@ class ClientsTest extends TestCase
             ->call('save')
             ->assertHasErrors(['email'])
             ->set('email', 'sita@example.com')
+            ->set('package', 'Social Media Growth')
+            ->set('price', '25000')
+            ->set('billing_cycle', 'monthly')
+            ->set('instagram_url', 'not a url')
+            ->call('save')
+            ->assertHasErrors(['instagram_url'])
+            ->set('instagram_url', 'https://instagram.com/sita')
             ->call('save')
             ->assertHasNoErrors()
+            ->assertSee('NPR 25,000')
             ->set('search', 'Sita')
             ->assertSee('Sita Gurung')
             ->assertDontSee('Bikram Thapa')
@@ -44,6 +52,7 @@ class ClientsTest extends TestCase
 
         $sita = Client::where('email', 'sita@example.com')->firstOrFail();
         $this->assertSame('active', $sita->status);
+        $this->assertSame(['instagram' => 'https://instagram.com/sita'], $sita->socialLinks());
 
         Livewire::test('pages::clients')
             ->call('confirmDelete', $sita->id)

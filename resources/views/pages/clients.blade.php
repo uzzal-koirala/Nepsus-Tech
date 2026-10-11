@@ -30,6 +30,13 @@ new #[Title('Clients')] class extends Component {
     public string $phone = '';
     public string $clientStatus = 'active';
     public string $notes = '';
+    public string $package = '';
+    public string $price = '';
+    public string $billing_cycle = 'monthly';
+    public string $facebook_url = '';
+    public string $instagram_url = '';
+    public string $tiktok_url = '';
+    public string $google_business_url = '';
 
     public function updatedSearch(): void
     {
@@ -56,7 +63,8 @@ new #[Title('Clients')] class extends Component {
             ->when($this->search !== '', fn ($q) => $q->where(fn ($q) => $q
                 ->where('name', 'like', "%{$this->search}%")
                 ->orWhere('company', 'like', "%{$this->search}%")
-                ->orWhere('email', 'like', "%{$this->search}%")))
+                ->orWhere('phone', 'like', "%{$this->search}%")
+                ->orWhere('package', 'like', "%{$this->search}%")))
             ->latest()
             ->paginate(12);
     }
@@ -69,6 +77,12 @@ new #[Title('Clients')] class extends Component {
         return ['all' => $counts->sum()] + collect(Client::STATUSES)->mapWithKeys(fn ($s) => [$s => $counts[$s] ?? 0])->all();
     }
 
+    #[Computed]
+    public function packages(): array
+    {
+        return Client::query()->whereNotNull('package')->distinct()->orderBy('package')->pluck('package')->all();
+    }
+
     public function create(): void
     {
         $this->resetForm();
@@ -79,20 +93,23 @@ new #[Title('Clients')] class extends Component {
     {
         $client = Client::findOrFail($id);
 
+        $this->resetForm();
         $this->editingId = $client->id;
-        $this->name = $client->name;
-        $this->company = (string) $client->company;
-        $this->email = (string) $client->email;
-        $this->phone = (string) $client->phone;
         $this->clientStatus = $client->status;
-        $this->notes = (string) $client->notes;
-        $this->resetErrorBag();
+        $this->billing_cycle = $client->billing_cycle ?? 'monthly';
+        $this->price = $client->price === null ? '' : rtrim(rtrim((string) $client->price, '0'), '.');
+
+        foreach (['name', 'company', 'email', 'phone', 'notes', 'package', ...array_values(Client::SOCIALS)] as $field) {
+            $this->{$field} = (string) $client->{$field};
+        }
 
         Flux::modal('client-form')->show();
     }
 
     public function save(): void
     {
+        $url = ['nullable', 'url:http,https', 'max:255'];
+
         $data = $this->validate([
             'name' => ['required', 'string', 'max:255'],
             'company' => ['nullable', 'string', 'max:255'],
@@ -100,6 +117,13 @@ new #[Title('Clients')] class extends Component {
             'phone' => ['nullable', 'string', 'max:50'],
             'clientStatus' => ['required', Rule::in(Client::STATUSES)],
             'notes' => ['nullable', 'string', 'max:5000'],
+            'package' => ['nullable', 'string', 'max:255'],
+            'price' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
+            'billing_cycle' => ['required', Rule::in(Client::BILLING_CYCLES)],
+            'facebook_url' => $url,
+            'instagram_url' => $url,
+            'tiktok_url' => $url,
+            'google_business_url' => $url,
         ]);
 
         $data['status'] = $data['clientStatus'];
@@ -130,8 +154,9 @@ new #[Title('Clients')] class extends Component {
 
     private function resetForm(): void
     {
-        $this->reset('editingId', 'name', 'company', 'email', 'phone', 'notes');
+        $this->reset('editingId', 'name', 'company', 'email', 'phone', 'notes', 'package', 'price', 'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url');
         $this->clientStatus = 'active';
+        $this->billing_cycle = 'monthly';
         $this->resetErrorBag();
     }
 }; ?>
@@ -147,6 +172,13 @@ new #[Title('Clients')] class extends Component {
     $avatars = [
         'bg-brand-100 text-brand-700', 'bg-amber-100 text-amber-800', 'bg-emerald-100 text-emerald-800',
         'bg-rose-100 text-rose-800', 'bg-sky-100 text-sky-800', 'bg-violet-100 text-violet-800',
+    ];
+    $cycles = ['monthly' => __('/ month'), 'yearly' => __('/ year'), 'one_time' => __('one-time')];
+    $socials = [
+        'facebook' => ['label' => 'Facebook', 'class' => 'bg-[#1877F2]/10 text-[#1877F2] hover:bg-[#1877F2] hover:text-white'],
+        'instagram' => ['label' => 'Instagram', 'class' => 'bg-[#E4405F]/10 text-[#E4405F] hover:bg-[#E4405F] hover:text-white'],
+        'tiktok' => ['label' => 'TikTok', 'class' => 'bg-zinc-900/[0.06] text-zinc-900 hover:bg-zinc-900 hover:text-white dark:bg-white/10 dark:text-white dark:hover:bg-white dark:hover:text-zinc-900'],
+        'google' => ['label' => __('Google Business Profile'), 'class' => 'bg-[#4285F4]/10 text-[#4285F4] hover:bg-[#4285F4] hover:text-white'],
     ];
 @endphp
 
@@ -223,7 +255,7 @@ new #[Title('Clients')] class extends Component {
             @else
                 <div class="flex flex-col gap-1">
                     <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('No clients yet') }}</h2>
-                    <p class="max-w-xs text-sm text-zinc-500">{{ __('Add your first client to keep their contact details and notes in one place.') }}</p>
+                    <p class="max-w-xs text-sm text-zinc-500">{{ __('Add your first client to keep their package, phone and social profiles in one place.') }}</p>
                 </div>
                 <flux:button variant="primary" size="sm" icon="plus" wire:click="create">{{ __('Add client') }}</flux:button>
             @endif
@@ -231,8 +263,9 @@ new #[Title('Clients')] class extends Component {
     @elseif ($view === 'grid')
         <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             @foreach ($this->clients as $client)
-                <article wire:key="client-{{ $client->id }}" class="group relative flex flex-col rounded-2xl bg-white p-5 ring-1 ring-zinc-200/70 transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-24px_rgb(49_81_254/0.45)] hover:ring-brand-200 dark:bg-zinc-950 dark:ring-white/5 dark:hover:ring-brand-500/40">
-                    <div class="flex items-start gap-3">
+                <article wire:key="client-{{ $client->id }}" class="flex flex-col rounded-2xl bg-white p-1.5 ring-1 ring-zinc-200/70 transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-24px_rgb(49_81_254/0.45)] hover:ring-brand-200 dark:bg-zinc-950 dark:ring-white/5 dark:hover:ring-brand-500/40">
+                    {{-- Identity --}}
+                    <div class="flex items-start gap-3 p-3.5 pb-3">
                         <span class="{{ $avatars[$client->id % count($avatars)] }} flex size-11 shrink-0 items-center justify-center rounded-xl text-sm font-semibold">
                             {{ $client->initials() }}
                         </span>
@@ -249,46 +282,66 @@ new #[Title('Clients')] class extends Component {
                         </flux:dropdown>
                     </div>
 
-                    <dl class="mt-5 flex flex-col gap-2 text-sm">
-                        <div class="flex items-center gap-2.5 text-zinc-600 dark:text-zinc-300">
-                            <flux:icon.envelope variant="micro" class="size-4 shrink-0 text-zinc-400" />
-                            <dt class="sr-only">{{ __('Email') }}</dt>
-                            <dd class="truncate">
-                                @if ($client->email)
-                                    <a href="mailto:{{ $client->email }}" class="hover:text-brand-600">{{ $client->email }}</a>
-                                @else
-                                    <span class="text-zinc-400">{{ __('No email') }}</span>
+                    {{-- Package & pricing --}}
+                    <div class="rounded-xl bg-gradient-to-br from-brand-50 to-brand-100/60 p-3.5 dark:from-brand-500/10 dark:to-brand-500/5">
+                        @if ($client->package || $client->price !== null)
+                            <p class="text-[0.6875rem] font-medium tracking-wide text-brand-600/80 uppercase dark:text-brand-300/80">{{ __('Package') }}</p>
+                            <div class="mt-1 flex items-end justify-between gap-3">
+                                <p class="min-w-0 truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $client->package ?? __('Custom') }}</p>
+                                @if ($client->price !== null)
+                                    <p class="shrink-0 text-end leading-none">
+                                        <span class="text-base font-semibold text-brand-600 tabular-nums dark:text-brand-300">{{ $client->formattedPrice() }}</span>
+                                        <span class="text-xs text-zinc-500">{{ $cycles[$client->billing_cycle] ?? '' }}</span>
+                                    </p>
                                 @endif
-                            </dd>
-                        </div>
-                        <div class="flex items-center gap-2.5 text-zinc-600 dark:text-zinc-300">
-                            <flux:icon.phone variant="micro" class="size-4 shrink-0 text-zinc-400" />
-                            <dt class="sr-only">{{ __('Phone') }}</dt>
-                            <dd class="truncate tabular-nums">{!! $client->phone ? e($client->phone) : '<span class="text-zinc-400">'.e(__('No phone')).'</span>' !!}</dd>
-                        </div>
-                    </dl>
+                            </div>
+                        @else
+                            <p class="text-sm text-zinc-500">{{ __('No package yet') }}</p>
+                        @endif
+                    </div>
 
-                    <div class="mt-5 flex items-center justify-between border-t border-zinc-100 pt-4 dark:border-white/5">
-                        <span class="{{ $badges[$client->status] }} inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium capitalize ring-1 ring-inset">
+                    {{-- Phone --}}
+                    <div class="flex items-center gap-2.5 px-3.5 pt-3.5 text-sm">
+                        <span class="flex size-7 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-white/5">
+                            <flux:icon.phone variant="micro" class="size-3.5" />
+                        </span>
+                        @if ($client->phone)
+                            <a href="tel:{{ preg_replace('/[^\d+]/', '', $client->phone) }}" class="truncate font-medium text-zinc-700 tabular-nums hover:text-brand-600 dark:text-zinc-200">{{ $client->phone }}</a>
+                        @else
+                            <span class="text-zinc-400">{{ __('No phone') }}</span>
+                        @endif
+                    </div>
+
+                    {{-- Socials + status --}}
+                    <div class="mt-auto flex items-center justify-between gap-3 p-3.5 pt-4">
+                        <div class="flex items-center gap-1.5">
+                            @forelse ($client->socialLinks() as $network => $link)
+                                <a href="{{ $link }}" target="_blank" rel="noopener noreferrer" class="{{ $socials[$network]['class'] }} flex size-8 items-center justify-center rounded-lg transition duration-200" title="{{ $socials[$network]['label'] }}">
+                                    <x-social-icon :name="$network" class="size-4" />
+                                    <span class="sr-only">{{ $socials[$network]['label'] }}</span>
+                                </a>
+                            @empty
+                                <span class="text-xs text-zinc-400">{{ __('No social profiles') }}</span>
+                            @endforelse
+                        </div>
+                        <span class="{{ $badges[$client->status] }} inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium capitalize ring-1 ring-inset">
                             <span class="{{ $dots[$client->status] }} size-1.5 rounded-full"></span>
                             {{ __($client->status) }}
                         </span>
-                        <button type="button" wire:click="edit({{ $client->id }})" class="inline-flex items-center gap-1 text-sm font-medium text-brand-500 transition hover:gap-1.5 hover:text-brand-600 dark:text-brand-300">
-                            {{ __('Open') }}
-                            <flux:icon.arrow-right variant="micro" class="size-3.5" />
-                        </button>
                     </div>
                 </article>
             @endforeach
         </div>
     @else
         <div class="overflow-x-auto rounded-2xl bg-white ring-1 ring-zinc-200/70 dark:bg-zinc-950 dark:ring-white/5">
-            <table class="w-full min-w-[44rem] text-start text-sm">
+            <table class="w-full min-w-[52rem] text-start text-sm">
                 <thead>
                     <tr class="border-b border-zinc-100 text-xs font-medium text-zinc-500 dark:border-white/5">
                         <th class="px-5 py-3 text-start font-medium">{{ __('Client') }}</th>
-                        <th class="px-5 py-3 text-start font-medium">{{ __('Email') }}</th>
                         <th class="px-5 py-3 text-start font-medium">{{ __('Phone') }}</th>
+                        <th class="px-5 py-3 text-start font-medium">{{ __('Package') }}</th>
+                        <th class="px-5 py-3 text-end font-medium">{{ __('Price') }}</th>
+                        <th class="px-5 py-3 text-start font-medium">{{ __('Social') }}</th>
                         <th class="px-5 py-3 text-start font-medium">{{ __('Status') }}</th>
                         <th class="px-5 py-3"><span class="sr-only">{{ __('Actions') }}</span></th>
                     </tr>
@@ -305,8 +358,26 @@ new #[Title('Clients')] class extends Component {
                                     </div>
                                 </div>
                             </td>
-                            <td class="px-5 py-3 text-zinc-600 dark:text-zinc-300">{{ $client->email ?? '—' }}</td>
-                            <td class="px-5 py-3 text-zinc-600 tabular-nums dark:text-zinc-300">{{ $client->phone ?? '—' }}</td>
+                            <td class="px-5 py-3 text-zinc-600 tabular-nums dark:text-zinc-300">{{ $client->phone ?? '-' }}</td>
+                            <td class="px-5 py-3 text-zinc-700 dark:text-zinc-200">{{ $client->package ?? '-' }}</td>
+                            <td class="px-5 py-3 text-end whitespace-nowrap">
+                                @if ($client->price !== null)
+                                    <span class="font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $client->formattedPrice() }}</span>
+                                    <span class="text-xs text-zinc-500">{{ $cycles[$client->billing_cycle] ?? '' }}</span>
+                                @else
+                                    <span class="text-zinc-400">-</span>
+                                @endif
+                            </td>
+                            <td class="px-5 py-3">
+                                <div class="flex gap-1">
+                                    @foreach ($client->socialLinks() as $network => $link)
+                                        <a href="{{ $link }}" target="_blank" rel="noopener noreferrer" class="{{ $socials[$network]['class'] }} flex size-7 items-center justify-center rounded-md transition duration-200" title="{{ $socials[$network]['label'] }}">
+                                            <x-social-icon :name="$network" class="size-3.5" />
+                                            <span class="sr-only">{{ $socials[$network]['label'] }}</span>
+                                        </a>
+                                    @endforeach
+                                </div>
+                            </td>
                             <td class="px-5 py-3">
                                 <span class="{{ $badges[$client->status] }} inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium capitalize ring-1 ring-inset">
                                     <span class="{{ $dots[$client->status] }} size-1.5 rounded-full"></span>
@@ -334,25 +405,53 @@ new #[Title('Clients')] class extends Component {
     @endif
 
     {{-- Create / edit --}}
-    <flux:modal name="client-form" class="w-full max-w-lg">
-        <form wire:submit="save" class="flex flex-col gap-5">
+    <flux:modal name="client-form" class="w-full max-w-2xl">
+        <form wire:submit="save" class="flex flex-col gap-6">
             <div>
                 <flux:heading size="lg">{{ $editingId ? __('Edit client') : __('New client') }}</flux:heading>
-                <flux:text class="mt-1">{{ __('Contact details and notes for this client.') }}</flux:text>
+                <flux:text class="mt-1">{{ __('Contact details, package and social profiles.') }}</flux:text>
             </div>
 
-            <div class="grid gap-4 sm:grid-cols-2">
-                <flux:input wire:model="name" :label="__('Name')" required autofocus class="sm:col-span-2" />
+            <fieldset class="grid gap-4 sm:grid-cols-2">
+                <legend class="mb-3 text-xs font-semibold tracking-wide text-zinc-500 uppercase">{{ __('Details') }}</legend>
+                <flux:input wire:model="name" :label="__('Name')" required autofocus />
                 <flux:input wire:model="company" :label="__('Company')" />
+                <flux:input wire:model="phone" type="tel" :label="__('Phone')" />
                 <flux:select wire:model="clientStatus" :label="__('Status')">
                     <flux:select.option value="active">{{ __('Active') }}</flux:select.option>
                     <flux:select.option value="lead">{{ __('Lead') }}</flux:select.option>
                     <flux:select.option value="inactive">{{ __('Inactive') }}</flux:select.option>
                 </flux:select>
-                <flux:input wire:model="email" type="email" :label="__('Email')" />
-                <flux:input wire:model="phone" type="tel" :label="__('Phone')" />
-                <flux:textarea wire:model="notes" :label="__('Notes')" rows="3" class="sm:col-span-2" />
-            </div>
+                <flux:input wire:model="email" type="email" :label="__('Email')" :badge="__('Optional')" class="sm:col-span-2" />
+            </fieldset>
+
+            <fieldset class="grid gap-4 sm:grid-cols-3">
+                <legend class="mb-3 text-xs font-semibold tracking-wide text-zinc-500 uppercase">{{ __('Package & pricing') }}</legend>
+                <div class="sm:col-span-3">
+                    <flux:input wire:model="package" :label="__('Package')" list="package-options" :placeholder="__('e.g. Social Media Growth')" />
+                    <datalist id="package-options">
+                        @foreach ($this->packages as $option)
+                            <option value="{{ $option }}"></option>
+                        @endforeach
+                    </datalist>
+                </div>
+                <flux:input wire:model="price" type="number" min="0" step="0.01" inputmode="decimal" :label="__('Price (:currency)', ['currency' => config('app.currency')])" class="sm:col-span-2" />
+                <flux:select wire:model="billing_cycle" :label="__('Billing')">
+                    <flux:select.option value="monthly">{{ __('Monthly') }}</flux:select.option>
+                    <flux:select.option value="yearly">{{ __('Yearly') }}</flux:select.option>
+                    <flux:select.option value="one_time">{{ __('One-time') }}</flux:select.option>
+                </flux:select>
+            </fieldset>
+
+            <fieldset class="grid gap-4 sm:grid-cols-2">
+                <legend class="mb-3 text-xs font-semibold tracking-wide text-zinc-500 uppercase">{{ __('Social profiles') }}</legend>
+                <flux:input wire:model="facebook_url" type="url" label="Facebook" placeholder="https://facebook.com/…" />
+                <flux:input wire:model="instagram_url" type="url" label="Instagram" placeholder="https://instagram.com/…" />
+                <flux:input wire:model="tiktok_url" type="url" label="TikTok" placeholder="https://tiktok.com/@…" />
+                <flux:input wire:model="google_business_url" type="url" :label="__('Google Business Profile')" placeholder="https://g.page/…" />
+            </fieldset>
+
+            <flux:textarea wire:model="notes" :label="__('Notes')" rows="3" />
 
             <div class="flex justify-end gap-2">
                 <flux:modal.close>
@@ -370,7 +469,7 @@ new #[Title('Clients')] class extends Component {
         <div class="flex flex-col gap-5">
             <div>
                 <flux:heading size="lg">{{ __('Delete this client?') }}</flux:heading>
-                <flux:text class="mt-1">{{ __('Their contact details and notes will be removed. This cannot be undone.') }}</flux:text>
+                <flux:text class="mt-1">{{ __('Their details, package and notes will be removed. This cannot be undone.') }}</flux:text>
             </div>
             <div class="flex justify-end gap-2">
                 <flux:modal.close>
