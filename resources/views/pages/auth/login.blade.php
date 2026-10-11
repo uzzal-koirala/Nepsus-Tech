@@ -1,7 +1,7 @@
 <x-layouts::auth :title="__('Log in')">
     <div class="stagger flex flex-col gap-5">
         <div class="flex flex-col gap-1.5">
-            <h1 class="text-[2rem] leading-tight font-semibold tracking-normal text-balance text-zinc-900 uppercase dark:text-white">{{ __('Welcome back') }}</h1>
+            <h1 class="text-[2rem] leading-tight font-bold tracking-[-0.02em] text-balance text-zinc-900 uppercase dark:text-white">{{ __('Welcome back') }}</h1>
             <p class="text-sm leading-relaxed text-pretty text-zinc-500 dark:text-zinc-400">{{ __('Sign in with your work email to continue.') }}</p>
         </div>
 
