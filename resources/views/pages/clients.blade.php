@@ -773,8 +773,8 @@ new #[Title('Clients')] class extends Component {
                     >
                         {{-- Avatar with gradient ring --}}
                         <div class="relative shrink-0">
-                            <div class="rounded-full bg-linear-to-br from-brand-400 via-brand-500 to-sun p-[3px] shadow-[0_10px_24px_-12px_rgb(49_81_254/0.6)]">
-                                <div class="flex size-20 items-center justify-center overflow-hidden rounded-full bg-white ring-2 ring-white dark:bg-zinc-900 dark:ring-zinc-900">
+                            <div class="rounded-[1.375rem] bg-linear-to-br from-brand-400 via-brand-500 to-sun p-[3px] shadow-[0_10px_24px_-12px_rgb(49_81_254/0.6)]">
+                                <div class="flex size-20 items-center justify-center overflow-hidden rounded-[1.2rem] bg-white ring-2 ring-white dark:bg-zinc-900 dark:ring-zinc-900">
                                     @if ($photo && method_exists($photo, 'temporaryUrl'))
                                         <img src="{{ $photo->temporaryUrl() }}" alt="" class="size-full object-cover">
                                     @elseif ($currentPhoto && ! $removePhoto)
@@ -787,12 +787,12 @@ new #[Title('Clients')] class extends Component {
                             </div>
 
                             {{-- Upload progress ring --}}
-                            <svg x-show="uploading" x-cloak class="absolute inset-0 size-full -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
-                                <circle cx="50" cy="50" r="47" fill="none" stroke="currentColor" stroke-width="6" class="text-white/70" />
-                                <circle cx="50" cy="50" r="47" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" pathLength="100" class="text-brand-500 transition-[stroke-dashoffset] duration-200" stroke-dasharray="100" :stroke-dashoffset="100 - progress" />
+                            <svg x-show="uploading" x-cloak class="absolute inset-0 size-full" viewBox="0 0 100 100" aria-hidden="true">
+                                <rect x="3" y="3" width="94" height="94" rx="24" fill="none" stroke="currentColor" stroke-width="6" class="text-white/70" />
+                                <rect x="3" y="3" width="94" height="94" rx="24" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" pathLength="100" class="text-brand-500 transition-[stroke-dashoffset] duration-200" stroke-dasharray="100" :stroke-dashoffset="100 - progress" />
                             </svg>
 
-                            <label class="absolute -right-0.5 -bottom-0.5 flex size-8 cursor-pointer items-center justify-center rounded-full bg-brand-500 text-white shadow-md ring-[3px] ring-white transition hover:scale-110 hover:bg-brand-600 dark:ring-zinc-900" title="{{ __('Upload photo') }}">
+                            <label class="absolute -right-1.5 -bottom-1.5 flex size-8 cursor-pointer items-center justify-center rounded-xl bg-brand-500 text-white shadow-md ring-[3px] ring-white transition hover:scale-110 hover:bg-brand-600 dark:ring-zinc-900" title="{{ __('Upload photo') }}">
                                 <flux:icon.camera variant="micro" class="size-4" />
                                 <input type="file" wire:model="photo" accept="image/png,image/jpeg,image/webp" class="sr-only" aria-label="{{ __('Upload profile picture') }}">
                             </label>
