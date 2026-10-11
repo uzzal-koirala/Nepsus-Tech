@@ -483,6 +483,23 @@ new #[Title('Clients')] class extends Component {
                             @endif
                         </div>
 
+                        @if ($periodEnd = $client->periodEnd())
+                            @php
+                                $daysLeft = (int) today()->diffInDays($periodEnd);
+                            @endphp
+                            <div @class([
+                                '-mt-1.5 flex items-center justify-between gap-2 text-xs',
+                                'text-amber-700 dark:text-amber-400' => $daysLeft <= 3,
+                                'text-zinc-500 dark:text-zinc-400' => $daysLeft > 3,
+                            ]) title="{{ $periodEnd->format('j M Y') }}">
+                                <span class="inline-flex min-w-0 items-center gap-1.5">
+                                    <flux:icon.calendar-days variant="micro" class="size-3.5 shrink-0 opacity-70" />
+                                    <span class="truncate">{{ $client->billing_cycle === 'yearly' ? __('Year ends') : __('Month ends') }} <span class="font-medium text-zinc-700 dark:text-zinc-200">{{ $periodEnd->toNepali(withYear: false) }}</span></span>
+                                </span>
+                                <span class="shrink-0 font-medium tabular-nums">{{ $daysLeft === 0 ? __('ends today') : trans_choice(':count day left|:count days left', $daysLeft) }}</span>
+                            </div>
+                        @endif
+
                         @php
                             $done = $client->progress >= 100;
                         @endphp
@@ -565,6 +582,9 @@ new #[Title('Clients')] class extends Component {
                                 @if ($client->price !== null)
                                     <span class="font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $client->formattedPrice() }}</span>
                                     <span class="text-xs text-zinc-500">{{ $cycles[$client->billing_cycle] ?? '' }}</span>
+                                    @if ($periodEnd = $client->periodEnd())
+                                        <span class="mt-0.5 block text-xs text-zinc-400" title="{{ $periodEnd->format('j M Y') }}">{{ __('ends') }} {{ $periodEnd->toNepali(withYear: false) }}</span>
+                                    @endif
                                     @if ($alert = $client->paymentAlert())
                                         <span @class([
                                             'mt-0.5 block text-xs font-medium',

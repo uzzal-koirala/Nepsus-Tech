@@ -46,6 +46,31 @@ class ClientsTest extends TestCase
             ->assertDontSee('Due in 20 days');
     }
 
+    public function test_billing_period_end_follows_the_nepali_calendar(): void
+    {
+        $this->travelTo('2026-10-12'); // 26 Ashoj 2083
+        $bs = fn (int $y, int $m, int $d) => \App\Support\NepaliDate::toAd($y, $m, $d);
+
+        // Started 15 Bhadra: months run 15th to 14th, so this month ends 14 Kartik.
+        $monthly = Client::factory()->make(['status' => 'active', 'billing_cycle' => 'monthly', 'contract_start' => $bs(2083, 5, 15)]);
+        $this->assertSame('14 Kartik 2083', $monthly->periodEnd()->toNepali());
+
+        // Started on the 32nd of Asar: Ashoj only has 31 days, so it renews on the 31st and ends on the 30th.
+        $clamped = Client::factory()->make(['status' => 'active', 'billing_cycle' => 'monthly', 'contract_start' => $bs(2083, 3, 32)]);
+        $this->assertSame('30 Ashoj 2083', $clamped->periodEnd()->toNepali());
+
+        // Yearly from 10 Asar 2082: this year ends 9 Asar 2084.
+        $yearly = Client::factory()->make(['status' => 'active', 'billing_cycle' => 'yearly', 'contract_start' => $bs(2082, 3, 10)]);
+        $this->assertSame('9 Asar 2084', $yearly->periodEnd()->toNepali());
+
+        $this->assertNull(Client::factory()->make(['status' => 'active', 'billing_cycle' => 'one_time'])->periodEnd());
+        $this->assertNull(Client::factory()->make(['status' => 'inactive', 'billing_cycle' => 'monthly', 'contract_start' => $bs(2083, 5, 15)])->periodEnd());
+
+        $this->actingAs(User::factory()->create());
+        Client::factory()->create(['name' => 'Monthly Client', 'status' => 'active', 'billing_cycle' => 'monthly', 'contract_start' => $bs(2083, 5, 15)]);
+        Livewire::test('pages::clients')->assertSee('Month ends')->assertSee('14 Kartik')->assertSee('19 days left');
+    }
+
     public function test_form_jumps_to_the_step_with_the_first_error(): void
     {
         $this->actingAs(User::factory()->create());

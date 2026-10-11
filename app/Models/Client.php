@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\NepaliDate;
 use Carbon\CarbonInterface;
 use Database\Factories\ClientFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -105,6 +106,44 @@ class Client extends Model
         };
 
         return $tone ? ['tone' => $tone, 'days' => abs($days), 'date' => $date, 'amount' => self::money($this->next_due_amount)] : null;
+    }
+
+    /**
+     * Last day of the client's current billing month (or year), counted on the Nepali
+     * calendar from the contract start (or the date they were added). A client who
+     * started on 15 Bhadra has months ending on the 14th. Null for one-time or inactive.
+     */
+    public function periodEnd(): ?CarbonInterface
+    {
+        $anchor = $this->contract_start ?? $this->created_at;
+
+        if ($this->status !== 'active' || ! in_array($this->billing_cycle, ['monthly', 'yearly']) || ! $anchor || ! $start = NepaliDate::fromAd($anchor)) {
+            return null;
+        }
+
+        [, $anchorMonth, $day] = $start;
+        [$year, $month] = NepaliDate::fromAd(today());
+        $step = $this->billing_cycle === 'yearly' ? 12 : 1;
+
+        // Begin a step before today's month, then walk forward to the first renewal after today.
+        if ($step === 12) {
+            [$year, $month] = [$year - 1, $anchorMonth];
+        } else {
+            [$year, $month] = $month === 1 ? [$year - 1, 12] : [$year, $month - 1];
+        }
+
+        for ($i = 0; $i < 4; $i++) {
+            $renewal = NepaliDate::toAd($year, $month, min($day, NepaliDate::monthLength($year, $month)));
+
+            if ($renewal->greaterThan(today()) && $renewal->greaterThan($anchor)) {
+                return $renewal->subDay();
+            }
+
+            $month += $step;
+            [$year, $month] = [$year + intdiv($month - 1, 12), ($month - 1) % 12 + 1];
+        }
+
+        return null;
     }
 
     /**

@@ -84,6 +84,11 @@ final class NepaliDate
         return [self::toAd($year, $month, 1)->startOfDay(), self::toAd($year, $month, $length)->endOfDay()];
     }
 
+    public static function monthLength(int $year, int $month): int
+    {
+        return self::calendar()[(string) $year][$month - 1];
+    }
+
     /**
      * BS payroll month key for a date, e.g. "2083-06".
      */
