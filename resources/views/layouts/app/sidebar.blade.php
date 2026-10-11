@@ -17,7 +17,7 @@
                             ['icon' => 'home', 'label' => __('Overview'), 'route' => 'dashboard'],
                         ],
                         __('Workspace') => [
-                            ['icon' => 'building-office-2', 'label' => __('Clients')],
+                            ['icon' => 'building-office-2', 'label' => __('Clients'), 'route' => 'clients.index'],
                             ['icon' => 'folder', 'label' => __('Projects')],
                             ['icon' => 'check-circle', 'label' => __('Tasks')],
                         ],
@@ -35,7 +35,7 @@
 
                         @foreach ($items as $item)
                             @isset($item['route'])
-                                <flux:sidebar.item :icon="$item['icon']" :href="route($item['route'])" :current="request()->routeIs($item['route'])" wire:navigate>
+                                <flux:sidebar.item :icon="$item['icon']" :href="route($item['route'])" :current="request()->routeIs($item['route'].'*')" wire:navigate>
                                     {{ $item['label'] }}
                                 </flux:sidebar.item>
                             @else
