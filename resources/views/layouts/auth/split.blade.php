@@ -14,10 +14,6 @@
                     <div class="absolute -bottom-40 left-1/2 -z-10 size-[36rem] -translate-x-1/2 rounded-full bg-brand-800/60 blur-3xl"></div>
                     {{-- Sun (from the logo) --}}
                     <div class="absolute top-[42%] left-1/2 -z-10 size-56 -translate-x-1/2 rounded-full bg-sun shadow-[0_0_120px_20px_rgb(255_194_14/0.35)] sm:size-72 lg:top-[40%] lg:size-[24rem]"></div>
-                    {{-- Triangle (from the logo) --}}
-                    <svg class="absolute top-[30%] right-[8%] -z-10 w-12 text-sun motion-safe:animate-float lg:w-16" viewBox="0 0 100 100" aria-hidden="true">
-                        <path d="M14 8 92 42a6 6 0 0 1 .6 10.8L18 94a6 6 0 0 1-8.8-6.2L5.4 14.4A6 6 0 0 1 14 8Z" fill="currentColor" />
-                    </svg>
 
                     <div class="flex items-start justify-between">
                         <img src="{{ asset('images/nepsus-logo.png') }}" alt="Nepsus Tech" class="h-12 w-auto rounded-xl ring-1 ring-white/25 lg:h-14">
