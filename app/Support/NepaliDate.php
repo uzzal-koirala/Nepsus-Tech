@@ -85,6 +85,44 @@ final class NepaliDate
     }
 
     /**
+     * BS payroll month key for a date, e.g. "2083-06".
+     */
+    public static function period(CarbonInterface $date): string
+    {
+        [$year, $month] = self::fromAd($date);
+
+        return sprintf('%d-%02d', $year, $month);
+    }
+
+    /**
+     * "2083-06" => "Ashoj 2083".
+     */
+    public static function periodLabel(string $period): string
+    {
+        [$year, $month] = array_map('intval', explode('-', $period));
+
+        return self::MONTHS[$month - 1].' '.$year;
+    }
+
+    /**
+     * The current BS month and the ones before it, newest first.
+     *
+     * @return list<string>
+     */
+    public static function recentPeriods(int $count = 3, ?CarbonInterface $from = null): array
+    {
+        [$year, $month] = self::fromAd($from ?? today());
+        $periods = [];
+
+        for ($i = 0; $i < $count; $i++) {
+            $periods[] = sprintf('%d-%02d', $year, $month);
+            [$year, $month] = $month === 1 ? [$year - 1, 12] : [$year, $month - 1];
+        }
+
+        return $periods;
+    }
+
+    /**
      * e.g. "26 Ashoj 2083"; falls back to the AD date outside the supported range.
      */
     public static function format(?CarbonInterface $date, bool $withYear = true): string

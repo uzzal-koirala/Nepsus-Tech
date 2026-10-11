@@ -36,6 +36,13 @@ class NepaliDateTest extends TestCase
         $this->assertSame('2026-10-17 23:59:59', $end->toDateTimeString());
     }
 
+    public function test_payroll_periods(): void
+    {
+        $this->assertSame('2083-06', NepaliDate::period(Carbon::parse('2026-10-12')));
+        $this->assertSame('Ashoj 2083', NepaliDate::periodLabel('2083-06'));
+        $this->assertSame(['2083-02', '2083-01', '2082-12'], NepaliDate::recentPeriods(3, Carbon::parse('2026-05-20')));
+    }
+
     public function test_formats_with_english_month_names(): void
     {
         $this->assertSame('26 Ashoj 2083', NepaliDate::format(Carbon::parse('2026-10-12')));

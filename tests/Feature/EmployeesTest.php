@@ -28,7 +28,7 @@ class EmployeesTest extends TestCase
 
         $page = Livewire::test('pages::employees')
             ->set('name', 'Sita Gurung')
-            ->set('dept', 'hr')
+            ->set('dept', 'finance')
             ->call('save')
             ->assertHasErrors(['dept'])
             ->set('dept', 'marketing')
@@ -52,6 +52,34 @@ class EmployeesTest extends TestCase
 
         $page->call('confirmDelete', $sita->id)->call('delete');
         $this->assertModelMissing($sita);
+    }
+
+    public function test_salary_can_be_paid_in_parts_and_shows_progress(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $period = \App\Support\NepaliDate::period(today());
+
+        $ram = Employee::factory()->create(['name' => 'Ram Thapa', 'salary' => 40000, 'status' => 'active']);
+
+        $page = Livewire::test('pages::employees')
+            ->call('openPay', $ram->id)
+            ->assertSet('payAmount', '40000')
+            ->assertSet('payPeriod', $period)
+            ->set('payAmount', '15000')
+            ->call('savePay')
+            ->assertHasNoErrors()
+            ->assertSee('38%');
+
+        $this->assertSame(['paid' => 15000.0, 'salary' => 40000.0, 'left' => 25000.0, 'percent' => 38], Employee::withSalaryPaid()->find($ram->id)->salaryProgress());
+
+        $page->call('openPay', $ram->id)->assertSet('payAmount', '25000')->call('savePay');
+        $this->assertSame(0.0, Employee::withSalaryPaid()->find($ram->id)->salaryProgress()['left']);
+
+        $page->set('payPeriod', '1990-01')->set('payAmount', '100')->call('savePay')->assertHasErrors(['payPeriod']);
+
+        $payment = $ram->salaryPayments()->first();
+        $page->call('openHistory', $ram->id)->call('deleteSalaryPayment', $payment->id);
+        $this->assertModelMissing($payment);
     }
 
     public function test_tenure_reads_naturally(): void

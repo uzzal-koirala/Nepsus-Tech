@@ -17,6 +17,7 @@ class EmployeeFactory extends Factory
         'content' => ['Content Writer', 'Video Editor', 'Photographer'],
         'sales' => ['Account Manager', 'Sales Executive'],
         'management' => ['Project Manager', 'Operations Lead'],
+        'hr' => ['HR Officer', 'Office Administrator'],
     ];
 
     /**
@@ -35,6 +36,7 @@ class EmployeeFactory extends Factory
             'email' => fake()->unique()->safeEmail(),
             'phone' => '98'.fake()->numerify('########'),
             'status' => fake()->randomElement(['active', 'active', 'active', 'active', 'on_leave', 'inactive']),
+            'salary' => $department === 'management' ? fake()->randomElement([90000, 110000, 125000]) : fake()->randomElement([25000, 32000, 40000, 48000, 55000, 65000]),
             'joined_on' => fake()->dateTimeBetween('-4 years', '-1 week'),
         ];
     }

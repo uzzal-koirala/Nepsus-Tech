@@ -2,13 +2,16 @@
 
 namespace App\Models;
 
+use App\Support\NepaliDate;
 use Database\Factories\EmployeeFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
-#[Fillable(['name', 'designation', 'department', 'email', 'phone', 'status', 'joined_on'])]
+#[Fillable(['name', 'designation', 'department', 'email', 'phone', 'status', 'salary', 'joined_on'])]
 class Employee extends Model
 {
     /** @use HasFactory<EmployeeFactory> */
@@ -21,6 +24,7 @@ class Employee extends Model
         'content' => ['label' => 'Content', 'icon' => 'pencil-square'],
         'sales' => ['label' => 'Sales', 'icon' => 'briefcase'],
         'management' => ['label' => 'Management', 'icon' => 'building-office'],
+        'hr' => ['label' => 'HR & Admin', 'icon' => 'user-circle'],
     ];
 
     public const STATUSES = ['active' => 'Active', 'on_leave' => 'On leave', 'inactive' => 'Inactive'];
@@ -29,6 +33,44 @@ class Employee extends Model
     {
         return [
             'joined_on' => 'date',
+            'salary' => 'decimal:2',
+        ];
+    }
+
+    public function salaryPayments(): HasMany
+    {
+        return $this->hasMany(SalaryPayment::class);
+    }
+
+    /**
+     * Adds paid_in_period: salary paid for the given BS month (defaults to the current one).
+     */
+    public function scopeWithSalaryPaid(Builder $query, ?string $period = null): void
+    {
+        $period ??= NepaliDate::period(today());
+
+        $query->withSum(['salaryPayments as paid_in_period' => fn ($q) => $q->where('period', $period)], 'amount');
+    }
+
+    /**
+     * Salary progress for the period loaded by withSalaryPaid.
+     *
+     * @return array{paid: float, salary: float, left: float, percent: int}|null
+     */
+    public function salaryProgress(): ?array
+    {
+        if (! $this->salary || (float) $this->salary <= 0) {
+            return null;
+        }
+
+        $salary = (float) $this->salary;
+        $paid = (float) ($this->paid_in_period ?? 0);
+
+        return [
+            'paid' => $paid,
+            'salary' => $salary,
+            'left' => max(0.0, $salary - $paid),
+            'percent' => (int) min(100, round($paid / $salary * 100)),
         ];
     }
 

@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Employee;
+use App\Models\SalaryPayment;
+use App\Support\NepaliDate;
 use Flux\Flux;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
@@ -33,7 +35,16 @@ new #[Title('Employees')] class extends Component {
     public string $email = '';
     public string $phone = '';
     public string $employeeStatus = 'active';
+    public string $salary = '';
     public string $joinedOn = '';
+
+    public ?int $payEmployeeId = null;
+    public string $payPeriod = '';
+    public string $payAmount = '';
+    public string $payDate = '';
+    public string $payNote = '';
+
+    public ?int $historyEmployeeId = null;
 
     public function updated($property): void
     {
@@ -48,6 +59,12 @@ new #[Title('Employees')] class extends Component {
         $this->resetPage();
     }
 
+    public function setDepartment(string $department): void
+    {
+        $this->department = $this->department === $department ? '' : $department;
+        $this->resetPage();
+    }
+
     public function clearFilters(): void
     {
         $this->reset('search', 'status', 'department');
@@ -55,9 +72,16 @@ new #[Title('Employees')] class extends Component {
     }
 
     #[Computed]
+    public function period(): string
+    {
+        return NepaliDate::period(today());
+    }
+
+    #[Computed]
     public function employees()
     {
         return Employee::query()
+            ->withSalaryPaid($this->period)
             ->when($this->status !== 'all', fn ($q) => $q->where('status', $this->status))
             ->when($this->department !== '', fn ($q) => $q->where('department', $this->department))
             ->when($this->search !== '', fn ($q) => $q->where(fn ($q) => $q
@@ -78,13 +102,37 @@ new #[Title('Employees')] class extends Component {
     }
 
     #[Computed]
-    public function summary(): array
+    public function payroll(): array
     {
+        $onPayroll = Employee::where('status', '!=', 'inactive')->whereNotNull('salary')->withSalaryPaid($this->period)->get();
+        $total = (float) $onPayroll->sum('salary');
+        $paid = (float) $onPayroll->sum(fn ($e) => min((float) $e->salary, (float) $e->paid_in_period));
+
         return [
-            'departments' => Employee::where('status', '!=', 'inactive')->distinct()->count('department'),
-            'newHires' => Employee::where('joined_on', '>=', today()->subDays(90))->count(),
+            'total' => $total,
+            'paid' => $paid,
+            'left' => max(0, $total - $paid),
+            'percent' => $total > 0 ? (int) round($paid / $total * 100) : 0,
+            'unpaidPeople' => $onPayroll->filter(fn ($e) => (float) $e->paid_in_period < (float) $e->salary)->count(),
         ];
     }
+
+    #[Computed]
+    public function departments(): array
+    {
+        $rows = Employee::where('status', '!=', 'inactive')
+            ->selectRaw('department, count(*) as people, coalesce(sum(salary), 0) as payroll')
+            ->groupBy('department')
+            ->get()
+            ->keyBy('department');
+
+        return collect(Employee::DEPARTMENTS)->map(fn ($meta, $key) => [
+            'people' => (int) ($rows[$key]->people ?? 0),
+            'payroll' => (float) ($rows[$key]->payroll ?? 0),
+        ])->all();
+    }
+
+    // Add / edit
 
     public function create(): void
     {
@@ -104,6 +152,7 @@ new #[Title('Employees')] class extends Component {
         $this->email = (string) $employee->email;
         $this->phone = (string) $employee->phone;
         $this->employeeStatus = $employee->status;
+        $this->salary = $employee->salary === null ? '' : rtrim(rtrim((string) $employee->salary, '0'), '.');
         $this->joinedOn = (string) $employee->joined_on?->toDateString();
 
         Flux::modal('employee-form')->show();
@@ -118,6 +167,7 @@ new #[Title('Employees')] class extends Component {
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'employeeStatus' => ['required', Rule::in(array_keys(Employee::STATUSES))],
+            'salary' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
             'joinedOn' => ['nullable', 'date'],
         ]);
 
@@ -128,6 +178,7 @@ new #[Title('Employees')] class extends Component {
             'email' => $data['email'] ?: null,
             'phone' => $data['phone'] ?: null,
             'status' => $data['employeeStatus'],
+            'salary' => $data['salary'] === '' || $data['salary'] === null ? null : $data['salary'],
             'joined_on' => $data['joinedOn'] ?: null,
         ]);
 
@@ -151,9 +202,67 @@ new #[Title('Employees')] class extends Component {
         Flux::toast(text: __('Employee removed.'));
     }
 
+    // Salary
+
+    public function openPay(int $id): void
+    {
+        $employee = Employee::withSalaryPaid($this->period)->findOrFail($id);
+
+        $this->payEmployeeId = $employee->id;
+        $this->payPeriod = $this->period;
+        $this->payAmount = (string) ($employee->salaryProgress()['left'] ?? '');
+        $this->payDate = today()->toDateString();
+        $this->payNote = '';
+        $this->resetErrorBag();
+
+        Flux::modal('pay-salary')->show();
+    }
+
+    public function savePay(): void
+    {
+        $data = $this->validate([
+            'payEmployeeId' => ['required', 'exists:employees,id'],
+            'payPeriod' => ['required', Rule::in(NepaliDate::recentPeriods(6))],
+            'payAmount' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
+            'payDate' => ['required', 'date'],
+            'payNote' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        Employee::findOrFail($data['payEmployeeId'])->salaryPayments()->create([
+            'period' => $data['payPeriod'],
+            'amount' => $data['payAmount'],
+            'paid_on' => $data['payDate'],
+            'note' => $data['payNote'] ?: null,
+        ]);
+
+        Flux::modal('pay-salary')->close();
+        Flux::toast(variant: 'success', text: __('Salary payment saved.'));
+    }
+
+    public function openHistory(int $id): void
+    {
+        $this->historyEmployeeId = Employee::findOrFail($id)->id;
+        Flux::modal('salary-history')->show();
+    }
+
+    #[Computed]
+    public function historyEmployee(): ?Employee
+    {
+        return $this->historyEmployeeId
+            ? Employee::with(['salaryPayments' => fn ($q) => $q->orderByDesc('period')->orderByDesc('paid_on')])->find($this->historyEmployeeId)
+            : null;
+    }
+
+    public function deleteSalaryPayment(int $id): void
+    {
+        SalaryPayment::where('employee_id', $this->historyEmployeeId)->findOrFail($id)->delete();
+        unset($this->historyEmployee);
+        Flux::toast(text: __('Salary payment deleted.'));
+    }
+
     private function resetForm(): void
     {
-        $this->reset('editingId', 'name', 'designation', 'email', 'phone', 'joinedOn');
+        $this->reset('editingId', 'name', 'designation', 'email', 'phone', 'salary', 'joinedOn');
         $this->dept = 'development';
         $this->employeeStatus = 'active';
         $this->resetErrorBag();
@@ -161,22 +270,23 @@ new #[Title('Employees')] class extends Component {
 }; ?>
 
 @php
+    $periodLabel = NepaliDate::periodLabel($this->period);
+    $money = fn ($v) => \App\Models\Client::money($v);
     $tabs = ['all' => __('Everyone')] + collect(Employee::STATUSES)->map(fn ($l) => __($l))->all();
     $depts = [
-        'design' => ['cover' => 'from-rose-400 to-pink-600', 'avatar' => 'bg-rose-100 text-rose-700', 'chip' => 'bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-500/10 dark:text-rose-300', 'hover' => 'hover:text-rose-600 hover:ring-rose-300'],
-        'development' => ['cover' => 'from-brand-400 to-brand-700', 'avatar' => 'bg-brand-100 text-brand-700', 'chip' => 'bg-brand-50 text-brand-700 ring-brand-600/20 dark:bg-brand-500/15 dark:text-brand-200', 'hover' => 'hover:text-brand-600 hover:ring-brand-300'],
-        'marketing' => ['cover' => 'from-amber-300 to-orange-500', 'avatar' => 'bg-amber-100 text-amber-800', 'chip' => 'bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-300', 'hover' => 'hover:text-amber-600 hover:ring-amber-300'],
-        'content' => ['cover' => 'from-emerald-400 to-teal-600', 'avatar' => 'bg-emerald-100 text-emerald-700', 'chip' => 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-300', 'hover' => 'hover:text-emerald-600 hover:ring-emerald-300'],
-        'sales' => ['cover' => 'from-sky-400 to-cyan-600', 'avatar' => 'bg-sky-100 text-sky-700', 'chip' => 'bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-500/10 dark:text-sky-300', 'hover' => 'hover:text-sky-600 hover:ring-sky-300'],
-        'management' => ['cover' => 'from-zinc-800 to-slate-600', 'avatar' => 'bg-zinc-200 text-zinc-800', 'chip' => 'bg-zinc-100 text-zinc-700 ring-zinc-500/20 dark:bg-white/10 dark:text-zinc-200', 'hover' => 'hover:text-zinc-900 hover:ring-zinc-400 dark:hover:text-white'],
+        'design' => ['avatar' => 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200', 'chip' => 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300', 'tile' => 'bg-rose-50 ring-rose-200 dark:bg-rose-500/10 dark:ring-rose-500/30'],
+        'development' => ['avatar' => 'bg-brand-100 text-brand-700 dark:bg-brand-500/25 dark:text-brand-100', 'chip' => 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200', 'tile' => 'bg-brand-50 ring-brand-200 dark:bg-brand-500/10 dark:ring-brand-500/30'],
+        'marketing' => ['avatar' => 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200', 'chip' => 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300', 'tile' => 'bg-amber-50 ring-amber-200 dark:bg-amber-500/10 dark:ring-amber-500/30'],
+        'content' => ['avatar' => 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200', 'chip' => 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300', 'tile' => 'bg-emerald-50 ring-emerald-200 dark:bg-emerald-500/10 dark:ring-emerald-500/30'],
+        'sales' => ['avatar' => 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200', 'chip' => 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300', 'tile' => 'bg-sky-50 ring-sky-200 dark:bg-sky-500/10 dark:ring-sky-500/30'],
+        'management' => ['avatar' => 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200', 'chip' => 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300', 'tile' => 'bg-violet-50 ring-violet-200 dark:bg-violet-500/10 dark:ring-violet-500/30'],
+        'hr' => ['avatar' => 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-200', 'chip' => 'bg-teal-50 text-teal-700 dark:bg-teal-500/10 dark:text-teal-300', 'tile' => 'bg-teal-50 ring-teal-200 dark:bg-teal-500/10 dark:ring-teal-500/30'],
     ];
-    $statusPill = [
-        'active' => ['dot' => 'bg-emerald-500', 'text' => 'text-emerald-700 dark:text-emerald-300'],
-        'on_leave' => ['dot' => 'bg-amber-500', 'text' => 'text-amber-700 dark:text-amber-300'],
-        'inactive' => ['dot' => 'bg-zinc-400', 'text' => 'text-zinc-500 dark:text-zinc-400'],
-    ];
+    $statusDot = ['active' => 'bg-emerald-500', 'on_leave' => 'bg-amber-400', 'inactive' => 'bg-zinc-300'];
+    $statusText = ['active' => 'text-emerald-700 dark:text-emerald-300', 'on_leave' => 'text-amber-700 dark:text-amber-300', 'inactive' => 'text-zinc-500'];
     $panel = 'rounded-xl bg-white ring-1 ring-zinc-200/70 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:ring-white/10';
-    $contactBtn = 'flex size-9 items-center justify-center rounded-full bg-white text-zinc-500 ring-1 ring-zinc-200 transition duration-200 hover:-translate-y-0.5 dark:bg-zinc-900 dark:text-zinc-400 dark:ring-white/10';
+    $contact = 'flex size-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-white/5 dark:hover:text-white';
+    $payroll = $this->payroll;
 @endphp
 
 <div class="flex w-full flex-col gap-6">
@@ -184,7 +294,7 @@ new #[Title('Employees')] class extends Component {
     <header class="flex flex-wrap items-end justify-between gap-4">
         <div class="flex flex-col gap-1">
             <h1 class="text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-3xl dark:text-white">{{ __('Employees') }}</h1>
-            <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ trans_choice(':count person on the Nepsus Tech team|:count people on the Nepsus Tech team', $this->counts['all']) }}</p>
+            <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ trans_choice(':count person on the Nepsus Tech team|:count people on the Nepsus Tech team', $this->counts['all']) }} · {{ __('Payroll month: :month', ['month' => $periodLabel]) }}</p>
         </div>
         <flux:button variant="primary" icon="user-plus" wire:click="create" class="shadow-lg shadow-brand-500/25" data-test="new-employee-button">
             {{ __('Add employee') }}
@@ -193,30 +303,79 @@ new #[Title('Employees')] class extends Component {
 
     {{-- Summary --}}
     <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div class="relative isolate flex flex-col gap-4 overflow-hidden rounded-xl bg-linear-to-br from-zinc-900 to-slate-700 p-5 text-white shadow-[0_18px_40px_-22px_rgb(15_23_42/0.8)]">
-            <div class="absolute -right-6 -bottom-10 -z-10 size-32 rounded-full bg-brand-500/60 blur-xl"></div>
-            <div class="flex items-center gap-3">
-                <span class="flex size-9 items-center justify-center rounded-lg bg-white/10 ring-1 ring-white/15"><flux:icon.user-group variant="mini" class="size-4.5" /></span>
-                <p class="text-sm font-medium text-zinc-300">{{ __('Active team') }}</p>
+        <div class="{{ $panel }} relative flex flex-col gap-4 overflow-hidden p-5">
+            <div class="absolute -top-12 -right-12 size-32 rounded-full bg-brand-100/70 dark:bg-brand-500/10"></div>
+            <div class="relative flex items-center gap-3">
+                <span class="flex size-9 items-center justify-center rounded-lg bg-brand-500 text-white shadow-md shadow-brand-500/30"><flux:icon.user-group variant="mini" class="size-4.5" /></span>
+                <p class="text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Active team') }}</p>
             </div>
-            <p class="text-[2rem] leading-none font-semibold tracking-tight tabular-nums">{{ $this->counts['active'] }}</p>
-            <p class="mt-auto text-xs text-zinc-400">{{ __(':total in total, including inactive', ['total' => $this->counts['all']]) }}</p>
+            <p class="relative text-[1.75rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $this->counts['active'] }}</p>
+            <p class="relative mt-auto text-xs text-zinc-500">{{ trans_choice(':count on leave|:count on leave', $this->counts['on_leave']) }} · {{ trans_choice(':count inactive|:count inactive', $this->counts['inactive']) }}</p>
         </div>
 
-        @foreach ([
-            ['icon' => 'sun', 'tint' => 'bg-amber-100 text-amber-600 dark:bg-amber-400/15 dark:text-amber-300', 'label' => __('On leave'), 'value' => $this->counts['on_leave'], 'note' => __('Away right now')],
-            ['icon' => 'squares-2x2', 'tint' => 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300', 'label' => __('Departments'), 'value' => $this->summary['departments'], 'note' => __('Teams with active people')],
-            ['icon' => 'sparkles', 'tint' => 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300', 'label' => __('New hires'), 'value' => $this->summary['newHires'], 'note' => __('Joined in the last 90 days')],
-        ] as $tile)
-            <div class="{{ $panel }} flex flex-col gap-4 p-5">
-                <div class="flex items-center gap-3">
-                    <span class="{{ $tile['tint'] }} flex size-9 items-center justify-center rounded-lg"><flux:icon :icon="$tile['icon']" variant="mini" class="size-4.5" /></span>
-                    <p class="text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ $tile['label'] }}</p>
-                </div>
-                <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $tile['value'] }}</p>
-                <p class="mt-auto text-xs text-zinc-500">{{ $tile['note'] }}</p>
+        <div class="{{ $panel }} flex flex-col gap-4 p-5">
+            <div class="flex items-center gap-3">
+                <span class="flex size-9 items-center justify-center rounded-lg bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300"><flux:icon.wallet variant="mini" class="size-4.5" /></span>
+                <p class="text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Monthly payroll') }}</p>
             </div>
-        @endforeach
+            <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $money($payroll['total']) }}</p>
+            <p class="mt-auto text-xs text-zinc-500">{{ __('Salaries of everyone not inactive') }}</p>
+        </div>
+
+        <div class="{{ $panel }} flex flex-col gap-4 p-5">
+            <div class="flex items-center gap-3">
+                <span class="flex size-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.banknotes variant="mini" class="size-4.5" /></span>
+                <p class="flex-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Paid for :month', ['month' => $periodLabel]) }}</p>
+                <span class="text-xs font-semibold text-emerald-600 tabular-nums dark:text-emerald-400">{{ $payroll['percent'] }}%</span>
+            </div>
+            <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $money($payroll['paid']) }}</p>
+            <div class="mt-auto h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div class="h-full rounded-full bg-emerald-500 transition-[width] duration-700" style="width: {{ $payroll['percent'] }}%"></div></div>
+        </div>
+
+        <div class="{{ $panel }} flex flex-col gap-4 p-5">
+            <div class="flex items-center gap-3">
+                <span class="flex size-9 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-400/15 dark:text-amber-300"><flux:icon.clock variant="mini" class="size-4.5" /></span>
+                <p class="text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Still to pay') }}</p>
+            </div>
+            <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $money($payroll['left']) }}</p>
+            <p class="mt-auto text-xs text-zinc-500">{{ trans_choice(':count person not fully paid this month|:count people not fully paid this month', $payroll['unpaidPeople']) }}</p>
+        </div>
+    </section>
+
+    {{-- Departments --}}
+    <section class="flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Departments') }}</h2>
+            @if ($department !== '')
+                <button type="button" wire:click="setDepartment('{{ $department }}')" class="text-xs font-medium text-brand-600 hover:underline dark:text-brand-300">{{ __('Show all departments') }}</button>
+            @endif
+        </div>
+        <div class="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-1">
+            @foreach (Employee::DEPARTMENTS as $key => $meta)
+                @php
+                    $info = $this->departments[$key];
+                    $selected = $department === $key;
+                @endphp
+                <button type="button" wire:click="setDepartment('{{ $key }}')" @class([
+                    'flex min-w-44 shrink-0 snap-start flex-col gap-3 rounded-xl p-4 text-start ring-1 transition duration-200 hover:-translate-y-0.5',
+                    $depts[$key]['tile'] => $selected,
+                    'bg-white ring-zinc-200/70 hover:ring-zinc-300 dark:bg-zinc-950 dark:ring-white/10' => ! $selected,
+                ]) aria-pressed="{{ $selected ? 'true' : 'false' }}">
+                    <div class="flex items-center justify-between">
+                        <span class="{{ $depts[$key]['avatar'] }} flex size-8 items-center justify-center rounded-lg">
+                            <flux:icon :icon="$meta['icon']" variant="micro" class="size-4" />
+                        </span>
+                        @if ($selected)
+                            <flux:icon.check-circle variant="mini" class="size-4 text-zinc-700 dark:text-white" />
+                        @endif
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium text-zinc-900 dark:text-white">{{ __($meta['label']) }}</p>
+                        <p class="text-xs text-zinc-500">{{ trans_choice(':count person|:count people', $info['people']) }} · {{ $money($info['payroll']) }}{{ __('/mo') }}</p>
+                    </div>
+                </button>
+            @endforeach
+        </div>
     </section>
 
     {{-- Toolbar --}}
@@ -225,28 +384,22 @@ new #[Title('Employees')] class extends Component {
             @foreach ($tabs as $key => $label)
                 <button type="button" wire:click="setStatus('{{ $key }}')" @class([
                     'flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition',
-                    'bg-zinc-900 text-white shadow-md shadow-zinc-900/20 dark:bg-white dark:text-zinc-900' => $status === $key,
+                    'bg-brand-500 text-white shadow-md shadow-brand-500/25' => $status === $key,
                     'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white' => $status !== $key,
                 ]) @if ($status === $key) aria-current="true" @endif>
                     {{ $label }}
-                    <span @class(['rounded-md px-1.5 py-0.5 text-xs tabular-nums', 'bg-white/20 dark:bg-zinc-900/10' => $status === $key, 'bg-zinc-100 text-zinc-500 dark:bg-white/5' => $status !== $key])>{{ $this->counts[$key] }}</span>
+                    <span @class(['rounded-md px-1.5 py-0.5 text-xs tabular-nums', 'bg-white/20' => $status === $key, 'bg-zinc-100 text-zinc-500 dark:bg-white/5' => $status !== $key])>{{ $this->counts[$key] }}</span>
                 </button>
             @endforeach
         </nav>
 
-        <div class="flex flex-wrap items-center gap-2">
-            <flux:select wire:model.live="department" class="w-44" :aria-label="__('Department')">
-                <flux:select.option value="">{{ __('All departments') }}</flux:select.option>
-                @foreach (Employee::DEPARTMENTS as $key => $d)
-                    <flux:select.option :value="$key">{{ __($d['label']) }}</flux:select.option>
-                @endforeach
-            </flux:select>
-            <flux:input wire:model.live.debounce.300ms="search" icon="magnifying-glass" :placeholder="__('Search people')" clearable class="min-w-0 flex-1 lg:w-64 lg:flex-none" />
+        <div class="flex items-center gap-2">
+            <flux:input wire:model.live.debounce.300ms="search" icon="magnifying-glass" :placeholder="__('Search people')" clearable class="min-w-0 flex-1 lg:w-72 lg:flex-none" />
             <div class="flex shrink-0 rounded-xl bg-zinc-100 p-1 dark:bg-white/5">
                 @foreach (['grid' => 'squares-2x2', 'list' => 'list-bullet'] as $mode => $icon)
                     <button type="button" wire:click="$set('view', '{{ $mode }}')" aria-label="{{ $mode === 'grid' ? __('Card view') : __('List view') }}" @class([
                         'flex size-8 items-center justify-center rounded-lg transition',
-                        'bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-white' => $view === $mode,
+                        'bg-white text-brand-600 shadow-sm dark:bg-zinc-800 dark:text-white' => $view === $mode,
                         'text-zinc-400 hover:text-zinc-700 dark:hover:text-white' => $view !== $mode,
                     ])>
                         <flux:icon :icon="$icon" variant="mini" class="size-4" />
@@ -259,7 +412,7 @@ new #[Title('Employees')] class extends Component {
     {{-- Results --}}
     @if ($this->employees->isEmpty())
         <div class="{{ $panel }} flex flex-col items-center gap-4 px-6 py-16 text-center">
-            <span class="flex size-14 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-500 dark:bg-white/5"><flux:icon.identification class="size-7" /></span>
+            <span class="flex size-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-500 dark:bg-brand-500/15"><flux:icon.identification class="size-7" /></span>
             @if ($search !== '' || $status !== 'all' || $department !== '')
                 <div>
                     <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Nobody matches these filters') }}</h2>
@@ -269,95 +422,120 @@ new #[Title('Employees')] class extends Component {
             @else
                 <div>
                     <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('No employees yet') }}</h2>
-                    <p class="mt-1 max-w-xs text-sm text-zinc-500">{{ __('Add your team to keep their roles, contacts and join dates in one place.') }}</p>
+                    <p class="mt-1 max-w-xs text-sm text-zinc-500">{{ __('Add your team to track roles, salaries and join dates in one place.') }}</p>
                 </div>
                 <flux:button variant="primary" size="sm" icon="user-plus" wire:click="create">{{ __('Add employee') }}</flux:button>
             @endif
         </div>
     @elseif ($view === 'grid')
-        <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 min-[1800px]:grid-cols-5">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 min-[1800px]:grid-cols-5">
             @foreach ($this->employees as $e)
                 @php
                     $d = $depts[$e->department] ?? $depts['development'];
                     $meta = Employee::DEPARTMENTS[$e->department] ?? Employee::DEPARTMENTS['development'];
+                    $pay = $e->status === 'inactive' ? null : $e->salaryProgress();
+                    $full = $pay && $pay['left'] <= 0;
                 @endphp
                 <article wire:key="emp-{{ $e->id }}" @class([
-                    'group relative flex flex-col overflow-hidden rounded-2xl bg-white text-center ring-1 ring-zinc-200/70 transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_48px_-28px_rgb(15_23_42/0.45)] dark:bg-zinc-950 dark:ring-white/10',
-                    'opacity-60 grayscale-[0.6] hover:opacity-100 hover:grayscale-0' => $e->status === 'inactive',
+                    'group flex flex-col gap-4 rounded-2xl bg-white p-5 ring-1 ring-zinc-200/70 transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_44px_-26px_rgb(49_81_254/0.4)] hover:ring-brand-200 dark:bg-zinc-950 dark:ring-white/10 dark:hover:ring-brand-500/40',
+                    'opacity-70 hover:opacity-100' => $e->status === 'inactive',
                 ])>
-                    {{-- Badge cover --}}
-                    <div class="{{ $d['cover'] }} relative h-24 bg-linear-to-br">
-                        <div class="absolute inset-0 opacity-25 [background-image:radial-gradient(white_1px,transparent_1px)] [background-size:14px_14px]"></div>
-                        <flux:icon :icon="$meta['icon']" class="absolute -bottom-4 -left-3 size-20 text-white/15" />
-                        <span class="absolute top-3 left-1/2 h-1.5 w-12 -translate-x-1/2 rounded-full bg-white/50 ring-1 ring-black/10" aria-hidden="true"></span>
-                        <span class="{{ $statusPill[$e->status]['text'] }} absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-white/95 px-2 py-0.5 text-[0.6875rem] font-medium shadow-sm dark:bg-zinc-950/90">
-                            <span class="{{ $statusPill[$e->status]['dot'] }} size-1.5 rounded-full"></span>
-                            {{ __(Employee::STATUSES[$e->status]) }}
+                    {{-- Identity --}}
+                    <div class="flex items-start gap-3.5">
+                        <span class="{{ $d['avatar'] }} relative flex size-14 shrink-0 items-center justify-center rounded-2xl text-lg font-semibold">
+                            {{ $e->initials() }}
+                            <span class="{{ $statusDot[$e->status] }} absolute -end-1 -bottom-1 size-3.5 rounded-full ring-[3px] ring-white dark:ring-zinc-950" title="{{ __(Employee::STATUSES[$e->status]) }}"></span>
                         </span>
-                        <div class="absolute top-1.5 right-1.5">
-                            <flux:dropdown align="end">
-                                <flux:button variant="ghost" size="sm" icon="ellipsis-horizontal" class="text-white! hover:bg-white/20!" :aria-label="__('Actions for :name', ['name' => $e->name])" />
-                                <flux:menu>
-                                    <flux:menu.item icon="pencil-square" wire:click="edit({{ $e->id }})">{{ __('Edit') }}</flux:menu.item>
-                                    <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete({{ $e->id }})">{{ __('Remove') }}</flux:menu.item>
-                                </flux:menu>
-                            </flux:dropdown>
+                        <div class="min-w-0 flex-1">
+                            <h3 class="truncate leading-snug font-semibold text-zinc-900 dark:text-white">{{ $e->name }}</h3>
+                            <p class="truncate text-[0.8125rem] text-zinc-500 dark:text-zinc-400">{{ $e->designation ?? __('No role set') }}</p>
+                            <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                <span class="{{ $d['chip'] }} inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium">
+                                    <flux:icon :icon="$meta['icon']" variant="micro" class="size-3" />
+                                    {{ __($meta['label']) }}
+                                </span>
+                                @if ($e->status !== 'active')
+                                    <span class="{{ $statusText[$e->status] }} text-[0.6875rem] font-medium">{{ __(Employee::STATUSES[$e->status]) }}</span>
+                                @endif
+                            </div>
                         </div>
+                        <flux:dropdown align="end">
+                            <flux:button variant="ghost" size="sm" icon="ellipsis-horizontal" class="-me-2 -mt-1" :aria-label="__('Actions for :name', ['name' => $e->name])" />
+                            <flux:menu>
+                                <flux:menu.item icon="banknotes" wire:click="openPay({{ $e->id }})">{{ __('Pay salary') }}</flux:menu.item>
+                                <flux:menu.item icon="clock" wire:click="openHistory({{ $e->id }})">{{ __('Salary history') }}</flux:menu.item>
+                                <flux:menu.item icon="pencil-square" wire:click="edit({{ $e->id }})">{{ __('Edit') }}</flux:menu.item>
+                                <flux:menu.separator />
+                                <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete({{ $e->id }})">{{ __('Remove') }}</flux:menu.item>
+                            </flux:menu>
+                        </flux:dropdown>
                     </div>
 
-                    {{-- Identity --}}
-                    <div class="-mt-11 flex flex-1 flex-col items-center px-5 pb-5">
-                        <span class="{{ $d['avatar'] }} relative flex size-[5.5rem] items-center justify-center rounded-full text-2xl font-semibold shadow-lg ring-4 ring-white dark:ring-zinc-950">
-                            {{ $e->initials() }}
-                        </span>
-                        <h3 class="mt-3 w-full truncate text-base font-semibold text-zinc-900 dark:text-white">{{ $e->name }}</h3>
-                        <p class="w-full truncate text-sm text-zinc-500 dark:text-zinc-400">{{ $e->designation ?? __('No role set') }}</p>
-                        <span class="{{ $d['chip'] }} mt-2.5 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset">
-                            <flux:icon :icon="$meta['icon']" variant="micro" class="size-3.5" />
-                            {{ __($meta['label']) }}
-                        </span>
-
-                        <div class="mt-4 flex items-center justify-center gap-2">
-                            @if ($e->phone)
-                                <a href="tel:{{ preg_replace('/[^\d+]/', '', $e->phone) }}" class="{{ $contactBtn }} {{ $d['hover'] }}" title="{{ __('Call :phone', ['phone' => $e->phone]) }}">
-                                    <flux:icon.phone variant="micro" class="size-4" /><span class="sr-only">{{ __('Call') }}</span>
-                                </a>
-                                <a href="https://wa.me/{{ $e->whatsappNumber() }}" target="_blank" rel="noopener noreferrer" class="{{ $contactBtn }} hover:text-[#25D366] hover:ring-[#25D366]/40" title="WhatsApp">
-                                    <x-social-icon name="whatsapp" class="size-4" /><span class="sr-only">WhatsApp</span>
-                                </a>
-                            @endif
-                            @if ($e->email)
-                                <a href="mailto:{{ $e->email }}" class="{{ $contactBtn }} {{ $d['hover'] }}" title="{{ $e->email }}">
-                                    <flux:icon.envelope variant="micro" class="size-4" /><span class="sr-only">{{ __('Email') }}</span>
-                                </a>
-                            @endif
-                        </div>
+                    {{-- Salary --}}
+                    <div class="rounded-xl bg-zinc-50/80 p-3.5 ring-1 ring-zinc-100 dark:bg-white/[0.03] dark:ring-white/5">
+                        @if ($e->status === 'inactive')
+                            <p class="text-xs text-zinc-400">{{ __('Not on payroll') }}</p>
+                        @elseif (! $pay)
+                            <div class="flex items-center justify-between gap-2">
+                                <p class="text-xs text-zinc-500">{{ __('Salary not set') }}</p>
+                                <button type="button" wire:click="edit({{ $e->id }})" class="text-xs font-medium text-brand-600 hover:underline dark:text-brand-300">{{ __('Add salary') }}</button>
+                            </div>
+                        @else
+                            <div class="flex items-center justify-between gap-2 text-xs">
+                                <span class="text-zinc-500">{{ __(':month salary', ['month' => $periodLabel]) }}</span>
+                                @if ($full)
+                                    <span class="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400"><flux:icon.check-circle variant="micro" class="size-3.5" />{{ __('Paid') }}</span>
+                                @elseif ($pay['paid'] > 0)
+                                    <span class="font-medium text-brand-600 tabular-nums dark:text-brand-300">{{ $pay['percent'] }}%</span>
+                                @else
+                                    <span class="font-medium text-amber-600 dark:text-amber-400">{{ __('Not paid yet') }}</span>
+                                @endif
+                            </div>
+                            <div class="mt-1.5 flex items-end justify-between gap-2">
+                                <p class="tabular-nums">
+                                    <span class="text-lg font-semibold tracking-tight text-zinc-900 dark:text-white">{{ $money($pay['paid']) }}</span>
+                                    <span class="text-xs text-zinc-400">/ {{ number_format($pay['salary']) }}</span>
+                                </p>
+                                @unless ($full)
+                                    <flux:button size="xs" variant="primary" icon="banknotes" wire:click="openPay({{ $e->id }})">{{ __('Pay') }}</flux:button>
+                                @endunless
+                            </div>
+                            <div class="mt-2.5 h-2 overflow-hidden rounded-full bg-white ring-1 ring-zinc-200/70 dark:bg-white/5 dark:ring-white/10" role="progressbar" aria-valuenow="{{ $pay['percent'] }}" aria-valuemin="0" aria-valuemax="100" aria-label="{{ __('Salary paid') }}">
+                                <div @class(['h-full rounded-full transition-[width] duration-700', 'bg-emerald-500' => $full, 'bg-brand-500' => ! $full]) style="width: {{ $pay['percent'] }}%"></div>
+                            </div>
+                        @endif
                     </div>
 
                     {{-- Footer --}}
-                    <div class="grid grid-cols-2 divide-x divide-zinc-100 border-t border-dashed border-zinc-200 bg-zinc-50/60 text-start dark:divide-white/5 dark:border-white/10 dark:bg-white/[0.02]">
-                        <div class="px-4 py-3">
-                            <p class="text-[0.6875rem] text-zinc-400">{{ __('Joined') }}</p>
-                            <p class="truncate text-xs font-medium text-zinc-700 dark:text-zinc-200" title="{{ $e->joined_on?->format('j M Y') }}">{{ $e->joined_on?->toNepali() ?: '-' }}</p>
+                    <div class="mt-auto flex items-center justify-between gap-2">
+                        <div class="-ms-1.5 flex items-center">
+                            @if ($e->phone)
+                                <a href="tel:{{ preg_replace('/[^\d+]/', '', $e->phone) }}" class="{{ $contact }}" title="{{ __('Call :phone', ['phone' => $e->phone]) }}"><flux:icon.phone variant="micro" class="size-4" /><span class="sr-only">{{ __('Call') }}</span></a>
+                                <a href="https://wa.me/{{ $e->whatsappNumber() }}" target="_blank" rel="noopener noreferrer" class="{{ $contact }} hover:text-[#25D366]!" title="WhatsApp"><x-social-icon name="whatsapp" class="size-4" /><span class="sr-only">WhatsApp</span></a>
+                            @endif
+                            @if ($e->email)
+                                <a href="mailto:{{ $e->email }}" class="{{ $contact }}" title="{{ $e->email }}"><flux:icon.envelope variant="micro" class="size-4" /><span class="sr-only">{{ __('Email') }}</span></a>
+                            @endif
                         </div>
-                        <div class="px-4 py-3">
-                            <p class="text-[0.6875rem] text-zinc-400">{{ __('With us') }}</p>
-                            <p class="text-xs font-medium text-zinc-700 tabular-nums dark:text-zinc-200">{{ $e->tenure() ?? '-' }}</p>
-                        </div>
+                        @if ($e->joined_on)
+                            <p class="truncate text-xs text-zinc-400" title="{{ $e->joined_on->format('j M Y') }}">
+                                {{ __('Joined') }} {{ $e->joined_on->toNepali() }} · <span class="font-medium text-zinc-600 dark:text-zinc-300">{{ $e->tenure() }}</span>
+                            </p>
+                        @endif
                     </div>
                 </article>
             @endforeach
         </div>
     @else
         <div class="{{ $panel }} overflow-x-auto">
-            <table class="w-full min-w-[56rem] text-sm">
+            <table class="w-full min-w-[62rem] text-sm">
                 <thead>
                     <tr class="border-b border-zinc-100 text-xs text-zinc-500 dark:border-white/5">
                         <th class="px-5 py-3 text-start font-medium">{{ __('Employee') }}</th>
                         <th class="px-5 py-3 text-start font-medium">{{ __('Department') }}</th>
                         <th class="px-5 py-3 text-start font-medium">{{ __('Phone') }}</th>
+                        <th class="px-5 py-3 text-start font-medium">{{ __(':month salary', ['month' => $periodLabel]) }}</th>
                         <th class="px-5 py-3 text-start font-medium">{{ __('Joined') }}</th>
-                        <th class="px-5 py-3 text-start font-medium">{{ __('Status') }}</th>
                         <th class="px-5 py-3"><span class="sr-only">{{ __('Actions') }}</span></th>
                     </tr>
                 </thead>
@@ -366,11 +544,15 @@ new #[Title('Employees')] class extends Component {
                         @php
                             $d = $depts[$e->department] ?? $depts['development'];
                             $meta = Employee::DEPARTMENTS[$e->department] ?? Employee::DEPARTMENTS['development'];
+                            $pay = $e->status === 'inactive' ? null : $e->salaryProgress();
                         @endphp
-                        <tr wire:key="emp-row-{{ $e->id }}" class="transition hover:bg-zinc-50/70 dark:hover:bg-white/[0.02]">
+                        <tr wire:key="emp-row-{{ $e->id }}" @class(['transition hover:bg-zinc-50/70 dark:hover:bg-white/[0.02]', 'opacity-60' => $e->status === 'inactive'])>
                             <td class="px-5 py-3">
                                 <div class="flex items-center gap-3">
-                                    <span class="{{ $d['avatar'] }} flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold">{{ $e->initials() }}</span>
+                                    <span class="{{ $d['avatar'] }} relative flex size-9 shrink-0 items-center justify-center rounded-xl text-xs font-semibold">
+                                        {{ $e->initials() }}
+                                        <span class="{{ $statusDot[$e->status] }} absolute -end-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-white dark:ring-zinc-950"></span>
+                                    </span>
                                     <div class="min-w-0">
                                         <p class="truncate font-medium text-zinc-900 dark:text-white">{{ $e->name }}</p>
                                         <p class="truncate text-xs text-zinc-500">{{ $e->designation ?? __('No role set') }}</p>
@@ -378,27 +560,37 @@ new #[Title('Employees')] class extends Component {
                                 </div>
                             </td>
                             <td class="px-5 py-3">
-                                <span class="{{ $d['chip'] }} inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset">
+                                <span class="{{ $d['chip'] }} inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium">
                                     <flux:icon :icon="$meta['icon']" variant="micro" class="size-3.5" />
                                     {{ __($meta['label']) }}
                                 </span>
                             </td>
                             <td class="px-5 py-3 text-zinc-600 tabular-nums dark:text-zinc-300">{{ $e->phone ?? '-' }}</td>
                             <td class="px-5 py-3">
+                                @if ($pay)
+                                    <div class="flex w-48 flex-col gap-1.5">
+                                        <p class="text-xs tabular-nums"><span class="font-semibold text-zinc-900 dark:text-white">{{ $money($pay['paid']) }}</span> <span class="text-zinc-400">/ {{ number_format($pay['salary']) }}</span></p>
+                                        <div class="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div @class(['h-full rounded-full', 'bg-emerald-500' => $pay['left'] <= 0, 'bg-brand-500' => $pay['left'] > 0]) style="width: {{ $pay['percent'] }}%"></div></div>
+                                    </div>
+                                @else
+                                    <span class="text-xs text-zinc-400">{{ $e->status === 'inactive' ? __('Not on payroll') : __('Salary not set') }}</span>
+                                @endif
+                            </td>
+                            <td class="px-5 py-3">
                                 <p class="text-zinc-700 dark:text-zinc-200" title="{{ $e->joined_on?->format('j M Y') }}">{{ $e->joined_on?->toNepali() ?: '-' }}</p>
                                 <p class="text-xs text-zinc-400">{{ $e->tenure() }}</p>
                             </td>
-                            <td class="px-5 py-3">
-                                <span class="{{ $statusPill[$e->status]['text'] }} inline-flex items-center gap-1.5 text-xs font-medium">
-                                    <span class="{{ $statusPill[$e->status]['dot'] }} size-1.5 rounded-full"></span>
-                                    {{ __(Employee::STATUSES[$e->status]) }}
-                                </span>
-                            </td>
-                            <td class="px-5 py-3 text-end">
+                            <td class="px-5 py-3 text-end whitespace-nowrap">
+                                @if ($pay && $pay['left'] > 0)
+                                    <flux:button size="xs" icon="banknotes" wire:click="openPay({{ $e->id }})">{{ __('Pay') }}</flux:button>
+                                @endif
                                 <flux:dropdown align="end">
                                     <flux:button variant="ghost" size="sm" icon="ellipsis-horizontal" :aria-label="__('Actions for :name', ['name' => $e->name])" />
                                     <flux:menu>
+                                        <flux:menu.item icon="banknotes" wire:click="openPay({{ $e->id }})">{{ __('Pay salary') }}</flux:menu.item>
+                                        <flux:menu.item icon="clock" wire:click="openHistory({{ $e->id }})">{{ __('Salary history') }}</flux:menu.item>
                                         <flux:menu.item icon="pencil-square" wire:click="edit({{ $e->id }})">{{ __('Edit') }}</flux:menu.item>
+                                        <flux:menu.separator />
                                         <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete({{ $e->id }})">{{ __('Remove') }}</flux:menu.item>
                                     </flux:menu>
                                 </flux:dropdown>
@@ -419,24 +611,25 @@ new #[Title('Employees')] class extends Component {
         <form wire:submit="save" class="flex flex-col gap-5">
             <div>
                 <flux:heading size="lg">{{ $editingId ? __('Edit employee') : __('Add employee') }}</flux:heading>
-                <flux:text class="mt-1">{{ __('Role, team and contact details.') }}</flux:text>
+                <flux:text class="mt-1">{{ __('Role, team, salary and contact details.') }}</flux:text>
             </div>
             <div class="grid gap-4 sm:grid-cols-2">
                 <flux:input wire:model="name" :label="__('Full name')" required autofocus class="sm:col-span-2" />
                 <flux:input wire:model="designation" :label="__('Role')" :placeholder="__('e.g. Graphic Designer')" />
                 <flux:select wire:model="dept" :label="__('Department')">
-                    @foreach (Employee::DEPARTMENTS as $key => $d)
-                        <flux:select.option :value="$key">{{ __($d['label']) }}</flux:select.option>
+                    @foreach (Employee::DEPARTMENTS as $key => $meta)
+                        <flux:select.option :value="$key">{{ __($meta['label']) }}</flux:select.option>
                     @endforeach
                 </flux:select>
-                <flux:input wire:model="phone" type="tel" :label="__('Phone')" placeholder="98XXXXXXXX" />
-                <flux:input wire:model="email" type="email" :label="__('Email')" />
-                <x-nepali-date wire:model="joinedOn" :label="__('Joined on')" />
+                <flux:input wire:model="salary" type="number" min="0" step="1" :label="__('Monthly salary (:currency)', ['currency' => config('app.currency')])" />
                 <flux:select wire:model="employeeStatus" :label="__('Status')">
                     @foreach (Employee::STATUSES as $key => $label)
                         <flux:select.option :value="$key">{{ __($label) }}</flux:select.option>
                     @endforeach
                 </flux:select>
+                <flux:input wire:model="phone" type="tel" :label="__('Phone')" placeholder="98XXXXXXXX" />
+                <flux:input wire:model="email" type="email" :label="__('Email')" />
+                <x-nepali-date wire:model="joinedOn" :label="__('Joined on')" class="sm:col-span-2" />
             </div>
             <div class="flex justify-end gap-2">
                 <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
@@ -445,12 +638,68 @@ new #[Title('Employees')] class extends Component {
         </form>
     </flux:modal>
 
+    {{-- Pay salary --}}
+    <flux:modal name="pay-salary" class="w-full max-w-md">
+        <form wire:submit="savePay" class="flex flex-col gap-5">
+            <div>
+                <flux:heading size="lg">{{ __('Pay salary') }}</flux:heading>
+                <flux:text class="mt-1">{{ $payEmployeeId ? \App\Models\Employee::find($payEmployeeId)?->name : '' }}</flux:text>
+            </div>
+            <div class="grid gap-4 sm:grid-cols-2">
+                <flux:select wire:model="payPeriod" :label="__('For month')">
+                    @foreach (NepaliDate::recentPeriods(6) as $p)
+                        <flux:select.option :value="$p">{{ NepaliDate::periodLabel($p) }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+                <flux:input wire:model="payAmount" type="number" min="0" step="1" :label="__('Amount (:currency)', ['currency' => config('app.currency')])" required />
+                <x-nepali-date wire:model="payDate" :label="__('Paid on')" class="sm:col-span-2" />
+                <flux:input wire:model="payNote" :label="__('Note')" :placeholder="__('e.g. Advance, bonus, bank transfer')" class="sm:col-span-2" />
+            </div>
+            <div class="flex justify-end gap-2">
+                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
+                <flux:button type="submit" variant="primary" data-test="save-salary-button">{{ __('Save payment') }}</flux:button>
+            </div>
+        </form>
+    </flux:modal>
+
+    {{-- Salary history --}}
+    <flux:modal name="salary-history" class="w-full max-w-lg">
+        @if ($emp = $this->historyEmployee)
+            <div class="flex flex-col gap-5">
+                <div>
+                    <flux:heading size="lg">{{ __('Salary history') }}</flux:heading>
+                    <flux:text class="mt-1">{{ $emp->name }}{{ $emp->salary ? ' · '.$money($emp->salary).__('/mo') : '' }}</flux:text>
+                </div>
+                @forelse ($emp->salaryPayments->groupBy('period') as $period => $payments)
+                    <div class="rounded-xl ring-1 ring-zinc-200/70 dark:ring-white/10">
+                        <div class="flex items-center justify-between border-b border-zinc-100 px-4 py-2.5 dark:border-white/5">
+                            <p class="text-sm font-semibold text-zinc-900 dark:text-white">{{ NepaliDate::periodLabel($period) }}</p>
+                            <p class="text-sm font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $money($payments->sum('amount')) }}</p>
+                        </div>
+                        @foreach ($payments as $sp)
+                            <div wire:key="sp-{{ $sp->id }}" class="flex items-center gap-3 px-4 py-2 text-sm">
+                                <span class="text-zinc-500" title="{{ $sp->paid_on->format('j M Y') }}">{{ $sp->paid_on->toNepali() }}</span>
+                                <span class="min-w-0 flex-1 truncate text-xs text-zinc-400">{{ $sp->note }}</span>
+                                <span class="font-medium text-zinc-700 tabular-nums dark:text-zinc-200">{{ $money($sp->amount) }}</span>
+                                <button type="button" wire:click="deleteSalaryPayment({{ $sp->id }})" wire:confirm="{{ __('Delete this salary payment?') }}" class="text-zinc-300 hover:text-rose-500" aria-label="{{ __('Delete payment') }}">
+                                    <flux:icon.trash variant="micro" class="size-4" />
+                                </button>
+                            </div>
+                        @endforeach
+                    </div>
+                @empty
+                    <p class="py-6 text-center text-sm text-zinc-500">{{ __('No salary paid yet.') }}</p>
+                @endforelse
+            </div>
+        @endif
+    </flux:modal>
+
     {{-- Remove --}}
     <flux:modal name="employee-delete" class="w-full max-w-sm">
         <div class="flex flex-col gap-5">
             <div>
                 <flux:heading size="lg">{{ __('Remove this employee?') }}</flux:heading>
-                <flux:text class="mt-1">{{ __('Their details will be deleted. To keep their history, set their status to Inactive instead.') }}</flux:text>
+                <flux:text class="mt-1">{{ __('Their details and salary history will be deleted. To keep their history, set their status to Inactive instead.') }}</flux:text>
             </div>
             <div class="flex justify-end gap-2">
                 <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
