@@ -48,9 +48,8 @@ new #[Title('Clients')] class extends Component {
     public string $formTab = 'details';
 
     private const FORM_TABS = [
-        'details' => ['name', 'company', 'phone', 'clientStatus', 'email'],
-        'package' => ['package', 'price', 'billing_cycle', 'progress'],
-        'social' => ['facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url', 'notes'],
+        'details' => ['name', 'company', 'phone', 'clientStatus', 'email', 'notes'],
+        'package' => ['package', 'price', 'billing_cycle', 'progress', 'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url'],
     ];
 
     public function mount(): void
@@ -633,218 +632,163 @@ new #[Title('Clients')] class extends Component {
     {{-- Create / edit --}}
     @php
         $formTabs = [
-            'details' => ['label' => __('Details'), 'hint' => __('Name and contact'), 'fields' => ['name', 'company', 'phone', 'clientStatus', 'email']],
-            'package' => ['label' => __('Package'), 'hint' => __('Plan, price and progress'), 'fields' => ['package', 'price', 'billing_cycle', 'progress']],
-            'social' => ['label' => __('Social & notes'), 'hint' => __('Profiles and notes'), 'fields' => ['facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url', 'notes']],
-        ];
-        $previewBg = [
-            '' => 'from-brand-500 to-brand-700 text-white',
-            'basic' => 'from-emerald-400 to-teal-600 text-white',
-            'standard' => 'from-brand-400 to-brand-700 text-white',
-            'premium' => 'from-amber-300 via-yellow-200 to-amber-400 text-amber-950',
-            'enterprise' => 'from-slate-600 to-slate-800 text-white',
+            'details' => ['label' => __('Details'), 'fields' => ['name', 'company', 'phone', 'clientStatus', 'email', 'notes']],
+            'package' => ['label' => __('Package & social'), 'fields' => ['package', 'price', 'billing_cycle', 'progress', 'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url']],
         ];
         $seg = 'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition';
         $segOn = 'bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-800 dark:text-white dark:ring-white/10';
         $segOff = 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-white';
+        $tierPick = [
+            'basic' => 'text-emerald-600 ring-emerald-500 bg-emerald-50 dark:bg-emerald-500/10',
+            'standard' => 'text-brand-600 ring-brand-500 bg-brand-50 dark:bg-brand-500/10',
+            'premium' => 'text-amber-600 ring-amber-400 bg-amber-50 dark:bg-amber-500/10',
+            'enterprise' => 'text-slate-700 ring-slate-500 bg-slate-100 dark:bg-white/10 dark:text-slate-200',
+        ];
     @endphp
-    <flux:modal name="client-form" class="w-full max-w-4xl overflow-hidden p-0!" :closable="false">
+    <flux:modal name="client-form" class="w-full max-w-2xl overflow-hidden p-0!" :closable="false">
         <form
             wire:submit="save"
             x-data="{
                 tab: $wire.entangle('formTab'),
-                steps: ['details', 'package', 'social'],
-                bg: @js($previewBg),
-                labels: @js(collect(Client::PACKAGES)->map(fn ($p) => __($p['label']))),
-                cycles: { monthly: '/mo', yearly: '/yr', one_time: ' one-time' },
-                get index() { return this.steps.indexOf(this.tab) },
-                get initials() {
-                    const parts = ($wire.name || '').trim().split(/\s+/).filter(Boolean);
-                    return parts.length ? (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() : '?';
-                },
-                get price() {
-                    const n = parseFloat($wire.price);
-                    return isNaN(n) ? '' : @js(config('app.currency')) + ' ' + n.toLocaleString('en-US');
-                },
-                next() { this.tab = this.steps[Math.min(this.index + 1, 2)] },
-                back() { this.tab = this.steps[Math.max(this.index - 1, 0)] },
+                get step() { return this.tab === 'package' ? 2 : 1 },
             }"
-            class="grid md:grid-cols-[17rem_1fr]"
+            class="flex flex-col"
         >
-            {{-- Live preview + steps --}}
-            <aside class="relative hidden flex-col gap-6 overflow-hidden bg-linear-to-br p-6 transition-colors duration-500 md:flex" :class="bg[$wire.package || '']">
-                <div class="absolute inset-0 opacity-20 [background-image:radial-gradient(currentColor_1px,transparent_1px)] [background-size:16px_16px] [mask-image:linear-gradient(to_bottom,black,transparent_60%)]"></div>
-
-                <div class="relative">
-                    <p class="text-xs font-medium opacity-75">{{ __('Preview') }}</p>
-                    <div class="mt-3 rounded-2xl bg-white/20 p-4 shadow-[0_18px_40px_-20px_rgb(15_23_42/0.5)] ring-1 ring-white/30 backdrop-blur-md">
-                        <div class="flex items-center gap-3">
-                            <span class="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/90 text-sm font-semibold text-zinc-800 shadow-sm" x-text="initials"></span>
-                            <div class="min-w-0">
-                                <p class="truncate font-semibold" x-text="$wire.name || @js(__('New client'))"></p>
-                                <p class="truncate text-xs opacity-80" x-text="$wire.company || @js(__('Independent'))"></p>
-                            </div>
-                        </div>
-                        <div class="mt-4 flex items-center justify-between gap-2">
-                            <span class="inline-flex items-center gap-1.5 rounded-md bg-white/25 px-2 py-0.5 text-xs font-semibold" x-show="$wire.package">
-                                @foreach (Client::PACKAGES as $key => $p)
-                                    <flux:icon :icon="$p['icon']" variant="micro" class="size-3.5" x-show="$wire.package === '{{ $key }}'" />
-                                @endforeach
-                                <span x-text="labels[$wire.package]"></span>
-                            </span>
-                            <span class="text-xs opacity-75" x-show="! $wire.package">{{ __('No package') }}</span>
-                            <span class="text-sm font-semibold tabular-nums" x-show="price"><span x-text="price"></span><span class="text-xs font-normal opacity-75" x-text="cycles[$wire.billing_cycle]"></span></span>
-                        </div>
-                        <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-white/30"><div class="h-full rounded-full bg-white transition-[width] duration-300" :style="`width: ${$wire.progress}%`"></div></div>
-                        <p class="mt-2 text-[0.6875rem] opacity-80"><span class="capitalize" x-text="$wire.clientStatus"></span> · <span x-text="$wire.progress"></span>% {{ __('done') }}</p>
-                    </div>
-                </div>
-
-                <nav class="relative mt-auto flex flex-col gap-1" aria-label="{{ __('Form steps') }}">
-                    @foreach ($formTabs as $key => $t)
-                        <button type="button" @click="tab = '{{ $key }}'" class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-start transition" :class="tab === '{{ $key }}' ? 'bg-white/25 ring-1 ring-white/30' : 'opacity-75 hover:bg-white/10 hover:opacity-100'">
-                            <span class="flex size-7 shrink-0 items-center justify-center rounded-full bg-white/90 text-xs font-semibold text-zinc-800">{{ $loop->iteration }}</span>
-                            <span class="min-w-0 flex-1">
-                                <span class="block text-sm font-semibold">{{ $t['label'] }}</span>
-                                <span class="block truncate text-[0.6875rem] opacity-75">{{ $t['hint'] }}</span>
-                            </span>
-                            @if ($errors->hasAny($t['fields']))
-                                <span class="size-2 rounded-full bg-rose-500 ring-2 ring-white" title="{{ __('Needs attention') }}"></span>
-                            @endif
-                        </button>
-                    @endforeach
-                </nav>
-            </aside>
-
-            {{-- Fields --}}
-            <div class="flex min-h-[32rem] flex-col p-6">
+            {{-- Header with stepper --}}
+            <div class="border-b border-zinc-100 bg-linear-to-b from-brand-50/70 to-white px-6 pt-5 pb-4 dark:border-white/5 dark:from-brand-500/10 dark:to-transparent">
                 <div class="flex items-start justify-between gap-4">
                     <div>
-                        <p class="text-xs font-medium text-brand-600 dark:text-brand-300">{{ __('Step') }} <span x-text="index + 1"></span> {{ __('of 3') }}</p>
-                        <flux:heading size="lg" class="mt-0.5">{{ $editingId ? __('Edit client') : __('New client') }}</flux:heading>
+                        <flux:heading size="lg">{{ $editingId ? __('Edit client') : __('New client') }}</flux:heading>
+                        <p class="mt-0.5 text-sm text-zinc-500">{{ __('Step') }} <span class="font-semibold text-brand-600 dark:text-brand-300" x-text="step"></span> {{ __('of 2') }}</p>
                     </div>
                     <flux:modal.close>
                         <flux:button variant="ghost" size="sm" icon="x-mark" :aria-label="__('Close')" />
                     </flux:modal.close>
                 </div>
 
-                {{-- Steps on small screens --}}
-                <div class="mt-4 flex gap-1 rounded-xl bg-zinc-100 p-1 md:hidden dark:bg-white/5">
+                <ol class="mt-4 flex items-center gap-3">
                     @foreach ($formTabs as $key => $t)
-                        <button type="button" @click="tab = '{{ $key }}'" class="{{ $seg }} relative" :class="tab === '{{ $key }}' ? @js($segOn) : @js($segOff)">
-                            {{ $t['label'] }}
-                            @if ($errors->hasAny($t['fields']))
-                                <span class="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-rose-500"></span>
-                            @endif
-                        </button>
+                        @if (! $loop->first)
+                            <li aria-hidden="true" class="h-1 flex-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-white/10">
+                                <div class="h-full rounded-full bg-brand-500 transition-[width] duration-500 ease-out" :style="`width: ${step === 2 ? 100 : 0}%`"></div>
+                            </li>
+                        @endif
+                        <li>
+                            <button type="button" @click="tab = '{{ $key }}'" class="group flex items-center gap-2.5">
+                                <span
+                                    class="relative flex size-8 items-center justify-center rounded-full text-sm font-semibold ring-1 transition duration-300"
+                                    :class="tab === '{{ $key }}'
+                                        ? 'bg-brand-500 text-white ring-brand-500 shadow-md shadow-brand-500/30'
+                                        : ({{ $loop->iteration }} < step ? 'bg-brand-50 text-brand-600 ring-brand-200 dark:bg-brand-500/15 dark:ring-brand-500/30' : 'bg-white text-zinc-400 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10')"
+                                >
+                                    <span x-show="! ({{ $loop->iteration }} < step)">{{ $loop->iteration }}</span>
+                                    <flux:icon.check variant="micro" class="size-4" x-show="{{ $loop->iteration }} < step" x-cloak />
+                                    @if ($errors->hasAny($t['fields']))
+                                        <span class="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-rose-500 ring-2 ring-white dark:ring-zinc-900"></span>
+                                    @endif
+                                </span>
+                                <span class="text-sm font-medium transition" :class="tab === '{{ $key }}' ? 'text-zinc-900 dark:text-white' : 'text-zinc-500 group-hover:text-zinc-800 dark:group-hover:text-white'">{{ $t['label'] }}</span>
+                            </button>
+                        </li>
                     @endforeach
-                </div>
+                </ol>
+            </div>
 
-                <div class="mt-6 flex-1">
-                    {{-- 1. Details --}}
-                    <div x-show="tab === 'details'" class="grid gap-4 sm:grid-cols-2">
-                        <flux:input wire:model="name" :label="__('Client name')" :placeholder="__('e.g. Sita Gurung')" required class="sm:col-span-2" />
-                        <flux:input wire:model="company" :label="__('Company')" :placeholder="__('e.g. Himalayan Cafe')" />
-                        <flux:input wire:model="phone" type="tel" :label="__('Phone')" placeholder="98XXXXXXXX" />
-                        <flux:input wire:model="email" type="email" :label="__('Email')" :badge="__('Optional')" class="sm:col-span-2" />
-                        <div class="sm:col-span-2">
-                            <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Status') }}</span>
-                            <div class="mt-2 flex gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-white/5">
-                                @foreach (['active' => ['Active', 'bg-emerald-500'], 'lead' => ['Lead', 'bg-amber-500'], 'inactive' => ['Inactive', 'bg-zinc-400']] as $value => [$label, $dot])
-                                    <button type="button" @click="$wire.clientStatus = '{{ $value }}'" class="{{ $seg }} inline-flex items-center justify-center gap-2" :class="$wire.clientStatus === '{{ $value }}' ? @js($segOn) : @js($segOff)">
-                                        <span class="{{ $dot }} size-2 rounded-full"></span>{{ __($label) }}
-                                    </button>
-                                @endforeach
-                            </div>
-                            <flux:error name="clientStatus" />
-                        </div>
-                    </div>
-
-                    {{-- 2. Package --}}
-                    <div x-show="tab === 'package'" x-cloak class="flex flex-col gap-5">
-                        <div>
-                            <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Package') }}</span>
-                            @php
-                                $tierPick = [
-                                    'basic' => 'text-emerald-600 ring-emerald-500 bg-emerald-50 dark:bg-emerald-500/10',
-                                    'standard' => 'text-brand-600 ring-brand-500 bg-brand-50 dark:bg-brand-500/10',
-                                    'premium' => 'text-amber-600 ring-amber-400 bg-amber-50 dark:bg-amber-500/10',
-                                    'enterprise' => 'text-slate-700 ring-slate-500 bg-slate-100 dark:bg-white/10 dark:text-slate-200',
-                                ];
-                            @endphp
-                            <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                                <button type="button" @click="$wire.package = ''" class="flex flex-col items-center gap-1.5 rounded-xl px-2 py-3 text-xs font-medium ring-1 transition" :class="! $wire.package ? 'bg-zinc-100 text-zinc-800 ring-zinc-400 dark:bg-white/10 dark:text-white' : 'text-zinc-500 ring-zinc-200 hover:ring-zinc-300 dark:ring-white/10'">
-                                    <flux:icon.minus-circle variant="mini" class="size-5" />{{ __('None') }}
+            {{-- Body --}}
+            <div class="px-6 py-5">
+                {{-- Step 1: details --}}
+                <div x-show="tab === 'details'" class="grid gap-4 sm:grid-cols-2">
+                    <flux:input wire:model="name" :label="__('Client name')" :placeholder="__('e.g. Sita Gurung')" required />
+                    <flux:input wire:model="company" :label="__('Company')" :placeholder="__('e.g. Himalayan Cafe')" />
+                    <flux:input wire:model="phone" type="tel" :label="__('Phone')" placeholder="98XXXXXXXX" />
+                    <flux:input wire:model="email" type="email" :label="__('Email')" :badge="__('Optional')" />
+                    <div class="sm:col-span-2">
+                        <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Status') }}</span>
+                        <div class="mt-2 flex gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-white/5">
+                            @foreach (['active' => ['Active', 'bg-emerald-500'], 'lead' => ['Lead', 'bg-amber-500'], 'inactive' => ['Inactive', 'bg-zinc-400']] as $value => [$label, $dot])
+                                <button type="button" @click="$wire.clientStatus = '{{ $value }}'" class="{{ $seg }} inline-flex items-center justify-center gap-2" :class="$wire.clientStatus === '{{ $value }}' ? @js($segOn) : @js($segOff)">
+                                    <span class="{{ $dot }} size-2 rounded-full"></span>{{ __($label) }}
                                 </button>
-                                @foreach (Client::PACKAGES as $key => $p)
-                                    <button type="button" @click="$wire.package = '{{ $key }}'" class="flex flex-col items-center gap-1.5 rounded-xl px-2 py-3 text-xs font-semibold ring-1 transition" :class="$wire.package === '{{ $key }}' ? @js($tierPick[$key].' ring-2') : 'text-zinc-500 ring-zinc-200 hover:ring-zinc-300 dark:ring-white/10'">
-                                        <flux:icon :icon="$p['icon']" variant="mini" class="size-5" />{{ __($p['label']) }}
-                                    </button>
-                                @endforeach
-                            </div>
-                            <flux:error name="package" />
-                        </div>
-
-                        <div class="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
-                            <flux:input wire:model="price" type="number" min="0" step="0.01" inputmode="decimal" :label="__('Price (:currency)', ['currency' => config('app.currency')])" placeholder="25000" />
-                            <div>
-                                <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Billing') }}</span>
-                                <div class="mt-2 flex gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-white/5">
-                                    @foreach (['monthly' => 'Monthly', 'yearly' => 'Yearly', 'one_time' => 'One-time'] as $value => $label)
-                                        <button type="button" @click="$wire.billing_cycle = '{{ $value }}'" class="{{ $seg }} whitespace-nowrap" :class="$wire.billing_cycle === '{{ $value }}' ? @js($segOn) : @js($segOff)">{{ __($label) }}</button>
-                                    @endforeach
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="rounded-xl bg-zinc-50 p-4 ring-1 ring-zinc-100 dark:bg-white/[0.03] dark:ring-white/5">
-                            <div class="flex items-center justify-between">
-                                <label for="client-progress" class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Work progress') }}</label>
-                                <span class="text-sm font-semibold text-brand-600 tabular-nums dark:text-brand-300"><span x-text="$wire.progress"></span>%</span>
-                            </div>
-                            <input id="client-progress" type="range" min="0" max="100" step="5" x-model.number="$wire.progress" class="mt-3 w-full accent-brand-500">
-                            <flux:error name="progress" />
-                        </div>
-                    </div>
-
-                    {{-- 3. Social & notes --}}
-                    <div x-show="tab === 'social'" x-cloak class="flex flex-col gap-4">
-                        <div class="grid gap-4 sm:grid-cols-2">
-                            @foreach ([
-                                'facebook_url' => ['facebook', 'Facebook', 'https://facebook.com/…', 'text-[#1877F2]'],
-                                'instagram_url' => ['instagram', 'Instagram', 'https://instagram.com/…', 'text-[#E4405F]'],
-                                'tiktok_url' => ['tiktok', 'TikTok', 'https://tiktok.com/@…', 'text-zinc-900 dark:text-white'],
-                                'google_business_url' => ['google', __('Google Business Profile'), 'https://g.page/…', 'text-[#4285F4]'],
-                            ] as $field => [$icon, $label, $placeholder, $color])
-                                <div class="flex flex-col gap-2">
-                                    <label for="{{ $field }}" class="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-white">
-                                        <x-social-icon :name="$icon" class="size-4 {{ $color }}" /> {{ $label }}
-                                    </label>
-                                    <flux:input id="{{ $field }}" wire:model="{{ $field }}" type="url" :placeholder="$placeholder" />
-                                    <flux:error :name="$field" />
-                                </div>
                             @endforeach
                         </div>
+                        <flux:error name="clientStatus" />
+                    </div>
+                    <div class="sm:col-span-2">
                         <flux:textarea wire:model="notes" :label="__('Notes')" rows="3" :placeholder="__('Anything the team should know about this client')" />
                     </div>
                 </div>
 
-                {{-- Footer --}}
-                <div class="mt-6 flex items-center justify-between gap-2 border-t border-zinc-100 pt-4 dark:border-white/5">
-                    <flux:button variant="ghost" icon="arrow-left" x-show="index > 0" @click="back()">{{ __('Back') }}</flux:button>
-                    <span x-show="index === 0"></span>
-                    <div class="flex items-center gap-2">
-                        <flux:modal.close>
-                            <flux:button variant="ghost">{{ __('Cancel') }}</flux:button>
-                        </flux:modal.close>
-                        @if ($editingId)
-                            <flux:button variant="filled" icon-trailing="arrow-right" x-show="index < 2" @click="next()">{{ __('Next') }}</flux:button>
-                            <flux:button type="submit" variant="primary" data-test="save-client-button">{{ __('Save changes') }}</flux:button>
-                        @else
-                            <flux:button variant="primary" icon-trailing="arrow-right" x-show="index < 2" @click="next()">{{ __('Next') }}</flux:button>
-                            <flux:button type="submit" variant="primary" icon="check" x-show="index === 2" data-test="save-client-button">{{ __('Add client') }}</flux:button>
-                        @endif
+                {{-- Step 2: package & social --}}
+                <div x-show="tab === 'package'" x-cloak class="flex flex-col gap-4">
+                    <div>
+                        <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Package') }}</span>
+                        <div class="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
+                            <button type="button" @click="$wire.package = ''" class="flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-xs font-medium ring-1 transition" :class="! $wire.package ? 'bg-zinc-100 text-zinc-800 ring-2 ring-zinc-400 dark:bg-white/10 dark:text-white' : 'text-zinc-500 ring-zinc-200 hover:ring-zinc-300 dark:ring-white/10'">
+                                <flux:icon.minus-circle variant="mini" class="size-5" />{{ __('None') }}
+                            </button>
+                            @foreach (Client::PACKAGES as $key => $p)
+                                <button type="button" @click="$wire.package = '{{ $key }}'" class="flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-xs font-semibold ring-1 transition" :class="$wire.package === '{{ $key }}' ? @js($tierPick[$key].' ring-2') : 'text-zinc-500 ring-zinc-200 hover:ring-zinc-300 dark:ring-white/10'">
+                                    <flux:icon :icon="$p['icon']" variant="mini" class="size-5" />{{ __($p['label']) }}
+                                </button>
+                            @endforeach
+                        </div>
+                        <flux:error name="package" />
                     </div>
+
+                    <div class="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+                        <flux:input wire:model="price" type="number" min="0" step="0.01" inputmode="decimal" :label="__('Price (:currency)', ['currency' => config('app.currency')])" placeholder="25000" />
+                        <div>
+                            <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Billing') }}</span>
+                            <div class="mt-2 flex gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-white/5">
+                                @foreach (['monthly' => 'Monthly', 'yearly' => 'Yearly', 'one_time' => 'One-time'] as $value => $label)
+                                    <button type="button" @click="$wire.billing_cycle = '{{ $value }}'" class="{{ $seg }} whitespace-nowrap" :class="$wire.billing_cycle === '{{ $value }}' ? @js($segOn) : @js($segOff)">{{ __($label) }}</button>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-4 rounded-xl bg-zinc-50 px-4 py-3 ring-1 ring-zinc-100 dark:bg-white/[0.03] dark:ring-white/5">
+                        <label for="client-progress" class="shrink-0 text-sm font-medium text-zinc-800 dark:text-white">{{ __('Work progress') }}</label>
+                        <input id="client-progress" type="range" min="0" max="100" step="5" x-model.number="$wire.progress" class="min-w-0 flex-1 accent-brand-500">
+                        <span class="w-10 text-end text-sm font-semibold text-brand-600 tabular-nums dark:text-brand-300"><span x-text="$wire.progress"></span>%</span>
+                    </div>
+
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        @foreach ([
+                            'facebook_url' => ['facebook', 'Facebook', 'https://facebook.com/…', 'text-[#1877F2]'],
+                            'instagram_url' => ['instagram', 'Instagram', 'https://instagram.com/…', 'text-[#E4405F]'],
+                            'tiktok_url' => ['tiktok', 'TikTok', 'https://tiktok.com/@…', 'text-zinc-900 dark:text-white'],
+                            'google_business_url' => ['google', __('Google Business'), 'https://g.page/…', 'text-[#4285F4]'],
+                        ] as $field => [$icon, $label, $placeholder, $color])
+                            <div>
+                                <label class="flex items-center gap-2.5 rounded-lg border border-zinc-200 bg-white px-3 shadow-xs transition focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-500/20 dark:border-white/10 dark:bg-white/5">
+                                    <x-social-icon :name="$icon" class="size-4 shrink-0 {{ $color }}" />
+                                    <span class="sr-only">{{ $label }}</span>
+                                    <input wire:model="{{ $field }}" type="url" placeholder="{{ $label }} · {{ $placeholder }}" class="h-10 min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-zinc-800 placeholder:text-zinc-400 focus:ring-0 focus:outline-none dark:text-white">
+                                </label>
+                                <flux:error :name="$field" />
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+
+            {{-- Footer --}}
+            <div class="flex items-center justify-between gap-2 border-t border-zinc-100 bg-zinc-50/60 px-6 py-4 dark:border-white/5 dark:bg-white/[0.02]">
+                <div>
+                    <flux:button variant="ghost" icon="arrow-left" x-show="step === 2" x-cloak @click="tab = 'details'">{{ __('Back') }}</flux:button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <flux:modal.close>
+                        <flux:button variant="ghost">{{ __('Cancel') }}</flux:button>
+                    </flux:modal.close>
+                    @if ($editingId)
+                        <flux:button variant="filled" icon-trailing="arrow-right" x-show="step === 1" @click="tab = 'package'">{{ __('Next') }}</flux:button>
+                        <flux:button type="submit" variant="primary" data-test="save-client-button">{{ __('Save changes') }}</flux:button>
+                    @else
+                        <flux:button variant="primary" icon-trailing="arrow-right" x-show="step === 1" @click="tab = 'package'">{{ __('Next') }}</flux:button>
+                        <flux:button type="submit" variant="primary" icon="check" x-show="step === 2" x-cloak data-test="save-client-button">{{ __('Add client') }}</flux:button>
+                    @endif
                 </div>
             </div>
         </form>

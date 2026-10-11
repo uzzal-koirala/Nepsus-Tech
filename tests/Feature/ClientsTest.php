@@ -58,7 +58,7 @@ class ClientsTest extends TestCase
             ->set('instagram_url', 'not a url')
             ->call('save')
             ->assertHasErrors(['instagram_url'])
-            ->assertSet('formTab', 'social')
+            ->assertSet('formTab', 'package')
             ->set('instagram_url', '')
             ->set('name', '')
             ->call('save')
