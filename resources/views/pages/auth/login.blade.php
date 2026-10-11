@@ -47,9 +47,12 @@
             <!-- Remember Me -->
             <flux:checkbox class="mt-1" name="remember" :label="__('Keep me signed in')" :checked="old('remember')" />
 
-            <flux:button variant="primary" type="submit" class="h-11 w-full shadow-lg shadow-brand-500/25 transition active:scale-[0.98]" data-test="login-button">
+            <button type="submit" class="group mt-1 flex h-12 w-full items-center justify-between rounded-full bg-brand-500 py-1.5 ps-6 pe-1.5 font-medium text-white shadow-[0_14px_30px_-12px_rgb(49_81_254/0.7)] transition duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 active:scale-[0.98]" data-test="login-button">
                 {{ __('Sign in') }}
-            </flux:button>
+                <span class="flex size-9 items-center justify-center rounded-full bg-white/15 transition duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:translate-x-0.5 group-hover:scale-105">
+                    <flux:icon.arrow-right variant="micro" />
+                </span>
+            </button>
         </form>
     </div>
 </x-layouts::auth>
