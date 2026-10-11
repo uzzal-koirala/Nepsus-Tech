@@ -16,9 +16,6 @@ export default defineConfig({
                 bunny('Poppins', {
                     weights: [400, 500, 600, 700],
                 }),
-                bunny('Noto Sans Devanagari', {
-                    weights: [400, 500, 600],
-                }),
             ],
         }),
         tailwindcss(),

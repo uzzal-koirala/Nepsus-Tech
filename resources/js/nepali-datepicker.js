@@ -5,10 +5,8 @@ import calendar from '../data/bs-calendar.json' with { type: 'json' };
 const DAY = 86400000;
 const EPOCH = Date.UTC(1943, 3, 14); // BS 2000/01/01
 const YEARS = Object.keys(calendar).map(Number);
-const MONTHS = ['बैशाख', 'जेठ', 'असार', 'साउन', 'भदौ', 'असोज', 'कात्तिक', 'मंसिर', 'पुस', 'माघ', 'फागुन', 'चैत'];
-const WEEKDAYS = ['आइत', 'सोम', 'मंगल', 'बुध', 'बिहि', 'शुक्र', 'शनि'];
-
-export const digits = (n) => String(n).replace(/\d/g, (d) => '०१२३४५६७८९'[d]);
+const MONTHS = ['Baisakh', 'Jestha', 'Asar', 'Shrawan', 'Bhadra', 'Ashoj', 'Kartik', 'Mangsir', 'Poush', 'Magh', 'Falgun', 'Chaitra'];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const isoToday = () => {
     const now = new Date();
@@ -55,7 +53,6 @@ document.addEventListener('alpine:init', () => {
         months: MONTHS,
         weekdays: WEEKDAYS,
         years: YEARS,
-        digits,
 
         get selected() {
             return this.value ? adToBs(this.value) : null;
@@ -64,7 +61,7 @@ document.addEventListener('alpine:init', () => {
         get label() {
             const s = this.selected;
 
-            return s ? `${digits(s.d)} ${MONTHS[s.m]} ${digits(s.y)}` : '';
+            return s ? `${s.d} ${MONTHS[s.m]} ${s.y}` : '';
         },
 
         get adLabel() {

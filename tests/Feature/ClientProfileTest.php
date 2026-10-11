@@ -71,7 +71,7 @@ class ClientProfileTest extends TestCase
             ->set('agreementFile', UploadedFile::fake()->create('signed-agreement.pdf', 80, 'application/pdf'))
             ->call('saveAgreement')
             ->assertHasNoErrors()
-            ->assertSee('१७ बैशाख २०८४'); // 2027-04-30 in BS
+            ->assertSee('17 Baisakh 2084'); // 2027-04-30 in BS
 
         $client->refresh();
         $this->assertSame('2027-04-30', $client->contract_end->toDateString());

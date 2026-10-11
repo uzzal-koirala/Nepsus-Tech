@@ -16,7 +16,7 @@ final class NepaliDate
 {
     public const EPOCH_AD = '1943-04-14';
 
-    public const MONTHS = ['बैशाख', 'जेठ', 'असार', 'साउन', 'भदौ', 'असोज', 'कात्तिक', 'मंसिर', 'पुस', 'माघ', 'फागुन', 'चैत'];
+    public const MONTHS = ['Baisakh', 'Jestha', 'Asar', 'Shrawan', 'Bhadra', 'Ashoj', 'Kartik', 'Mangsir', 'Poush', 'Magh', 'Falgun', 'Chaitra'];
 
     private static ?array $calendar = null;
 
@@ -85,7 +85,7 @@ final class NepaliDate
     }
 
     /**
-     * e.g. "२६ असोज २०८३"; falls back to the AD date outside the supported range.
+     * e.g. "26 Ashoj 2083"; falls back to the AD date outside the supported range.
      */
     public static function format(?CarbonInterface $date, bool $withYear = true): string
     {
@@ -99,11 +99,11 @@ final class NepaliDate
 
         [$year, $month, $day] = $bs;
 
-        return self::digits($day).' '.self::MONTHS[$month - 1].($withYear ? ' '.self::digits($year) : '');
+        return $day.' '.self::MONTHS[$month - 1].($withYear ? ' '.$year : '');
     }
 
     /**
-     * e.g. "असोज २०८३".
+     * e.g. "Ashoj 2083".
      */
     public static function monthYear(?CarbonInterface $date): string
     {
@@ -111,11 +111,6 @@ final class NepaliDate
             return (string) $date?->format('M Y');
         }
 
-        return self::MONTHS[$bs[1] - 1].' '.self::digits($bs[0]);
-    }
-
-    public static function digits(int|string $value): string
-    {
-        return strtr((string) $value, ['०', '१', '२', '३', '४', '५', '६', '७', '८', '९']);
+        return self::MONTHS[$bs[1] - 1].' '.$bs[0];
     }
 }

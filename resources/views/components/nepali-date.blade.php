@@ -1,7 +1,7 @@
 @props([
     'label' => null,
     'name' => null,
-    'placeholder' => 'मिति छान्नुहोस्',
+    'placeholder' => 'Pick a date',
 ])
 
 @php
@@ -28,7 +28,7 @@
         :aria-expanded="open"
     >
         <flux:icon.calendar-days variant="micro" class="size-4 shrink-0 text-zinc-400" />
-        <span class="flex-1 truncate" :class="value ? 'text-zinc-900 dark:text-white' : 'text-zinc-400'" x-text="label || @js($placeholder)"></span>
+        <span class="flex-1 truncate" :class="value ? 'text-zinc-900 dark:text-white' : 'text-zinc-400'" x-text="label || @js(__($placeholder))"></span>
         <span class="text-xs text-zinc-400 tabular-nums" x-text="adLabel"></span>
     </button>
 
@@ -50,7 +50,7 @@
                 </select>
                 <select x-model.number="viewY" class="rounded-md border-0 bg-transparent py-1 ps-2 pe-7 text-sm font-semibold text-zinc-900 focus:ring-2 focus:ring-brand-500 dark:text-white" aria-label="{{ __('Year') }}">
                     <template x-for="year in years" :key="year">
-                        <option :value="year" x-text="digits(year)" :selected="year === viewY"></option>
+                        <option :value="year" x-text="year" :selected="year === viewY"></option>
                     </template>
                 </select>
             </div>
@@ -76,14 +76,14 @@
                         :class="isSelected(day)
                             ? 'bg-brand-500 font-semibold text-white shadow-sm shadow-brand-500/40'
                             : (isToday(day) ? 'font-semibold text-brand-600 ring-1 ring-brand-300 dark:text-brand-300' : (i % 7 === 6 ? 'text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10' : 'text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-white/5'))"
-                        x-text="day && digits(day)"
+                        x-text="day || ''"
                     ></button>
                 </div>
             </template>
         </div>
 
         <div class="mt-2 flex items-center justify-between border-t border-zinc-100 pt-2 dark:border-white/5">
-            <button type="button" @click="pickToday()" class="rounded-md px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-500/10">आज</button>
+            <button type="button" @click="pickToday()" class="rounded-md px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-500/10">{{ __('Today') }}</button>
             <button type="button" @click="clear()" class="rounded-md px-2 py-1 text-xs font-medium text-zinc-500 hover:bg-zinc-100 dark:hover:bg-white/5">{{ __('Clear') }}</button>
         </div>
     </div>

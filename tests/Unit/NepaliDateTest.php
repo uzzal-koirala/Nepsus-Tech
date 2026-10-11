@@ -36,11 +36,11 @@ class NepaliDateTest extends TestCase
         $this->assertSame('2026-10-17 23:59:59', $end->toDateTimeString());
     }
 
-    public function test_formats_in_nepali_script(): void
+    public function test_formats_with_english_month_names(): void
     {
-        $this->assertSame('२६ असोज २०८३', NepaliDate::format(Carbon::parse('2026-10-12')));
-        $this->assertSame('२६ असोज', NepaliDate::format(Carbon::parse('2026-10-12'), withYear: false));
-        $this->assertSame('असोज २०८३', NepaliDate::monthYear(Carbon::parse('2026-10-12')));
+        $this->assertSame('26 Ashoj 2083', NepaliDate::format(Carbon::parse('2026-10-12')));
+        $this->assertSame('26 Ashoj', NepaliDate::format(Carbon::parse('2026-10-12'), withYear: false));
+        $this->assertSame('Ashoj 2083', NepaliDate::monthYear(Carbon::parse('2026-10-12')));
         $this->assertSame('', NepaliDate::format(null));
         $this->assertSame('1 Jan 1900', NepaliDate::format(Carbon::parse('1900-01-01')));
     }
