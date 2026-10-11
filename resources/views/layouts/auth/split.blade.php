@@ -12,6 +12,9 @@
                     <div class="absolute inset-0 -z-10 opacity-25 [background-image:radial-gradient(white_1px,transparent_1px)] [background-size:24px_24px] [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]"></div>
                     {{-- Depth glow --}}
                     <div class="absolute -bottom-40 left-1/2 -z-10 size-[36rem] -translate-x-1/2 rounded-full bg-brand-800/60 blur-3xl"></div>
+                    {{-- Orbit rings --}}
+                    <div class="absolute -bottom-56 left-1/2 -z-10 hidden size-[46rem] -translate-x-1/2 rounded-full border border-white/10 lg:block"></div>
+                    <div class="absolute -bottom-40 left-1/2 -z-10 hidden size-[36rem] -translate-x-1/2 rounded-full border border-white/15 lg:block"></div>
                     {{-- Sun (from the logo) --}}
                     <div class="absolute top-[42%] left-1/2 -z-10 size-56 -translate-x-1/2 rounded-full bg-sun shadow-[0_0_120px_20px_rgb(255_194_14/0.35)] sm:size-72 lg:top-auto lg:-bottom-16 lg:size-[22rem]"></div>
 
@@ -34,25 +37,42 @@
                     <img
                         src="{{ asset('images/auth-crew.webp') }}"
                         alt="{{ __('Three cartoon characters in sunglasses: two bunnies and an owl') }}"
-                        class="absolute inset-x-0 bottom-0 mx-auto h-[78%] w-auto max-w-none drop-shadow-[0_24px_30px_rgb(18_26_66/0.45)] lg:h-[54%]"
+                        class="absolute inset-x-0 bottom-0 mx-auto h-[78%] w-auto max-w-none drop-shadow-[0_24px_30px_rgb(18_26_66/0.45)] lg:h-[56%]"
                     >
 
-                    {{-- Feature cards --}}
-                    @foreach ([
-                        ['icon' => 'building-office-2', 'title' => __('Client profiles'), 'text' => __('Contacts, notes and history'), 'pos' => 'left-5 bottom-[34%]'],
-                        ['icon' => 'check-circle', 'title' => __('Task boards'), 'text' => __('Owners and due dates'), 'pos' => 'right-5 bottom-[18%]'],
-                        ['icon' => 'user-group', 'title' => __('Team activity'), 'text' => __('See who did what, and when'), 'pos' => 'left-5 bottom-6'],
-                    ] as $card)
-                        <div class="{{ $card['pos'] }} absolute hidden items-center gap-3 rounded-2xl bg-brand-950/35 py-2.5 ps-2.5 pe-4 text-white shadow-[0_12px_30px_-12px_rgb(18_26_66/0.6)] ring-1 ring-white/25 backdrop-blur-md lg:flex">
-                            <span class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-sun text-brand-950">
-                                <flux:icon :icon="$card['icon']" variant="mini" class="size-4.5" />
-                            </span>
-                            <span class="grid leading-tight">
-                                <span class="text-sm font-semibold">{{ $card['title'] }}</span>
-                                <span class="text-xs text-brand-100">{{ $card['text'] }}</span>
+                    {{-- Product preview: task card --}}
+                    <div class="absolute right-6 bottom-[30%] hidden w-56 rotate-3 rounded-2xl bg-white p-4 text-zinc-900 shadow-[0_24px_50px_-20px_rgb(18_26_66/0.7)] lg:block" aria-hidden="true">
+                        <div class="flex items-center justify-between">
+                            <span class="rounded-md bg-brand-50 px-2 py-0.5 text-[0.6875rem] font-semibold text-brand-600">{{ __('Task') }}</span>
+                            <span class="size-2 rounded-full bg-sun"></span>
+                        </div>
+                        <p class="mt-2.5 text-sm font-semibold">{{ __('Send project proposal') }}</p>
+                        <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-100">
+                            <div class="h-full w-2/3 rounded-full bg-brand-500"></div>
+                        </div>
+                        <div class="mt-3 flex items-center justify-between">
+                            <div class="flex -space-x-1.5">
+                                <span class="size-6 rounded-full bg-sun ring-2 ring-white"></span>
+                                <span class="size-6 rounded-full bg-brand-300 ring-2 ring-white"></span>
+                                <span class="size-6 rounded-full bg-zinc-800 ring-2 ring-white"></span>
+                            </div>
+                            <span class="inline-flex items-center gap-1 text-[0.6875rem] font-medium text-emerald-600">
+                                <flux:icon.check-circle variant="micro" class="size-3.5" />
+                                {{ __('On track') }}
                             </span>
                         </div>
-                    @endforeach
+                    </div>
+
+                    {{-- Product preview: notification --}}
+                    <div class="absolute bottom-8 left-6 hidden -rotate-2 items-center gap-3 rounded-2xl bg-brand-950/40 py-2.5 ps-2.5 pe-5 text-white shadow-[0_16px_40px_-16px_rgb(18_26_66/0.8)] ring-1 ring-white/20 backdrop-blur-md lg:flex" aria-hidden="true">
+                        <span class="flex size-9 items-center justify-center rounded-full bg-emerald-400 text-brand-950">
+                            <flux:icon.check variant="mini" class="size-4.5" />
+                        </span>
+                        <span class="grid leading-tight">
+                            <span class="text-sm font-semibold">{{ __('Task completed') }}</span>
+                            <span class="text-xs text-brand-100">{{ __('Moved to Done') }}</span>
+                        </span>
+                    </div>
                 </aside>
 
                 {{-- Form --}}
