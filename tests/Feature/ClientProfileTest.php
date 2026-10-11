@@ -99,6 +99,7 @@ class ClientProfileTest extends TestCase
             ->call('openPlan')
             ->assertSet('planAmount', '150000')
             ->assertSet('planStart', '2026-08-31')
+            ->assertSet('planMonths', '3')
             ->set('planType', 'half_advance')
             ->set('planAdvancePaid', true)
             ->call('savePlan')

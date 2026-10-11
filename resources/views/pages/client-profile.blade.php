@@ -4,6 +4,7 @@ use App\Models\Client;
 use App\Models\Document;
 use App\Models\Payment;
 use Flux\Flux;
+use App\Support\NepaliDate;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
@@ -28,7 +29,7 @@ new #[Title('Client profile')] class extends Component {
     public string $planType = 'half_advance';
     public string $planAmount = '';
     public string $planStart = '';
-    public string $planEnd = '';
+    public string $planMonths = '';
     public string $planInstallments = '3';
     public bool $planAdvancePaid = false;
 
@@ -129,7 +130,7 @@ new #[Title('Client profile')] class extends Component {
         $this->planType = $this->client->payment_plan ?? 'half_advance';
         $this->planAmount = (string) ($this->client->totalValue() ?? '');
         $this->planStart = (string) ($this->client->contract_start ?? today())->toDateString();
-        $this->planEnd = (string) $this->client->contract_end?->toDateString();
+        $this->planMonths = (string) ($this->client->agreementMonths() ?? 1);
         $this->planInstallments = (string) ($this->client->installments ?? 3);
         $this->planAdvancePaid = false;
         $this->resetErrorBag();
@@ -149,7 +150,7 @@ new #[Title('Client profile')] class extends Component {
 
         try {
             $start = Date::parse($this->planStart);
-            $end = $this->planEnd ? Date::parse($this->planEnd) : null;
+            $end = (int) $this->planMonths > 0 ? NepaliDate::periodEndAfter($start, (int) $this->planMonths) : null;
         } catch (\Throwable) {
             return [];
         }
@@ -163,7 +164,7 @@ new #[Title('Client profile')] class extends Component {
             'planType' => ['required', Rule::in(array_keys(Client::PAYMENT_PLANS))],
             'planAmount' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
             'planStart' => ['required', 'date'],
-            'planEnd' => ['nullable', 'date', 'after_or_equal:planStart'],
+            'planMonths' => ['nullable', 'integer', 'min:1', 'max:120'],
             'planInstallments' => ['exclude_unless:planType,installments', 'required', 'integer', 'min:2', 'max:36'],
             'planAdvancePaid' => ['boolean'],
         ]);
@@ -812,7 +813,27 @@ new #[Title('Client profile')] class extends Component {
                     <flux:error name="planAmount" />
                 </flux:field>
                 <x-nepali-date wire:model.live="planStart" :label="__('Start date')" />
-                <x-nepali-date wire:model.live="planEnd" :label="__('End date')" />
+                @if (in_array($planType, ['half_advance', 'after_work']))
+                    <flux:field>
+                        <flux:label>{{ __('Duration') }}</flux:label>
+                        <flux:input.group>
+                            <flux:input wire:model.live.debounce.400ms="planMonths" type="number" min="1" max="120" step="1" inputmode="numeric" placeholder="3" />
+                            <flux:input.group.suffix>{{ __('month(s)') }}</flux:input.group.suffix>
+                        </flux:input.group>
+                        <flux:error name="planMonths" />
+                    </flux:field>
+                    @if ($planStart && (int) $planMonths > 0)
+                        <div class="flex items-center gap-2.5 rounded-lg bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800 ring-1 ring-emerald-100 sm:col-span-2 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20">
+                            <flux:icon.document-check variant="micro" class="size-4 shrink-0" />
+                            <span>
+                                <span class="font-semibold">{{ Date::parse($planStart)->toNepali() }}</span>
+                                <span class="opacity-60">→</span>
+                                <span class="font-semibold">{{ NepaliDate::periodEndAfter(Date::parse($planStart), (int) $planMonths)->toNepali() }}</span>
+                                <span class="opacity-75">· {{ trans_choice(':count month|:count months', (int) $planMonths) }}</span>
+                            </span>
+                        </div>
+                    @endif
+                @endif
                 @if ($planType === 'installments')
                     <flux:field>
                         <flux:label>{{ __('Number of installments') }}</flux:label>

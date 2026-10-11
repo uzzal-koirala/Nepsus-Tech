@@ -130,11 +130,11 @@ class ClientsTest extends TestCase
             ->set('formTab', 'details')
             ->set('package', (string) \App\Models\Package::first()->id)
             ->set('agreementStart', '2026-08-31')
-            ->set('agreementEnd', '2026-01-01')
+            ->set('agreementMonths', '0')
             ->call('save')
-            ->assertHasErrors(['agreementEnd'])
+            ->assertHasErrors(['agreementMonths'])
             ->assertSet('formTab', 'package')
-            ->set('agreementEnd', '2027-08-31')
+            ->set('agreementMonths', '12')
             ->set('name', '')
             ->call('save')
             ->assertSet('formTab', 'details');
@@ -154,7 +154,8 @@ class ClientsTest extends TestCase
         Livewire::test('pages::clients')
             ->call('edit', $client->id)
             ->assertSet('agreementStart', '2026-08-31')
-            ->set('agreementEnd', '2026-11-30')
+            ->assertSet('agreementMonths', '6')
+            ->set('agreementMonths', '3')
             ->set('serviceType', 'website')
             ->set('billingMonths', '')
             ->call('save')
@@ -272,7 +273,7 @@ class ClientsTest extends TestCase
             ->assertHasErrors(['progress'])
             ->set('progress', 60)
             ->set('agreementStart', '2026-08-31') // 15 Bhadra 2083
-            ->set('agreementEnd', '2027-08-31')   // 14 Bhadra 2084
+            ->set('agreementMonths', '12')        // ends 14 Bhadra 2084
             ->set('clientStatus', 'lead')
             ->call('save')
             ->assertHasErrors(['clientStatus'])
