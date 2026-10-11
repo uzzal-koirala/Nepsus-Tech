@@ -53,13 +53,14 @@ new #[Title('Clients')] class extends Component {
     public int $progress = 0;
     public string $agreementStart = '';
     public string $agreementMonths = '';
+    public string $agreementEnd = '';
 
     /** Step shown in the add/edit form. */
     public string $formTab = 'details';
 
     private const FORM_TABS = [
         'details' => ['photo', 'name', 'company', 'phone', 'clientStatus', 'email'],
-        'package' => ['serviceType', 'package', 'price', 'billingMonths', 'videoCount', 'agreementStart', 'agreementMonths', 'progress'],
+        'package' => ['serviceType', 'package', 'price', 'billingMonths', 'videoCount', 'agreementStart', 'agreementMonths', 'agreementEnd', 'progress'],
     ];
 
     public function updatedPhoto(): void
@@ -238,6 +239,7 @@ new #[Title('Clients')] class extends Component {
         $this->currentPhoto = $client->avatarUrl();
         $this->agreementStart = (string) $client->contract_start?->toDateString();
         $this->agreementMonths = (string) ($client->agreementMonths() ?? '');
+        $this->agreementEnd = (string) $client->contract_end?->toDateString();
 
         foreach (['name', 'company', 'email', 'phone'] as $field) {
             $this->{$field} = (string) $client->{$field};
@@ -268,8 +270,10 @@ new #[Title('Clients')] class extends Component {
             'billingMonths' => ['exclude_unless:serviceType,social_media', 'required', 'integer', 'min:1', 'max:120'],
             'videoCount' => ['exclude_unless:serviceType,video', 'required', 'integer', 'min:1', 'max:1000'],
             'progress' => ['required', 'integer', 'min:0', 'max:100'],
-            'agreementStart' => ['nullable', 'date', 'required_with:agreementMonths'],
-            'agreementMonths' => ['nullable', 'integer', 'min:1', 'max:120'],
+            'agreementStart' => ['nullable', 'date'],
+            // Social media packages run a number of months; other work picks an end date.
+            'agreementMonths' => ['exclude_unless:serviceType,social_media', 'nullable', 'integer', 'min:1', 'max:120'],
+            'agreementEnd' => ['exclude_if:serviceType,social_media', 'nullable', 'date', 'after_or_equal:agreementStart'],
         ]);
 
         $data['status'] = $data['clientStatus'];
@@ -277,13 +281,17 @@ new #[Title('Clients')] class extends Component {
         $data['service_type'] = $this->serviceType;
         $data['billing_months'] = $this->serviceType === 'social_media' ? (int) $this->billingMonths : null;
         $data['video_count'] = $this->serviceType === 'video' ? (int) $this->videoCount : null;
-        unset($data['clientStatus'], $data['package'], $data['photo'], $data['serviceType'], $data['billingMonths'], $data['videoCount'], $data['agreementStart'], $data['agreementMonths']);
+        unset($data['clientStatus'], $data['package'], $data['photo'], $data['serviceType'], $data['billingMonths'], $data['videoCount'], $data['agreementStart'], $data['agreementMonths'], $data['agreementEnd']);
         $data = array_map(fn ($v) => $v === '' ? null : $v, $data);
 
         $data['contract_start'] = $this->agreementStart ?: null;
-        $data['contract_end'] = $this->agreementStart && $this->agreementMonths
-            ? NepaliDate::periodEndAfter(Date::parse($this->agreementStart), (int) $this->agreementMonths)
-            : null;
+        $data['contract_end'] = match (true) {
+            ! $this->agreementStart => null,
+            $this->serviceType === 'social_media' => $this->agreementMonths
+                ? NepaliDate::periodEndAfter(Date::parse($this->agreementStart), (int) $this->agreementMonths)
+                : null,
+            default => $this->agreementEnd ?: null,
+        };
 
         if (! $this->editingId) {
             $data['position'] = (int) Client::min('position') - 1; // new clients start at the top
@@ -327,7 +335,7 @@ new #[Title('Clients')] class extends Component {
 
     private function resetForm(): void
     {
-        $this->reset('editingId', 'name', 'company', 'email', 'phone', 'photo', 'currentPhoto', 'removePhoto', 'package', 'price', 'billingMonths', 'serviceType', 'videoCount', 'agreementStart', 'agreementMonths');
+        $this->reset('editingId', 'name', 'company', 'email', 'phone', 'photo', 'currentPhoto', 'removePhoto', 'package', 'price', 'billingMonths', 'serviceType', 'videoCount', 'agreementStart', 'agreementMonths', 'agreementEnd');
         $this->clientStatus = 'active';
         $this->progress = 0;
         $this->formTab = 'details';
@@ -736,7 +744,7 @@ new #[Title('Clients')] class extends Component {
     @php
         $formTabs = [
             'details' => ['label' => __('Details'), 'hint' => __('Contact details'), 'fields' => ['photo', 'name', 'company', 'phone', 'clientStatus', 'email']],
-            'package' => ['label' => __('Service & payment'), 'hint' => __('What they buy and how they pay'), 'fields' => ['serviceType', 'package', 'price', 'billingMonths', 'videoCount', 'agreementStart', 'agreementMonths', 'progress']],
+            'package' => ['label' => __('Service & payment'), 'hint' => __('What they buy and how they pay'), 'fields' => ['serviceType', 'package', 'price', 'billingMonths', 'videoCount', 'agreementStart', 'agreementMonths', 'agreementEnd', 'progress']],
         ];
         $seg = 'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition';
         $segOn = 'bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-800 dark:text-white dark:ring-white/10';
@@ -926,13 +934,26 @@ new #[Title('Clients')] class extends Component {
                     x-data="{
                         get agreement() {
                             const C = window.NepaliCalendar;
-                            const start = $wire.agreementStart, months = parseInt($wire.agreementMonths);
-                            if (! C || ! start || ! (months > 0)) return null;
-                            return {
-                                from: C.formatBs(start),
-                                to: C.formatBs(C.periodEndAfter(start, months)),
-                                length: months === 12 ? '1 year' : months % 12 === 0 ? (months / 12) + ' years' : months + (months === 1 ? ' month' : ' months'),
-                            };
+                            const start = $wire.agreementStart;
+                            if (! C || ! start) return null;
+                            const label = (m) => m === 12 ? '1 year' : m % 12 === 0 ? (m / 12) + ' years' : m + (m === 1 ? ' month' : ' months');
+
+                            if ($wire.serviceType === 'social_media') {
+                                const months = parseInt($wire.agreementMonths);
+                                if (! (months > 0)) return null;
+                                return { from: C.formatBs(start), to: C.formatBs(C.periodEndAfter(start, months)), length: label(months) };
+                            }
+
+                            const end = $wire.agreementEnd;
+                            if (! end || end < start) return null;
+                            let months = null;
+                            for (let n = 1; n <= 120; n++) {
+                                const e = C.periodEndAfter(start, n);
+                                if (e === end) { months = n; break; }
+                                if (! e || e > end) break;
+                            }
+                            const days = Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1;
+                            return { from: C.formatBs(start), to: C.formatBs(end), length: months ? label(months) : days + ' days' };
                         },
                     }"
                 >
@@ -1106,14 +1127,18 @@ new #[Title('Clients')] class extends Component {
 
                             <div class="mt-2.5 grid gap-3 sm:grid-cols-2">
                                 <x-nepali-date wire:model="agreementStart" :label="__('Start date')" />
-                                <flux:field>
-                                    <flux:label>{{ __('Duration') }}</flux:label>
-                                    <flux:input.group>
-                                        <flux:input wire:model="agreementMonths" type="number" min="1" max="120" step="1" inputmode="numeric" placeholder="3" />
-                                        <flux:input.group.suffix>{{ __('month(s)') }}</flux:input.group.suffix>
-                                    </flux:input.group>
-                                    <flux:error name="agreementMonths" />
-                                </flux:field>
+                                @if ($serviceType === 'social_media')
+                                    <flux:field>
+                                        <flux:label>{{ __('Duration') }}</flux:label>
+                                        <flux:input.group>
+                                            <flux:input wire:model="agreementMonths" type="number" min="1" max="120" step="1" inputmode="numeric" placeholder="3" />
+                                            <flux:input.group.suffix>{{ __('month(s)') }}</flux:input.group.suffix>
+                                        </flux:input.group>
+                                        <flux:error name="agreementMonths" />
+                                    </flux:field>
+                                @else
+                                    <x-nepali-date wire:model="agreementEnd" :label="__('End date')" />
+                                @endif
                             </div>
 
                             <div class="mt-3 flex items-center gap-2.5 rounded-lg bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800 ring-1 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20" x-show="agreement" x-cloak>
@@ -1124,7 +1149,7 @@ new #[Title('Clients')] class extends Component {
                                     <span class="font-semibold" x-text="agreement?.to"></span>
                                     <span class="opacity-75">· <span x-text="agreement?.length"></span></span>                                </span>
                             </div>
-                            <p class="mt-3 text-xs text-zinc-400" x-show="! agreement">{{ __('Pick the start date and enter how many months to see the end date.') }}</p>
+                            <p class="mt-3 text-xs text-zinc-400" x-show="! agreement">{{ $serviceType === 'social_media' ? __('Pick the start date and enter how many months to see the end date.') : __('Pick the start and end dates to see how long the work runs.') }}</p>
                         </div>
                     </section>
 

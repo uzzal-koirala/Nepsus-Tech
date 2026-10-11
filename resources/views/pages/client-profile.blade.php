@@ -30,6 +30,7 @@ new #[Title('Client profile')] class extends Component {
     public string $planAmount = '';
     public string $planStart = '';
     public string $planMonths = '';
+    public string $planEnd = '';
     public string $planInstallments = '3';
     public bool $planAdvancePaid = false;
 
@@ -131,6 +132,7 @@ new #[Title('Client profile')] class extends Component {
         $this->planAmount = (string) ($this->client->totalValue() ?? '');
         $this->planStart = (string) ($this->client->contract_start ?? today())->toDateString();
         $this->planMonths = (string) ($this->client->agreementMonths() ?? 1);
+        $this->planEnd = (string) $this->client->contract_end?->toDateString();
         $this->planInstallments = (string) ($this->client->installments ?? 3);
         $this->planAdvancePaid = false;
         $this->resetErrorBag();
@@ -150,7 +152,9 @@ new #[Title('Client profile')] class extends Component {
 
         try {
             $start = Date::parse($this->planStart);
-            $end = (int) $this->planMonths > 0 ? NepaliDate::periodEndAfter($start, (int) $this->planMonths) : null;
+            $end = $this->client->service_type === 'social_media'
+                ? ((int) $this->planMonths > 0 ? NepaliDate::periodEndAfter($start, (int) $this->planMonths) : null)
+                : ($this->planEnd ? Date::parse($this->planEnd) : null);
         } catch (\Throwable) {
             return [];
         }
@@ -165,6 +169,7 @@ new #[Title('Client profile')] class extends Component {
             'planAmount' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
             'planStart' => ['required', 'date'],
             'planMonths' => ['nullable', 'integer', 'min:1', 'max:120'],
+            'planEnd' => ['nullable', 'date', 'after_or_equal:planStart'],
             'planInstallments' => ['exclude_unless:planType,installments', 'required', 'integer', 'min:2', 'max:36'],
             'planAdvancePaid' => ['boolean'],
         ]);
@@ -813,7 +818,9 @@ new #[Title('Client profile')] class extends Component {
                     <flux:error name="planAmount" />
                 </flux:field>
                 <x-nepali-date wire:model.live="planStart" :label="__('Start date')" />
-                @if (in_array($planType, ['half_advance', 'after_work']))
+                @if (in_array($planType, ['half_advance', 'after_work']) && $c->service_type !== 'social_media')
+                    <x-nepali-date wire:model.live="planEnd" :label="__('End date')" />
+                @elseif (in_array($planType, ['half_advance', 'after_work']))
                     <flux:field>
                         <flux:label>{{ __('Duration') }}</flux:label>
                         <flux:input.group>

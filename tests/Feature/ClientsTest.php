@@ -156,8 +156,19 @@ class ClientsTest extends TestCase
             ->assertSet('agreementStart', '2026-08-31')
             ->assertSet('agreementMonths', '6')
             ->set('agreementMonths', '3')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        // Social media: start + months gives the end date.
+        $this->assertSame('14 Mangsir 2083', $client->fresh()->contract_end->toNepali());
+
+        // Other work picks the end date directly; months are ignored.
+        Livewire::test('pages::clients')
+            ->call('edit', $client->id)
             ->set('serviceType', 'website')
             ->set('billingMonths', '')
+            ->set('agreementMonths', '24')
+            ->set('agreementEnd', '2026-11-30')
             ->call('save')
             ->assertHasNoErrors();
 
