@@ -168,10 +168,22 @@ new #[Title('Clients')] class extends Component {
     ];
     $dots = ['active' => 'bg-emerald-500', 'lead' => 'bg-amber-500', 'inactive' => 'bg-zinc-400'];
     $tiers = [
-        'basic' => ['chip' => 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-300', 'wash' => 'from-emerald-50/80 dark:from-emerald-500/[0.07]'],
-        'standard' => ['chip' => 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-300', 'wash' => 'from-amber-50/80 dark:from-amber-500/[0.07]'],
-        'premium' => ['chip' => 'bg-brand-50 text-brand-700 ring-brand-600/20 dark:bg-brand-500/15 dark:text-brand-200', 'wash' => 'from-brand-50/90 dark:from-brand-500/[0.09]'],
-        'enterprise' => ['chip' => 'bg-violet-50 text-violet-700 ring-violet-600/20 dark:bg-violet-500/10 dark:text-violet-300', 'wash' => 'from-violet-50/80 dark:from-violet-500/[0.07]'],
+        'basic' => [
+            'chip' => 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+            'card' => 'from-emerald-50 ring-emerald-200/80 hover:ring-emerald-300 hover:shadow-[0_18px_40px_-24px_rgb(5_150_105/0.45)] dark:from-emerald-500/[0.07] dark:ring-emerald-500/20',
+        ],
+        'standard' => [
+            'chip' => 'bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-600/20 dark:bg-brand-500/15 dark:text-brand-200',
+            'card' => 'from-brand-50 ring-brand-200/80 hover:ring-brand-300 hover:shadow-[0_18px_40px_-24px_rgb(49_81_254/0.45)] dark:from-brand-500/[0.09] dark:ring-brand-500/25',
+        ],
+        'premium' => [
+            'chip' => 'bg-linear-to-r from-amber-300 via-yellow-200 to-amber-300 text-amber-950 shadow-sm shadow-amber-500/30 ring-1 ring-inset ring-amber-500/40',
+            'card' => 'from-amber-100/70 ring-amber-300 hover:ring-amber-400 hover:shadow-[0_18px_40px_-22px_rgb(217_119_6/0.55)] dark:from-amber-400/[0.1] dark:ring-amber-400/40',
+        ],
+        'enterprise' => [
+            'chip' => 'bg-linear-to-r from-zinc-900 to-slate-700 text-cyan-100 shadow-sm shadow-zinc-900/30 ring-1 ring-inset ring-white/10 dark:from-white dark:to-slate-200 dark:text-zinc-900',
+            'card' => 'from-slate-100 ring-slate-300 hover:ring-slate-400 hover:shadow-[0_18px_40px_-22px_rgb(15_23_42/0.5)] dark:from-white/[0.06] dark:ring-white/20',
+        ],
     ];
     $avatars = [
         'bg-brand-100 text-brand-700', 'bg-amber-100 text-amber-800', 'bg-emerald-100 text-emerald-800',
@@ -272,7 +284,7 @@ new #[Title('Clients')] class extends Component {
                     $bar = $done ? 'bg-emerald-500' : ($client->progress < 34 ? 'bg-amber-400' : 'bg-brand-500');
                 @endphp
                 @php($tier = Client::PACKAGES[$client->package] ?? null)
-                <article wire:key="client-{{ $client->id }}" class="{{ $tier ? $tiers[$client->package]['wash'] : 'from-zinc-50 dark:from-white/[0.02]' }} flex flex-col rounded-lg bg-white bg-linear-to-b via-white via-40% to-white ring-1 ring-zinc-200/80 transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-24px_rgb(49_81_254/0.5)] hover:ring-brand-300 dark:bg-zinc-950 dark:via-zinc-950 dark:to-zinc-950 dark:ring-white/10 dark:hover:ring-brand-500/50">
+                <article wire:key="client-{{ $client->id }}" class="{{ $tier ? $tiers[$client->package]['card'] : 'from-zinc-50 ring-zinc-200/80 hover:ring-zinc-300 hover:shadow-[0_18px_40px_-24px_rgb(24_24_27/0.3)] dark:from-white/[0.02] dark:ring-white/10' }} flex flex-col rounded-lg bg-white bg-linear-to-b via-white via-45% to-white ring-1 transition duration-300 hover:-translate-y-0.5 dark:bg-zinc-950 dark:via-zinc-950 dark:to-zinc-950">
                     <div class="flex flex-col gap-4 p-4">
                         <div class="flex items-center gap-3">
                             <span class="{{ $avatars[$client->id % count($avatars)] }} relative flex size-10 shrink-0 items-center justify-center rounded-md text-sm font-semibold ring-1 ring-black/5">
@@ -295,7 +307,7 @@ new #[Title('Clients')] class extends Component {
 
                         <div class="flex items-center justify-between gap-3">
                             @if ($tier)
-                                <span class="{{ $tiers[$client->package]['chip'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset">
+                                <span class="{{ $tiers[$client->package]['chip'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold">
                                     <flux:icon :icon="$tier['icon']" variant="micro" class="size-3.5" />
                                     {{ __($tier['label']) }}
                                 </span>
@@ -374,7 +386,7 @@ new #[Title('Clients')] class extends Component {
                             <td class="px-5 py-3 text-zinc-600 tabular-nums dark:text-zinc-300">{{ $client->phone ?? '-' }}</td>
                             <td class="px-5 py-3">
                                 @if ($tier = Client::PACKAGES[$client->package] ?? null)
-                                    <span class="{{ $tiers[$client->package]['chip'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset">
+                                    <span class="{{ $tiers[$client->package]['chip'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold">
                                         <flux:icon :icon="$tier['icon']" variant="micro" class="size-3.5" />
                                         {{ __($tier['label']) }}
                                     </span>
