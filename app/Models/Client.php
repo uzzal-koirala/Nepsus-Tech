@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 #[Fillable([
-    'name', 'company', 'email', 'phone', 'status', 'notes',
+    'name', 'company', 'email', 'phone', 'status', 'position', 'notes',
     'package', 'price', 'billing_cycle', 'progress',
     'contract_start', 'contract_end', 'agreement_signed_at',
     'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url',

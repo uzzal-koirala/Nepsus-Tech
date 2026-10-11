@@ -53,6 +53,38 @@ final class NepaliDate
     }
 
     /**
+     * BS year, month (1-12), day to the AD date.
+     */
+    public static function toAd(int $year, int $month, int $day): Carbon
+    {
+        $days = $day - 1;
+
+        foreach (self::calendar() as $y => $months) {
+            if ((int) $y === $year) {
+                $days += array_sum(array_slice($months, 0, $month - 1));
+                break;
+            }
+
+            $days += array_sum($months);
+        }
+
+        return Carbon::parse(self::EPOCH_AD)->addDays($days);
+    }
+
+    /**
+     * First and last AD day of the BS month containing $date.
+     *
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    public static function monthRange(CarbonInterface $date): array
+    {
+        [$year, $month] = self::fromAd($date);
+        $length = self::calendar()[(string) $year][$month - 1];
+
+        return [self::toAd($year, $month, 1)->startOfDay(), self::toAd($year, $month, $length)->endOfDay()];
+    }
+
+    /**
      * e.g. "२६ असोज २०८३"; falls back to the AD date outside the supported range.
      */
     public static function format(?CarbonInterface $date, bool $withYear = true): string

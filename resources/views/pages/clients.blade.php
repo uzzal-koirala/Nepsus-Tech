@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Client;
+use App\Models\Payment;
+use App\Support\NepaliDate;
 use Flux\Flux;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
@@ -76,8 +78,55 @@ new #[Title('Clients')] class extends Component {
                 ->orWhere('company', 'like', "%{$this->search}%")
                 ->orWhere('phone', 'like', "%{$this->search}%")
                 ->orWhere('package', 'like', "%{$this->search}%")))
-            ->latest()
+            ->orderBy('position')
+            ->latest('id')
             ->paginate(12);
+    }
+
+    #[Computed]
+    public function summary(): array
+    {
+        $active = Client::where('status', 'active');
+        [$monthStart, $monthEnd] = NepaliDate::monthRange(today());
+        $unpaid = Payment::whereNull('paid_at');
+
+        return [
+            'active' => (clone $active)->count(),
+            'leads' => Client::where('status', 'lead')->count(),
+            'monthly' => (float) (clone $active)->where('billing_cycle', 'monthly')->sum('price')
+                + (float) (clone $active)->where('billing_cycle', 'yearly')->sum('price') / 12,
+            'paying' => (clone $active)->whereIn('billing_cycle', ['monthly', 'yearly'])->whereNotNull('price')->count(),
+            'received' => (float) Payment::whereBetween('paid_at', [$monthStart, $monthEnd])->sum('amount'),
+            'receivedCount' => Payment::whereBetween('paid_at', [$monthStart, $monthEnd])->count(),
+            'outstanding' => (float) (clone $unpaid)->sum('amount'),
+            'overdue' => (clone $unpaid)->whereDate('due_date', '<', today())->count(),
+        ];
+    }
+
+    /**
+     * Drag-and-drop priority. $position is the new index among the cards on screen,
+     * so the client is re-slotted next to its visible neighbour in the full order.
+     */
+    public function sortClient(int $id, int $position): void
+    {
+        $visible = $this->clients->pluck('id')->reject(fn ($v) => $v === $id)->values();
+        $ordered = Client::orderBy('position')->latest('id')->pluck('id')->reject(fn ($v) => $v === $id)->values();
+
+        $anchor = $visible[$position] ?? null;
+        $index = match (true) {
+            $anchor !== null => $ordered->search($anchor),
+            $visible->isNotEmpty() => $ordered->search($visible->last()) + 1,
+            default => 0,
+        };
+
+        $ordered->splice($index, 0, [$id]);
+
+        // ponytail: one UPDATE per client; switch to a CASE statement if the client list gets into the thousands
+        foreach ($ordered as $i => $clientId) {
+            Client::whereKey($clientId)->update(['position' => $i]);
+        }
+
+        unset($this->clients);
     }
 
     #[Computed]
@@ -136,6 +185,10 @@ new #[Title('Clients')] class extends Component {
         $data['status'] = $data['clientStatus'];
         unset($data['clientStatus']);
         $data = array_map(fn ($v) => $v === '' ? null : $v, $data);
+
+        if (! $this->editingId) {
+            $data['position'] = (int) Client::min('position') - 1; // new clients start at the top
+        }
 
         $client = Client::updateOrCreate(['id' => $this->editingId], $data);
 
@@ -219,12 +272,59 @@ new #[Title('Clients')] class extends Component {
     <header class="flex flex-wrap items-end justify-between gap-4">
         <div class="flex flex-col gap-1">
             <h1 class="text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-3xl dark:text-white">{{ __('Clients') }}</h1>
-            <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ trans_choice(':count client in your workspace|:count clients in your workspace', $this->counts['all']) }}</p>
+            <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ trans_choice(':count client in your workspace|:count clients in your workspace', $this->counts['all']) }} · {{ __('drag cards to set priority') }}</p>
         </div>
         <flux:button variant="primary" icon="plus" wire:click="create" class="shadow-lg shadow-brand-500/25" data-test="new-client-button">
             {{ __('New client') }}
         </flux:button>
     </header>
+
+    {{-- Summary --}}
+    @php
+        $sum = $this->summary;
+    @endphp
+    <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="relative isolate flex flex-col gap-4 overflow-hidden rounded-xl bg-linear-to-br from-brand-500 to-brand-700 p-5 text-white shadow-[0_18px_40px_-20px_rgb(49_81_254/0.7)]">
+            <div class="absolute -top-10 -right-10 -z-10 size-36 rounded-full bg-white/10"></div>
+            <div class="absolute -right-4 -bottom-14 -z-10 size-28 rounded-full bg-sun/90"></div>
+            <div class="flex items-center gap-3">
+                <span class="flex size-9 items-center justify-center rounded-lg bg-white/15 ring-1 ring-white/20"><flux:icon.user-group variant="mini" class="size-4.5" /></span>
+                <p class="text-sm font-medium text-brand-100">{{ __('Active clients') }}</p>
+            </div>
+            <p class="text-[2rem] leading-none font-semibold tracking-tight tabular-nums">{{ $sum['active'] }}</p>
+            <p class="mt-auto text-xs text-brand-100">{{ trans_choice(':count lead in the pipeline|:count leads in the pipeline', $sum['leads']) }}</p>
+        </div>
+
+        <div class="flex flex-col gap-4 rounded-xl bg-white p-5 ring-1 ring-zinc-200/70 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:ring-white/10">
+            <div class="flex items-center gap-3">
+                <span class="flex size-9 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-400/15 dark:text-amber-300"><flux:icon.arrow-trending-up variant="mini" class="size-4.5" /></span>
+                <p class="text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Monthly revenue') }}</p>
+            </div>
+            <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ Client::money(round($sum['monthly'])) }}</p>
+            <p class="mt-auto text-xs text-zinc-500">{{ trans_choice('From :count client on a monthly or yearly plan|From :count clients on monthly or yearly plans', $sum['paying']) }}</p>
+        </div>
+
+        <div class="flex flex-col gap-4 rounded-xl bg-white p-5 ring-1 ring-zinc-200/70 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:ring-white/10">
+            <div class="flex items-center gap-3">
+                <span class="flex size-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.banknotes variant="mini" class="size-4.5" /></span>
+                <p class="text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Received in :month', ['month' => today()->toNepaliMonth()]) }}</p>
+            </div>
+            <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ Client::money($sum['received']) }}</p>
+            <p class="mt-auto text-xs text-zinc-500">{{ trans_choice(':count payment this month|:count payments this month', $sum['receivedCount']) }}</p>
+        </div>
+
+        <div class="flex flex-col gap-4 rounded-xl bg-white p-5 ring-1 ring-zinc-200/70 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:ring-white/10">
+            <div class="flex items-center gap-3">
+                <span class="flex size-9 items-center justify-center rounded-lg bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300"><flux:icon.clock variant="mini" class="size-4.5" /></span>
+                <p class="flex-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Outstanding') }}</p>
+                @if ($sum['overdue'])
+                    <span class="rounded-md bg-rose-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">{{ trans_choice(':count overdue|:count overdue', $sum['overdue']) }}</span>
+                @endif
+            </div>
+            <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ Client::money($sum['outstanding']) }}</p>
+            <p class="mt-auto text-xs text-zinc-500">{{ __('Unpaid invoices across all clients') }}</p>
+        </div>
+    </section>
 
     {{-- Toolbar --}}
     <div class="flex flex-col gap-3 rounded-2xl bg-white p-2 ring-1 ring-zinc-200/70 lg:flex-row lg:items-center lg:justify-between dark:bg-zinc-950 dark:ring-white/5">
@@ -293,16 +393,19 @@ new #[Title('Clients')] class extends Component {
             @endif
         </div>
     @elseif ($view === 'grid')
-        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[1800px]:grid-cols-5">
+        <div wire:sort="sortClient" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[1800px]:grid-cols-5">
             @foreach ($this->clients as $client)
                 @php
                     $done = $client->progress >= 100;
                     $bar = $done ? 'bg-emerald-500' : ($client->progress < 34 ? 'bg-amber-400' : 'bg-brand-500');
                 @endphp
                 @php($tier = Client::PACKAGES[$client->package] ?? null)
-                <article wire:key="client-{{ $client->id }}" class="{{ $tier ? $tiers[$client->package]['card'] : 'from-zinc-50 ring-zinc-200/80 hover:ring-zinc-300 hover:shadow-[0_18px_40px_-24px_rgb(24_24_27/0.3)] dark:from-white/[0.02] dark:ring-white/10' }} flex flex-col rounded-lg bg-white bg-linear-to-b via-white via-45% to-white ring-1 transition duration-300 hover:-translate-y-0.5 dark:bg-zinc-950 dark:via-zinc-950 dark:to-zinc-950">
+                <article wire:key="client-{{ $client->id }}" wire:sort:item="{{ $client->id }}" class="{{ $tier ? $tiers[$client->package]['card'] : 'from-zinc-50 ring-zinc-200/80 hover:ring-zinc-300 hover:shadow-[0_18px_40px_-24px_rgb(24_24_27/0.3)] dark:from-white/[0.02] dark:ring-white/10' }} flex flex-col rounded-lg bg-white bg-linear-to-b via-white via-45% to-white ring-1 transition duration-300 hover:-translate-y-0.5 dark:bg-zinc-950 dark:via-zinc-950 dark:to-zinc-950">
                     <div class="flex flex-col gap-4 p-4">
                         <div class="flex items-center gap-3">
+                            <button type="button" wire:sort:handle class="-ms-2 -me-1.5 flex h-10 w-5 shrink-0 cursor-grab items-center justify-center rounded text-zinc-300 transition hover:bg-zinc-100 hover:text-zinc-500 active:cursor-grabbing dark:text-zinc-600 dark:hover:bg-white/5" aria-label="{{ __('Drag to change priority') }}" title="{{ __('Drag to change priority') }}">
+                                <flux:icon.grip-vertical variant="micro" class="size-4" />
+                            </button>
                             <span class="{{ $avatars[$client->id % count($avatars)] }} relative flex size-10 shrink-0 items-center justify-center rounded-md text-sm font-semibold ring-1 ring-black/5">
                                 {{ $client->initials() }}
                                 <span class="{{ $dots[$client->status] }} absolute -end-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-white dark:ring-zinc-950" title="{{ ucfirst(__($client->status)) }}"></span>
@@ -388,11 +491,14 @@ new #[Title('Clients')] class extends Component {
                         <th class="px-5 py-3"><span class="sr-only">{{ __('Actions') }}</span></th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-zinc-100 dark:divide-white/5">
+                <tbody wire:sort="sortClient" class="divide-y divide-zinc-100 dark:divide-white/5">
                     @foreach ($this->clients as $client)
-                        <tr wire:key="row-{{ $client->id }}" class="transition hover:bg-brand-50/50 dark:hover:bg-white/[0.02]">
+                        <tr wire:key="row-{{ $client->id }}" wire:sort:item="{{ $client->id }}" class="transition hover:bg-brand-50/50 dark:hover:bg-white/[0.02]">
                             <td class="px-5 py-3">
                                 <div class="flex items-center gap-3">
+                                    <button type="button" wire:sort:handle class="-ms-2 flex h-8 w-5 shrink-0 cursor-grab items-center justify-center rounded text-zinc-300 hover:text-zinc-500 active:cursor-grabbing dark:text-zinc-600" aria-label="{{ __('Drag to change priority') }}">
+                                        <flux:icon.grip-vertical variant="micro" class="size-4" />
+                                    </button>
                                     <span class="{{ $avatars[$client->id % count($avatars)] }} flex size-9 shrink-0 items-center justify-center rounded-lg text-xs font-semibold">{{ $client->initials() }}</span>
                                     <div class="min-w-0">
                                         <a href="{{ route('clients.show', $client) }}" wire:navigate class="block truncate font-medium text-zinc-900 hover:text-brand-600 dark:text-white">{{ $client->name }}</a>

@@ -25,6 +25,17 @@ class NepaliDateTest extends TestCase
         }
     }
 
+    public function test_bs_dates_convert_back_to_ad_and_give_month_ranges(): void
+    {
+        $this->assertSame('2026-10-12', NepaliDate::toAd(2083, 6, 26)->toDateString());
+        $this->assertSame('1943-04-14', NepaliDate::toAd(2000, 1, 1)->toDateString());
+
+        // Asoj 2083 (31 days) runs 2026-09-17 to 2026-10-17.
+        [$start, $end] = NepaliDate::monthRange(Carbon::parse('2026-10-12'));
+        $this->assertSame('2026-09-17 00:00:00', $start->toDateTimeString());
+        $this->assertSame('2026-10-17 23:59:59', $end->toDateTimeString());
+    }
+
     public function test_formats_in_nepali_script(): void
     {
         $this->assertSame('२६ असोज २०८३', NepaliDate::format(Carbon::parse('2026-10-12')));

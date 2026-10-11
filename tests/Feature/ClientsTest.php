@@ -17,6 +17,27 @@ class ClientsTest extends TestCase
         $this->get(route('clients.index'))->assertRedirect(route('login'));
     }
 
+    public function test_dragging_a_card_changes_its_priority(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $a = Client::factory()->create(['name' => 'Alpha', 'position' => 0]);
+        $b = Client::factory()->create(['name' => 'Bravo', 'position' => 1]);
+        $c = Client::factory()->create(['name' => 'Charlie', 'position' => 2]);
+
+        $page = Livewire::test('pages::clients')->assertSeeInOrder(['Alpha', 'Bravo', 'Charlie']);
+
+        // Drag Charlie to the top, then Alpha to the end.
+        $page->call('sortClient', $c->id, 0)->assertSeeInOrder(['Charlie', 'Alpha', 'Bravo']);
+        $page->call('sortClient', $a->id, 2)->assertSeeInOrder(['Charlie', 'Bravo', 'Alpha']);
+
+        $this->assertSame([$c->id, $b->id, $a->id], Client::orderBy('position')->pluck('id')->all());
+
+        // New clients start at the top.
+        $page->set('name', 'Delta')->call('save');
+        $this->assertSame('Delta', Client::orderBy('position')->value('name'));
+    }
+
     public function test_clients_can_be_created_searched_filtered_and_deleted(): void
     {
         $this->actingAs(User::factory()->create());
