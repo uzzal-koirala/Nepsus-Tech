@@ -21,6 +21,9 @@ new #[Title('Clients')] class extends Component {
     #[Url(except: 'grid')]
     public string $view = 'grid';
 
+    #[Url(except: null)]
+    public ?int $open = null;
+
     public ?int $editingId = null;
     public ?int $deletingId = null;
 
@@ -38,6 +41,13 @@ new #[Title('Clients')] class extends Component {
     public string $instagram_url = '';
     public string $tiktok_url = '';
     public string $google_business_url = '';
+
+    public function mount(): void
+    {
+        if ($this->open) {
+            $this->edit($this->open);
+        }
+    }
 
     public function updatedSearch(): void
     {
@@ -127,7 +137,13 @@ new #[Title('Clients')] class extends Component {
         unset($data['clientStatus']);
         $data = array_map(fn ($v) => $v === '' ? null : $v, $data);
 
-        Client::updateOrCreate(['id' => $this->editingId], $data);
+        $client = Client::updateOrCreate(['id' => $this->editingId], $data);
+
+        if ($this->open) {
+            $this->redirectRoute('clients.show', $client, navigate: true);
+
+            return;
+        }
 
         Flux::modal('client-form')->close();
         Flux::toast(variant: 'success', text: $this->editingId ? __('Client updated.') : __('Client added.'));
@@ -293,12 +309,13 @@ new #[Title('Clients')] class extends Component {
                                 <span class="sr-only">{{ __($client->status) }}</span>
                             </span>
                             <div class="min-w-0 flex-1">
-                                <h3 class="truncate leading-snug font-semibold text-zinc-900 dark:text-white">{{ $client->name }}</h3>
+                                <h3 class="truncate leading-snug font-semibold text-zinc-900 dark:text-white"><a href="{{ route('clients.show', $client) }}" wire:navigate class="hover:text-brand-600 dark:hover:text-brand-300">{{ $client->name }}</a></h3>
                                 <p class="truncate text-[0.8125rem] text-zinc-500 dark:text-zinc-400">{{ $client->company ?? __('Independent') }}</p>
                             </div>
                             <flux:dropdown align="end">
                                 <flux:button variant="ghost" size="sm" icon="ellipsis-vertical" class="-me-2" :aria-label="__('Actions for :name', ['name' => $client->name])" />
                                 <flux:menu>
+                                    <flux:menu.item icon="user" :href="route('clients.show', $client)" wire:navigate>{{ __('View profile') }}</flux:menu.item>
                                     <flux:menu.item icon="pencil-square" wire:click="edit({{ $client->id }})">{{ __('Edit') }}</flux:menu.item>
                                     <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete({{ $client->id }})">{{ __('Delete') }}</flux:menu.item>
                                 </flux:menu>
@@ -378,7 +395,7 @@ new #[Title('Clients')] class extends Component {
                                 <div class="flex items-center gap-3">
                                     <span class="{{ $avatars[$client->id % count($avatars)] }} flex size-9 shrink-0 items-center justify-center rounded-lg text-xs font-semibold">{{ $client->initials() }}</span>
                                     <div class="min-w-0">
-                                        <p class="truncate font-medium text-zinc-900 dark:text-white">{{ $client->name }}</p>
+                                        <a href="{{ route('clients.show', $client) }}" wire:navigate class="block truncate font-medium text-zinc-900 hover:text-brand-600 dark:text-white">{{ $client->name }}</a>
                                         <p class="truncate text-xs text-zinc-500">{{ $client->company ?? __('Independent') }}</p>
                                     </div>
                                 </div>
@@ -430,7 +447,8 @@ new #[Title('Clients')] class extends Component {
                                 <flux:dropdown align="end">
                                     <flux:button variant="ghost" size="sm" icon="ellipsis-vertical" :aria-label="__('Actions for :name', ['name' => $client->name])" />
                                     <flux:menu>
-                                        <flux:menu.item icon="pencil-square" wire:click="edit({{ $client->id }})">{{ __('Edit') }}</flux:menu.item>
+                                        <flux:menu.item icon="user" :href="route('clients.show', $client)" wire:navigate>{{ __('View profile') }}</flux:menu.item>
+                                    <flux:menu.item icon="pencil-square" wire:click="edit({{ $client->id }})">{{ __('Edit') }}</flux:menu.item>
                                         <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete({{ $client->id }})">{{ __('Delete') }}</flux:menu.item>
                                     </flux:menu>
                                 </flux:dropdown>

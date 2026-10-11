@@ -35,7 +35,7 @@
 
                         @foreach ($items as $item)
                             @isset($item['route'])
-                                <flux:sidebar.item :icon="$item['icon']" :href="route($item['route'])" :current="request()->routeIs($item['route'].'*')" wire:navigate>
+                                <flux:sidebar.item :icon="$item['icon']" :href="route($item['route'])" :current="request()->routeIs(str($item['route'])->before('.').'*')" wire:navigate>
                                     {{ $item['label'] }}
                                 </flux:sidebar.item>
                             @else

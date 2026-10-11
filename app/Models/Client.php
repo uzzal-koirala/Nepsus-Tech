@@ -6,11 +6,13 @@ use Database\Factories\ClientFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 #[Fillable([
     'name', 'company', 'email', 'phone', 'status', 'notes',
     'package', 'price', 'billing_cycle', 'progress',
+    'contract_start', 'contract_end', 'agreement_signed_at',
     'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url',
 ])]
 class Client extends Model
@@ -43,7 +45,25 @@ class Client extends Model
         return [
             'price' => 'decimal:2',
             'progress' => 'integer',
+            'contract_start' => 'date',
+            'contract_end' => 'date',
+            'agreement_signed_at' => 'datetime',
         ];
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    public function tasks(): HasMany
+    {
+        return $this->hasMany(Task::class);
+    }
+
+    public function documents(): HasMany
+    {
+        return $this->hasMany(Document::class);
     }
 
     /**
@@ -63,13 +83,17 @@ class Client extends Model
      */
     public function formattedPrice(): ?string
     {
-        if ($this->price === null) {
-            return null;
-        }
+        return $this->price === null ? null : self::money($this->price);
+    }
 
-        $decimals = fmod((float) $this->price, 1.0) == 0.0 ? 0 : 2;
+    /**
+     * Format an amount in the app currency, e.g. "NPR 25,000".
+     */
+    public static function money(float|string $amount): string
+    {
+        $decimals = fmod((float) $amount, 1.0) == 0.0 ? 0 : 2;
 
-        return config('app.currency').' '.number_format((float) $this->price, $decimals);
+        return config('app.currency').' '.number_format((float) $amount, $decimals);
     }
 
     /**
