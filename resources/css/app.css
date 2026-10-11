@@ -41,14 +41,6 @@
     --color-accent: var(--color-brand-500);
     --color-accent-content: var(--color-brand-500);
     --color-accent-foreground: var(--color-white);
-
-    --animate-float: float 7s ease-in-out infinite;
-    --animate-float-slow: float 10s ease-in-out infinite reverse;
-
-    @keyframes float {
-        0%, 100% { transform: translateY(0) rotate(0deg); }
-        50% { transform: translateY(-14px) rotate(6deg); }
-    }
 }
 
 @layer theme {
