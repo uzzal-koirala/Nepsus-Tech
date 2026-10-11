@@ -22,6 +22,14 @@ class Client extends Model
 
     public const BILLING_CYCLES = ['monthly', 'yearly', 'one_time'];
 
+    /** Package tiers, lowest to highest, with their icon. */
+    public const PACKAGES = [
+        'basic' => ['label' => 'Basic', 'icon' => 'sprout'],
+        'standard' => ['label' => 'Standard', 'icon' => 'star'],
+        'premium' => ['label' => 'Premium', 'icon' => 'crown'],
+        'enterprise' => ['label' => 'Enterprise', 'icon' => 'gem'],
+    ];
+
     /** Social profile columns, keyed by icon name. */
     public const SOCIALS = [
         'facebook' => 'facebook_url',

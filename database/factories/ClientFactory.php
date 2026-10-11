@@ -11,6 +11,14 @@ use Illuminate\Support\Str;
  */
 class ClientFactory extends Factory
 {
+    /** Sample prices per package tier. */
+    private const PRICES = [
+        'basic' => [8000, 10000, 12500],
+        'standard' => [18000, 20000, 25000],
+        'premium' => [35000, 40000, 45000],
+        'enterprise' => [60000, 75000, 90000],
+    ];
+
     /**
      * Define the model's default state.
      *
@@ -27,8 +35,8 @@ class ClientFactory extends Factory
             'phone' => fake()->optional(0.9)->phoneNumber(),
             'status' => fake()->randomElement(['active', 'active', 'active', 'lead', 'inactive']),
             'notes' => fake()->optional(0.4)->sentence(),
-            'package' => fake()->optional(0.85)->randomElement(['Social Media Starter', 'Social Media Growth', 'Premium Marketing', 'SEO Essentials', 'Website Care']),
-            'price' => fake()->optional(0.85)->randomElement([8000, 12500, 18000, 25000, 35000, 50000]),
+            'package' => $package = fake()->optional(0.9)->randomElement(array_keys(Client::PACKAGES)),
+            'price' => $package ? fake()->randomElement(self::PRICES[$package]) : null,
             'billing_cycle' => fake()->randomElement(Client::BILLING_CYCLES),
             'progress' => fake()->randomElement([0, 10, 25, 40, 55, 70, 85, 100]),
             'facebook_url' => fake()->optional(0.8)->passthrough("https://facebook.com/{$handle}"),

@@ -78,12 +78,6 @@ new #[Title('Clients')] class extends Component {
         return ['all' => $counts->sum()] + collect(Client::STATUSES)->mapWithKeys(fn ($s) => [$s => $counts[$s] ?? 0])->all();
     }
 
-    #[Computed]
-    public function packages(): array
-    {
-        return Client::query()->whereNotNull('package')->distinct()->orderBy('package')->pluck('package')->all();
-    }
-
     public function create(): void
     {
         $this->resetForm();
@@ -119,7 +113,7 @@ new #[Title('Clients')] class extends Component {
             'phone' => ['nullable', 'string', 'max:50'],
             'clientStatus' => ['required', Rule::in(Client::STATUSES)],
             'notes' => ['nullable', 'string', 'max:5000'],
-            'package' => ['nullable', 'string', 'max:255'],
+            'package' => ['nullable', Rule::in(array_keys(Client::PACKAGES))],
             'price' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
             'billing_cycle' => ['required', Rule::in(Client::BILLING_CYCLES)],
             'progress' => ['required', 'integer', 'min:0', 'max:100'],
@@ -173,6 +167,12 @@ new #[Title('Clients')] class extends Component {
         'inactive' => 'bg-zinc-100 text-zinc-600 ring-zinc-500/15 dark:bg-white/5 dark:text-zinc-400',
     ];
     $dots = ['active' => 'bg-emerald-500', 'lead' => 'bg-amber-500', 'inactive' => 'bg-zinc-400'];
+    $tiers = [
+        'basic' => ['chip' => 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-300', 'wash' => 'from-emerald-50/80 dark:from-emerald-500/[0.07]'],
+        'standard' => ['chip' => 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-300', 'wash' => 'from-amber-50/80 dark:from-amber-500/[0.07]'],
+        'premium' => ['chip' => 'bg-brand-50 text-brand-700 ring-brand-600/20 dark:bg-brand-500/15 dark:text-brand-200', 'wash' => 'from-brand-50/90 dark:from-brand-500/[0.09]'],
+        'enterprise' => ['chip' => 'bg-violet-50 text-violet-700 ring-violet-600/20 dark:bg-violet-500/10 dark:text-violet-300', 'wash' => 'from-violet-50/80 dark:from-violet-500/[0.07]'],
+    ];
     $avatars = [
         'bg-brand-100 text-brand-700', 'bg-amber-100 text-amber-800', 'bg-emerald-100 text-emerald-800',
         'bg-rose-100 text-rose-800', 'bg-sky-100 text-sky-800', 'bg-violet-100 text-violet-800',
@@ -271,47 +271,58 @@ new #[Title('Clients')] class extends Component {
                     $done = $client->progress >= 100;
                     $bar = $done ? 'bg-emerald-500' : ($client->progress < 34 ? 'bg-amber-400' : 'bg-brand-500');
                 @endphp
-                <article wire:key="client-{{ $client->id }}" class="flex flex-col gap-4 rounded-lg bg-white p-4 ring-1 ring-zinc-200/80 transition duration-300 hover:shadow-[0_16px_36px_-22px_rgb(49_81_254/0.5)] hover:ring-brand-300 dark:bg-zinc-950 dark:ring-white/10 dark:hover:ring-brand-500/50">
-                    <div class="flex items-center gap-3">
-                        <span class="{{ $avatars[$client->id % count($avatars)] }} relative flex size-10 shrink-0 items-center justify-center rounded-md text-sm font-semibold">
-                            {{ $client->initials() }}
-                            <span class="{{ $dots[$client->status] }} absolute -end-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-white dark:ring-zinc-950" title="{{ ucfirst(__($client->status)) }}"></span>
-                            <span class="sr-only">{{ __($client->status) }}</span>
-                        </span>
-                        <div class="min-w-0 flex-1">
-                            <h3 class="truncate leading-snug font-semibold text-zinc-900 dark:text-white">{{ $client->name }}</h3>
-                            <p class="truncate text-[0.8125rem] text-zinc-500 dark:text-zinc-400">{{ $client->company ?? __('Independent') }}</p>
+                @php($tier = Client::PACKAGES[$client->package] ?? null)
+                <article wire:key="client-{{ $client->id }}" class="{{ $tier ? $tiers[$client->package]['wash'] : 'from-zinc-50 dark:from-white/[0.02]' }} flex flex-col rounded-lg bg-white bg-linear-to-b via-white via-40% to-white ring-1 ring-zinc-200/80 transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-24px_rgb(49_81_254/0.5)] hover:ring-brand-300 dark:bg-zinc-950 dark:via-zinc-950 dark:to-zinc-950 dark:ring-white/10 dark:hover:ring-brand-500/50">
+                    <div class="flex flex-col gap-4 p-4">
+                        <div class="flex items-center gap-3">
+                            <span class="{{ $avatars[$client->id % count($avatars)] }} relative flex size-10 shrink-0 items-center justify-center rounded-md text-sm font-semibold ring-1 ring-black/5">
+                                {{ $client->initials() }}
+                                <span class="{{ $dots[$client->status] }} absolute -end-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-white dark:ring-zinc-950" title="{{ ucfirst(__($client->status)) }}"></span>
+                                <span class="sr-only">{{ __($client->status) }}</span>
+                            </span>
+                            <div class="min-w-0 flex-1">
+                                <h3 class="truncate leading-snug font-semibold text-zinc-900 dark:text-white">{{ $client->name }}</h3>
+                                <p class="truncate text-[0.8125rem] text-zinc-500 dark:text-zinc-400">{{ $client->company ?? __('Independent') }}</p>
+                            </div>
+                            <flux:dropdown align="end">
+                                <flux:button variant="ghost" size="sm" icon="ellipsis-vertical" class="-me-2" :aria-label="__('Actions for :name', ['name' => $client->name])" />
+                                <flux:menu>
+                                    <flux:menu.item icon="pencil-square" wire:click="edit({{ $client->id }})">{{ __('Edit') }}</flux:menu.item>
+                                    <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete({{ $client->id }})">{{ __('Delete') }}</flux:menu.item>
+                                </flux:menu>
+                            </flux:dropdown>
                         </div>
-                        <flux:dropdown align="end">
-                            <flux:button variant="ghost" size="sm" icon="ellipsis-vertical" class="-me-2" :aria-label="__('Actions for :name', ['name' => $client->name])" />
-                            <flux:menu>
-                                <flux:menu.item icon="pencil-square" wire:click="edit({{ $client->id }})">{{ __('Edit') }}</flux:menu.item>
-                                <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete({{ $client->id }})">{{ __('Delete') }}</flux:menu.item>
-                            </flux:menu>
-                        </flux:dropdown>
-                    </div>
 
-                    <div class="flex items-baseline justify-between gap-3">
-                        <p class="min-w-0 truncate text-sm text-zinc-600 dark:text-zinc-300">{{ $client->package ?? __('No package') }}</p>
-                        @if ($client->price !== null)
-                            <p class="shrink-0 whitespace-nowrap">
-                                <span class="font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $client->formattedPrice() }}</span><span class="text-xs text-zinc-400">{{ $cycles[$client->billing_cycle] ?? '' }}</span>
-                            </p>
-                        @endif
-                    </div>
-
-                    <div class="flex items-center gap-3" title="{{ __('Work progress') }}">
-                        <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10" role="progressbar" aria-valuenow="{{ $client->progress }}" aria-valuemin="0" aria-valuemax="100" aria-label="{{ __('Work progress') }}">
-                            <div class="{{ $bar }} h-full rounded-full" style="width: {{ $client->progress }}%"></div>
+                        <div class="flex items-center justify-between gap-3">
+                            @if ($tier)
+                                <span class="{{ $tiers[$client->package]['chip'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset">
+                                    <flux:icon :icon="$tier['icon']" variant="micro" class="size-3.5" />
+                                    {{ __($tier['label']) }}
+                                </span>
+                            @else
+                                <span class="text-xs text-zinc-400">{{ __('No package') }}</span>
+                            @endif
+                            @if ($client->price !== null)
+                                <p class="whitespace-nowrap">
+                                    <span class="text-lg font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $client->formattedPrice() }}</span><span class="text-xs text-zinc-400">{{ $cycles[$client->billing_cycle] ?? '' }}</span>
+                                </p>
+                            @endif
                         </div>
-                        @if ($done)
-                            <flux:icon.check-circle variant="mini" class="size-4 text-emerald-500" />
-                        @else
-                            <span class="w-8 text-end text-xs font-medium text-zinc-500 tabular-nums">{{ $client->progress }}%</span>
-                        @endif
+
+                        @php($done = $client->progress >= 100)
+                        <div class="flex items-center gap-3" title="{{ __('Work progress') }}">
+                            <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10" role="progressbar" aria-valuenow="{{ $client->progress }}" aria-valuemin="0" aria-valuemax="100" aria-label="{{ __('Work progress') }}">
+                                <div @class(['h-full rounded-full', 'bg-emerald-500' => $done, 'bg-amber-400' => $client->progress < 34, 'bg-brand-500' => ! $done && $client->progress >= 34]) style="width: {{ $client->progress }}%"></div>
+                            </div>
+                            @if ($done)
+                                <flux:icon.check-circle variant="mini" class="size-4 text-emerald-500" />
+                            @else
+                                <span class="w-8 text-end text-xs font-medium text-zinc-500 tabular-nums">{{ $client->progress }}%</span>
+                            @endif
+                        </div>
                     </div>
 
-                    <div class="mt-auto flex items-center justify-between gap-3 border-t border-zinc-100 pt-3 dark:border-white/5">
+                    <div class="mt-auto flex items-center justify-between gap-3 border-t border-zinc-100 px-4 py-2.5 dark:border-white/5">
                         @if ($client->phone)
                             <a href="tel:{{ preg_replace('/[^\d+]/', '', $client->phone) }}" class="flex min-w-0 items-center gap-2 text-sm text-zinc-600 tabular-nums hover:text-brand-600 dark:text-zinc-300">
                                 <flux:icon.phone variant="micro" class="size-3.5 shrink-0 text-zinc-400" />
@@ -361,7 +372,16 @@ new #[Title('Clients')] class extends Component {
                                 </div>
                             </td>
                             <td class="px-5 py-3 text-zinc-600 tabular-nums dark:text-zinc-300">{{ $client->phone ?? '-' }}</td>
-                            <td class="px-5 py-3 text-zinc-700 dark:text-zinc-200">{{ $client->package ?? '-' }}</td>
+                            <td class="px-5 py-3">
+                                @if ($tier = Client::PACKAGES[$client->package] ?? null)
+                                    <span class="{{ $tiers[$client->package]['chip'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset">
+                                        <flux:icon :icon="$tier['icon']" variant="micro" class="size-3.5" />
+                                        {{ __($tier['label']) }}
+                                    </span>
+                                @else
+                                    <span class="text-zinc-400">-</span>
+                                @endif
+                            </td>
                             <td class="px-5 py-3 text-end whitespace-nowrap">
                                 @if ($client->price !== null)
                                     <span class="font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $client->formattedPrice() }}</span>
@@ -437,14 +457,12 @@ new #[Title('Clients')] class extends Component {
 
             <fieldset class="grid gap-4 sm:grid-cols-3">
                 <legend class="mb-3 text-xs font-semibold tracking-wide text-zinc-500 uppercase">{{ __('Package, pricing & progress') }}</legend>
-                <div class="sm:col-span-3">
-                    <flux:input wire:model="package" :label="__('Package')" list="package-options" :placeholder="__('e.g. Social Media Growth')" />
-                    <datalist id="package-options">
-                        @foreach ($this->packages as $option)
-                            <option value="{{ $option }}"></option>
-                        @endforeach
-                    </datalist>
-                </div>
+                <flux:select wire:model="package" :label="__('Package')" class="sm:col-span-3">
+                    <flux:select.option value="">{{ __('No package') }}</flux:select.option>
+                    @foreach (Client::PACKAGES as $key => $option)
+                        <flux:select.option :value="$key">{{ __($option['label']) }}</flux:select.option>
+                    @endforeach
+                </flux:select>
                 <flux:input wire:model="price" type="number" min="0" step="0.01" inputmode="decimal" :label="__('Price (:currency)', ['currency' => config('app.currency')])" class="sm:col-span-2" />
                 <flux:select wire:model="billing_cycle" :label="__('Billing')">
                     <flux:select.option value="monthly">{{ __('Monthly') }}</flux:select.option>

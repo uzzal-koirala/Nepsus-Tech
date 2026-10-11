@@ -32,7 +32,10 @@ class ClientsTest extends TestCase
             ->call('save')
             ->assertHasErrors(['email'])
             ->set('email', 'sita@example.com')
-            ->set('package', 'Social Media Growth')
+            ->set('package', 'gold')
+            ->call('save')
+            ->assertHasErrors(['package'])
+            ->set('package', 'premium')
             ->set('price', '25000')
             ->set('billing_cycle', 'monthly')
             ->set('progress', 140)
@@ -57,6 +60,7 @@ class ClientsTest extends TestCase
         $sita = Client::where('email', 'sita@example.com')->firstOrFail();
         $this->assertSame('active', $sita->status);
         $this->assertSame(60, $sita->progress);
+        $this->assertSame('premium', $sita->package);
         $this->assertSame(['instagram' => 'https://instagram.com/sita'], $sita->socialLinks());
 
         Livewire::test('pages::clients')
