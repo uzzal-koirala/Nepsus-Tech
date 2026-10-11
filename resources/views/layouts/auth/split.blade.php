@@ -13,7 +13,7 @@
                     {{-- Depth glow --}}
                     <div class="absolute -bottom-40 left-1/2 -z-10 size-[36rem] -translate-x-1/2 rounded-full bg-brand-800/60 blur-3xl"></div>
                     {{-- Sun (from the logo) --}}
-                    <div class="absolute top-[42%] left-1/2 -z-10 size-56 -translate-x-1/2 rounded-full bg-sun shadow-[0_0_120px_20px_rgb(255_194_14/0.35)] sm:size-72 lg:top-[40%] lg:size-[24rem]"></div>
+                    <div class="absolute top-[42%] left-1/2 -z-10 size-56 -translate-x-1/2 rounded-full bg-sun shadow-[0_0_120px_20px_rgb(255_194_14/0.35)] sm:size-72 lg:top-auto lg:-bottom-16 lg:size-[22rem]"></div>
 
                     <div class="flex items-start justify-between">
                         <img src="{{ asset('images/nepsus-logo.png') }}" alt="Nepsus Tech" class="h-12 w-auto rounded-xl ring-1 ring-white/25 lg:h-14">
@@ -22,15 +22,37 @@
                         </a>
                     </div>
 
-                    <h2 class="mt-8 hidden max-w-xs text-4xl leading-[1.05] font-semibold tracking-[-0.03em] text-balance text-white lg:block">
-                        {{ __('Every client.') }}<br>{{ __('Every task.') }}<br><span class="text-sun">{{ __('One place.') }}</span>
-                    </h2>
+                    <div class="mt-8 hidden max-w-sm lg:block">
+                        <h2 class="text-4xl leading-[1.05] font-semibold tracking-[-0.03em] text-balance text-white">
+                            {{ __('Every client.') }}<br>{{ __('Every task.') }}<br><span class="text-sun">{{ __('One place.') }}</span>
+                        </h2>
+                        <p class="mt-4 max-w-xs text-sm leading-relaxed text-brand-100">
+                            {{ __('Nepsus Tech keeps your clients, projects and team in one shared workspace.') }}
+                        </p>
+                    </div>
 
                     <img
                         src="{{ asset('images/auth-crew.webp') }}"
                         alt="{{ __('Three cartoon characters in sunglasses: two bunnies and an owl') }}"
-                        class="absolute inset-x-0 bottom-0 mx-auto h-[78%] w-auto max-w-none drop-shadow-[0_24px_30px_rgb(18_26_66/0.45)] lg:h-[72%]"
+                        class="absolute inset-x-0 bottom-0 mx-auto h-[78%] w-auto max-w-none drop-shadow-[0_24px_30px_rgb(18_26_66/0.45)] lg:h-[54%]"
                     >
+
+                    {{-- Feature cards --}}
+                    @foreach ([
+                        ['icon' => 'building-office-2', 'title' => __('Client profiles'), 'text' => __('Contacts, notes and history'), 'pos' => 'left-5 bottom-[34%]'],
+                        ['icon' => 'check-circle', 'title' => __('Task boards'), 'text' => __('Owners and due dates'), 'pos' => 'right-5 bottom-[18%]'],
+                        ['icon' => 'user-group', 'title' => __('Team activity'), 'text' => __('See who did what, and when'), 'pos' => 'left-5 bottom-6'],
+                    ] as $card)
+                        <div class="{{ $card['pos'] }} absolute hidden items-center gap-3 rounded-2xl bg-brand-950/35 py-2.5 ps-2.5 pe-4 text-white shadow-[0_12px_30px_-12px_rgb(18_26_66/0.6)] ring-1 ring-white/25 backdrop-blur-md lg:flex">
+                            <span class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-sun text-brand-950">
+                                <flux:icon :icon="$card['icon']" variant="mini" class="size-4.5" />
+                            </span>
+                            <span class="grid leading-tight">
+                                <span class="text-sm font-semibold">{{ $card['title'] }}</span>
+                                <span class="text-xs text-brand-100">{{ $card['text'] }}</span>
+                            </span>
+                        </div>
+                    @endforeach
                 </aside>
 
                 {{-- Form --}}
