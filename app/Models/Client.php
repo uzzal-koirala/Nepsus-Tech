@@ -17,7 +17,7 @@ use Illuminate\Support\Str;
 
 #[Fillable([
     'name', 'company', 'avatar_path', 'email', 'phone', 'status', 'service_type', 'position', 'notes',
-    'package_id', 'price', 'billing_months', 'video_count', 'progress',
+    'package_id', 'price', 'billing_months', 'video_count', 'payment_plan', 'installments', 'progress',
     'contract_start', 'contract_end', 'agreement_signed_at',
     'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url',
 ])]
@@ -38,6 +38,46 @@ class Client extends Model
         'software' => ['label' => 'Software', 'icon' => 'code-bracket', 'hint' => 'One-time project'],
         'video' => ['label' => 'Video', 'icon' => 'video-camera', 'hint' => 'Charged per video'],
     ];
+
+    /** How a client pays for the work. */
+    public const PAYMENT_PLANS = [
+        'full_advance' => ['label' => 'Full advance', 'hint' => 'All paid up front', 'icon' => 'banknotes'],
+        'half_advance' => ['label' => 'Half advance', 'hint' => '50% now, 50% at the end', 'icon' => 'scale'],
+        'installments' => ['label' => 'Installments', 'hint' => 'Equal monthly parts', 'icon' => 'calendar-days'],
+        'after_work' => ['label' => 'After work', 'hint' => 'Paid when it is done', 'icon' => 'check-badge'],
+    ];
+
+    /**
+     * Payment schedule for an amount: list of [amount, due date, label].
+     * Installments fall on the same Nepali day each month from the start date;
+     * the last payment absorbs any rounding so the total always matches.
+     *
+     * @return list<array{amount: float, due: CarbonInterface, label: string}>
+     */
+    public static function paymentSchedule(float $total, string $plan, CarbonInterface $start, ?CarbonInterface $end = null, int $installments = 2): array
+    {
+        $total = round($total);
+        $finish = $end ?? NepaliDate::addMonths($start, 1);
+
+        return match ($plan) {
+            'full_advance' => [['amount' => $total, 'due' => $start, 'label' => __('Full advance')]],
+            'half_advance' => [
+                ['amount' => $first = round($total / 2), 'due' => $start, 'label' => __('Advance (50%)')],
+                ['amount' => $total - $first, 'due' => $finish, 'label' => __('Balance (50%)')],
+            ],
+            'installments' => collect(range(0, max(2, $installments) - 1))->map(function ($i) use ($total, $installments, $start) {
+                $count = max(2, $installments);
+                $part = floor($total / $count);
+
+                return [
+                    'amount' => $i === $count - 1 ? $total - $part * ($count - 1) : $part,
+                    'due' => NepaliDate::addMonths($start, $i),
+                    'label' => __('Installment :n of :count', ['n' => $i + 1, 'count' => $count]),
+                ];
+            })->all(),
+            default => [['amount' => $total, 'due' => $finish, 'label' => __('On completion')]],
+        };
+    }
 
     /** Billing choices for packages; clients store a number of months instead. */
     public const BILLING_CYCLES = ['monthly', 'yearly', 'one_time'];
@@ -63,6 +103,7 @@ class Client extends Model
             'progress' => 'integer',
             'billing_months' => 'integer',
             'video_count' => 'integer',
+            'installments' => 'integer',
             'contract_start' => 'date',
             'contract_end' => 'date',
             'agreement_signed_at' => 'datetime',

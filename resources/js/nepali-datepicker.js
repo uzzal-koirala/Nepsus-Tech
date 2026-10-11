@@ -61,13 +61,26 @@ export function periodEndAfter(iso, months) {
     return new Date(Date.parse(renewal) - DAY).toISOString().slice(0, 10);
 }
 
+// Same BS day, n months later (clamped to the month's last day).
+export function addMonths(iso, months) {
+    const s = adToBs(iso);
+
+    if (!s) return null;
+
+    const index = s.y * 12 + s.m + months;
+    const y = Math.floor(index / 12);
+    const m = index % 12;
+
+    return calendar[y] ? bsToAd(y, m, Math.min(s.d, calendar[y][m])) : null;
+}
+
 export function formatBs(iso) {
     const s = iso ? adToBs(iso) : null;
 
     return s ? `${s.d} ${MONTHS[s.m]} ${s.y}` : '';
 }
 
-window.NepaliCalendar = { adToBs, bsToAd, periodEndAfter, formatBs };
+window.NepaliCalendar = { adToBs, bsToAd, addMonths, periodEndAfter, formatBs };
 
 document.addEventListener('alpine:init', () => {
     window.Alpine.data('nepaliDate', () => ({

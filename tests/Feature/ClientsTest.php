@@ -205,6 +205,71 @@ class ClientsTest extends TestCase
         Livewire::test('pages::clients')->set('service', 'video')->assertSee('Wedding Reel')->assertDontSee('Shop Website');
     }
 
+    public function test_new_client_starts_with_the_type_picker(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        Livewire::test('pages::clients')
+            ->call('create')
+            ->assertSee('What kind of client?')
+            ->call('chooseType', 'video')
+            ->assertSet('serviceType', 'video')
+            ->assertSet('package', '')
+            ->assertDontSee('The social media package they are on')
+            ->call('chooseType', 'social_media')
+            ->assertSee('The social media package they are on');
+    }
+
+    public function test_payment_plans_create_the_schedule(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        // Website, half advance already received: 50% paid now, 50% due on the end date.
+        Livewire::test('pages::clients')
+            ->call('chooseType', 'website')
+            ->set('name', 'Shop Website')
+            ->set('price', '150000')
+            ->set('agreementStart', '2026-08-31')
+            ->set('agreementEnd', '2026-11-30')
+            ->set('paymentPlan', 'half_advance')
+            ->set('advancePaid', true)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $site = Client::firstWhere('name', 'Shop Website');
+        $payments = $site->payments()->orderBy('due_date')->get();
+        $this->assertCount(2, $payments);
+        $this->assertEquals([75000, 75000], $payments->pluck('amount')->map(fn ($a) => (float) $a)->all());
+        $this->assertNotNull($payments[0]->paid_at);
+        $this->assertNull($payments[1]->paid_at);
+        $this->assertSame('2026-11-30', $payments[1]->due_date->toDateString());
+
+        // Video, 4 installments: one per Nepali month, amounts add up exactly.
+        Livewire::test('pages::clients')
+            ->call('chooseType', 'video')
+            ->set('name', 'Ad Videos')
+            ->set('price', '25000')
+            ->set('videoCount', '4')
+            ->set('agreementStart', '2026-08-31') // 15 Bhadra 2083
+            ->set('paymentPlan', 'installments')
+            ->set('installments', '1')
+            ->call('save')
+            ->assertHasErrors(['installments'])
+            ->set('installments', '3')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $video = Client::firstWhere('name', 'Ad Videos');
+        $rows = $video->payments()->orderBy('due_date')->get();
+        $this->assertCount(3, $rows);
+        $this->assertSame(100000.0, (float) $rows->sum('amount'));
+        $this->assertSame(['15 Bhadra 2083', '15 Ashoj 2083', '15 Kartik 2083'], $rows->map(fn ($r) => $r->due_date->toNepali())->all());
+
+        // Editing again never duplicates the schedule.
+        Livewire::test('pages::clients')->call('edit', $video->id)->assertSet('hasPayments', true)->set('price', '30000')->call('save');
+        $this->assertSame(3, $video->payments()->count());
+    }
+
     public function test_dragging_a_card_changes_its_priority(): void
     {
         $this->actingAs(User::factory()->create());
