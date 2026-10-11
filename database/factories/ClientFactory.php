@@ -30,6 +30,7 @@ class ClientFactory extends Factory
             'package' => fake()->optional(0.85)->randomElement(['Social Media Starter', 'Social Media Growth', 'Premium Marketing', 'SEO Essentials', 'Website Care']),
             'price' => fake()->optional(0.85)->randomElement([8000, 12500, 18000, 25000, 35000, 50000]),
             'billing_cycle' => fake()->randomElement(Client::BILLING_CYCLES),
+            'progress' => fake()->randomElement([0, 10, 25, 40, 55, 70, 85, 100]),
             'facebook_url' => fake()->optional(0.8)->passthrough("https://facebook.com/{$handle}"),
             'instagram_url' => fake()->optional(0.7)->passthrough("https://instagram.com/{$handle}"),
             'tiktok_url' => fake()->optional(0.4)->passthrough("https://tiktok.com/@{$handle}"),

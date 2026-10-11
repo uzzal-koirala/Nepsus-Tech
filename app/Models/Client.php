@@ -10,7 +10,7 @@ use Illuminate\Support\Str;
 
 #[Fillable([
     'name', 'company', 'email', 'phone', 'status', 'notes',
-    'package', 'price', 'billing_cycle',
+    'package', 'price', 'billing_cycle', 'progress',
     'facebook_url', 'instagram_url', 'tiktok_url', 'google_business_url',
 ])]
 class Client extends Model
@@ -34,6 +34,7 @@ class Client extends Model
     {
         return [
             'price' => 'decimal:2',
+            'progress' => 'integer',
         ];
     }
 
