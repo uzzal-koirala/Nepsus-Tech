@@ -524,7 +524,19 @@ new #[Title('Clients')] class extends Component {
                                     </span>
                                     {{ __($svc['label']) }}
                                 </span>
-                                <span class="truncate text-[0.6875rem] text-zinc-400">{{ __($svc['hint']) }}</span>
+                                @if ($pkg)
+                                    <span class="{{ $pkg->theme()['chip'] }} inline-flex min-w-0 items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold">
+                                        <flux:icon :icon="$pkg->icon" variant="micro" class="size-3 shrink-0" />
+                                        <span class="truncate">{{ $pkg->name }}</span>
+                                    </span>
+                                @elseif ($client->service_type === 'social_media')
+                                    <span class="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-[0.6875rem] font-medium text-zinc-500 dark:bg-white/10 dark:text-zinc-400">
+                                        <flux:icon.cube variant="micro" class="size-3" />
+                                        {{ __('No package') }}
+                                    </span>
+                                @else
+                                    <span class="truncate text-[0.6875rem] text-zinc-400">{{ __($svc['hint']) }}</span>
+                                @endif
                             </div>
                         @endif
                         <div class="flex items-center gap-3">
@@ -579,19 +591,7 @@ new #[Title('Clients')] class extends Component {
                         @endif
 
                         <div class="flex items-center justify-between gap-3">
-                            @if ($pkg)
-                                <span class="{{ $pkg->theme()['chip'] }} inline-flex max-w-[60%] items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold">
-                                    <flux:icon :icon="$pkg->icon" variant="micro" class="size-3.5 shrink-0" />
-                                    <span class="truncate">{{ $pkg->name }}</span>
-                                </span>
-                            @elseif ($client->service_type === 'social_media')
-                                <span class="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-500 dark:bg-white/10 dark:text-zinc-400">
-                                    <flux:icon.cube variant="micro" class="size-3.5" />
-                                    {{ __('No package') }}
-                                </span>
-                            @else
-                                <span class="text-xs text-zinc-400">{{ $client->service_type === 'video' ? __('Price per video') : __('Project price') }}</span>
-                            @endif
+                            <span class="text-xs text-zinc-400">{{ match ($client->service_type) { 'social_media' => __('Package price'), 'video' => __('Price per video'), default => __('Project price') } }}</span>
                             @if ($client->price !== null)
                                 <p class="whitespace-nowrap">
                                     <span class="text-lg font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $client->formattedPrice() }}</span><span class="text-xs text-zinc-400">{{ $client->billingSuffix() }}@if ($client->service_type === 'video') ×{{ max(1, (int) $client->video_count) }}@endif</span>
