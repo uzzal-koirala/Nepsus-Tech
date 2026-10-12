@@ -415,7 +415,6 @@ new #[Title('Client profile')] class extends Component {
             <div class="absolute -right-10 -bottom-24 size-64 rounded-full bg-sun/40 blur-3xl"></div>
             <div class="absolute inset-0 opacity-30 [background-image:radial-gradient(currentColor_1px,transparent_1px)] [background-size:16px_16px] [mask-image:linear-gradient(to_left,black,transparent_65%)]"></div>
             <svg class="absolute inset-x-0 bottom-0 h-10 w-full text-white/10" viewBox="0 0 1200 40" preserveAspectRatio="none" aria-hidden="true"><path fill="currentColor" d="M0 40V22C200 0 400 0 600 18s400 22 600 0v22Z" /></svg>
-            <flux:icon :icon="$pkg->icon ?? (Client::SERVICE_TYPES[$c->service_type]['icon'] ?? 'cube')" class="absolute right-8 -bottom-6 size-36 rotate-[-12deg] opacity-20" />
         </div>
 
         <div class="px-5 pb-5 sm:px-7">
@@ -545,7 +544,6 @@ new #[Title('Client profile')] class extends Component {
     <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {{-- Package: name, price and billing together --}}
         <div class="{{ $theme['card'] ?? 'from-brand-50 ring-brand-200/80 dark:from-brand-500/[0.09] dark:ring-brand-500/25' }} relative flex flex-col gap-4 overflow-hidden rounded-xl bg-white bg-linear-to-br to-white to-70% p-5 ring-1 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:to-zinc-950">
-            <flux:icon :icon="$pkg->icon ?? (Client::SERVICE_TYPES[$c->service_type]['icon'] ?? 'cube')" class="absolute -right-5 -bottom-6 size-28 opacity-[0.07]" />
             <div class="relative flex items-center gap-3">
                 <span class="{{ $theme['cover'] ?? 'from-brand-400 via-brand-500 to-brand-700 text-white' }} flex size-9 shrink-0 items-center justify-center rounded-lg bg-linear-to-br shadow-md shadow-zinc-900/10">
                     <flux:icon :icon="$pkg->icon ?? (Client::SERVICE_TYPES[$c->service_type]['icon'] ?? 'cube')" variant="mini" class="size-4.5" />
