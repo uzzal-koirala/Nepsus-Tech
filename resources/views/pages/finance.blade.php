@@ -189,7 +189,7 @@ new #[Title('Finance')] class extends Component {
         $salaries = SalaryPayment::with('employee')->whereBetween('paid_on', [$from, $to])->get()
             ->map(fn ($s) => [
                 'key' => 's'.$s->id, 'kind' => 'expense', 'source' => 'salary', 'date' => $s->paid_on,
-                'title' => $s->employee?->name ?? __('Salary'), 'category' => __('Salary · :month', ['month' => NepaliDate::periodLabel($s->period)]), 'icon' => 'user-group',
+                'title' => $s->employee?->name ?? __('Salary'), 'category' => __('Salary'), 'icon' => 'user-group',
                 'amount' => (float) $s->amount, 'method' => null, 'reference' => null, 'note' => $s->note, 'recorded' => $s->created_at->toNepali(), 'link' => $s->employee ? route('employees.show', ['employee' => $s->employee_id, 'tab' => 'salary']) : null,
                 'proof' => null, 'id' => null,
             ]);
