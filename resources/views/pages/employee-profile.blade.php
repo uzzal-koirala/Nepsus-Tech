@@ -95,6 +95,7 @@ new #[Title('Employee')] class extends Component {
         $last = NepaliDate::toAd($this->calYear, $this->calMonth, $length);
 
         $marks = $this->employee->attendances()->whereBetween('date', [$first->toDateString(), $last->toDateString()])->get()
+            ->reject(fn ($a) => $a->date->isSaturday())
             ->keyBy(fn ($a) => $a->date->toDateString());
         $doneByDay = $this->work->whereNotNull('completed_at')
             ->filter(fn ($t) => $t->completed_at->between($first, $last->copy()->endOfDay()))
@@ -126,7 +127,7 @@ new #[Title('Employee')] class extends Component {
     #[Computed]
     public function attendanceTotals(): array
     {
-        $counts = $this->employee->attendances()->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status');
+        $counts = $this->employee->attendances()->get(['date', 'status'])->reject(fn ($a) => $a->date->isSaturday())->countBy('status');
         $totals = collect(Attendance::STATUSES)->map(fn ($v, $k) => (int) ($counts[$k] ?? 0))->all();
         $marked = array_sum($totals);
 
@@ -138,6 +139,8 @@ new #[Title('Employee')] class extends Component {
 
     public function markDay(string $date, string $status): void
     {
+        // Saturday is the weekly holiday.
+        abort_if(Carbon::parse($date)->isSaturday(), 422);
         $day = Carbon::parse($date)->toDateString();
 
         if ($status === 'leave') {
@@ -166,6 +169,7 @@ new #[Title('Employee')] class extends Component {
             'leaveDate' => ['required', 'date'],
             'leaveReason' => ['required', 'string', 'min:3', 'max:255'],
         ], attributes: ['leaveReason' => __('reason')]);
+        abort_if(Carbon::parse($data['leaveDate'])->isSaturday(), 422);
 
         $this->employee->attendances()->updateOrCreate(['date' => Carbon::parse($data['leaveDate'])->toDateString()], ['status' => 'leave', 'note' => trim($data['leaveReason'])]);
 
@@ -634,6 +638,18 @@ new #[Title('Employee')] class extends Component {
                                             $isFuture = $cell['ad']->isAfter(today());
                                             $mark = $cell['status'];
                                         @endphp
+                                        @if ($cell['ad']->isSaturday())
+                                            <div wire:key="att-{{ $key }}" class="flex min-h-24 flex-col gap-1.5 border-e border-zinc-100 bg-rose-50/40 p-2 last:border-e-0 dark:border-white/5 dark:bg-rose-500/[0.04]">
+                                                <span class="flex items-center justify-between">
+                                                    <span @class(['flex size-6 items-center justify-center rounded-full text-xs font-semibold tabular-nums', 'bg-brand-500 text-white' => $isToday, 'text-rose-500' => ! $isToday])>{{ $cell['day'] }}</span>
+                                                    <span class="text-[0.625rem] text-zinc-300 tabular-nums dark:text-zinc-600">{{ $cell['ad']->format('j') }}</span>
+                                                </span>
+                                                <span class="inline-flex w-fit items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"><flux:icon.sparkles variant="micro" class="size-3" />{{ __('Holiday') }}</span>
+                                                @if ($cell['done']->isNotEmpty())
+                                                    <span class="mt-auto inline-flex w-fit items-center gap-1 rounded-md bg-violet-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-violet-700 dark:bg-violet-500/10 dark:text-violet-300" title="{{ $cell['done']->pluck('title')->implode(', ') }}"><flux:icon.check variant="micro" class="size-3" />{{ trans_choice(':count task done|:count tasks done', $cell['done']->count()) }}</span>
+                                                @endif
+                                            </div>
+                                        @else
                                         <flux:dropdown wire:key="att-{{ $key }}" class="contents">
                                             <button type="button" @class([
                                                 'group relative flex min-h-24 w-full flex-col gap-1.5 border-e border-zinc-100 p-2 text-start transition last:border-e-0 hover:ring-2 hover:ring-brand-300 hover:ring-inset dark:border-white/5',
@@ -676,6 +692,7 @@ new #[Title('Employee')] class extends Component {
                                                 @endif
                                             </flux:menu>
                                         </flux:dropdown>
+                                        @endif
                                     @endif
                                 @endforeach
                             </div>

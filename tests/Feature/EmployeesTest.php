@@ -199,4 +199,17 @@ class EmployeesTest extends TestCase
         $page->call('deleteDocument', $doc->id);
         Storage::disk('local')->assertMissing($doc->path);
     }
+
+    public function test_saturday_is_a_holiday(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $employee = Employee::factory()->create(['status' => 'active']);
+        $saturday = today()->next(\Carbon\CarbonInterface::SATURDAY)->toDateString();
+
+        Livewire::test('pages::employee-profile', ['employee' => $employee])
+            ->assertSee('Holiday')
+            ->call('markDay', $saturday, 'absent')
+            ->assertStatus(422);
+        $this->assertSame(0, $employee->attendances()->count());
+    }
 }
