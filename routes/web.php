@@ -14,6 +14,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('clients/{client}', 'pages::client-profile')->name('clients.show');
     Route::livewire('packages', 'pages::packages')->name('packages.index');
     Route::livewire('employees', 'pages::employees')->name('employees.index');
+    Route::livewire('finance', 'pages::finance')->name('finance.index');
     Route::livewire('employees/{employee}', 'pages::employee-profile')->name('employees.show');
 
     Route::get('documents/{document}', fn (Document $document) => Storage::disk('local')->download($document->path, $document->name))
@@ -21,6 +22,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('employee-documents/{employeeDocument}', fn (EmployeeDocument $employeeDocument) => Storage::disk('local')->download($employeeDocument->path, $employeeDocument->name))
         ->name('employee-documents.download');
+
+    Route::get('transactions/{transaction}/receipt', fn (App\Models\Transaction $transaction) => $transaction->receipt_path
+        ? Storage::disk('local')->response($transaction->receipt_path)
+        : abort(404))->name('transactions.receipt');
 
     // Proof of payment is private: shown only to signed-in users.
     Route::get('payments/{payment}/proof', fn (Payment $payment) => $payment->proof_path

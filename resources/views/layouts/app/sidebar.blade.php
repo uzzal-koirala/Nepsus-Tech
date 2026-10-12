@@ -22,6 +22,9 @@
                             ['icon' => 'folder', 'label' => __('Projects')],
                             ['icon' => 'check-circle', 'label' => __('Tasks')],
                         ],
+                        __('Money') => [
+                            ['icon' => 'banknotes', 'label' => __('Finance'), 'route' => 'finance.index'],
+                        ],
                         __('Team') => [
                             ['icon' => 'user-group', 'label' => __('Employees'), 'route' => 'employees.index'],
                             ['icon' => 'clock', 'label' => __('Activity log')],
