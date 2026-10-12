@@ -1407,29 +1407,19 @@ new #[Title('Client profile')] class extends Component {
         </section>
             {{-- Payments --}}
             @php
-                $allPayments = $this->payments;
-                $paidCount = $allPayments->whereNotNull('paid_at')->count();
-                $dueCount = $allPayments->count() - $paidCount;
+                // Only money actually received is listed here.
+                $allPayments = $this->payments->whereNotNull('paid_at')->sortByDesc('paid_at');
             @endphp
-            <section class="{{ $panel }} overflow-hidden" x-data="{ show: 'all' }">
+            <section class="{{ $panel }} overflow-hidden">
                 <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
                     <div class="flex items-center gap-3">
                         <span class="flex size-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.banknotes variant="mini" class="size-4.5" /></span>
                         <div>
-                            <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Payments') }}</h2>
-                            <p class="text-xs text-zinc-500">{{ trans_choice(':count payment|:count payments', $allPayments->count()) }}</p>
+                            <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Received payments') }}</h2>
+                            <p class="text-xs text-zinc-500">{{ trans_choice(':count payment|:count payments', $allPayments->count()) }} · {{ Client::money($allPayments->sum('amount')) }}</p>
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
-                        @if ($allPayments->isNotEmpty())
-                            <div class="flex gap-1 rounded-xl bg-zinc-100 p-1 text-xs font-medium dark:bg-white/5">
-                                @foreach (['all' => [__('All'), $allPayments->count()], 'paid' => [__('Received'), $paidCount], 'due' => [__('Due'), $dueCount]] as $key => [$flabel, $fcount])
-                                    <button type="button" @click="show = '{{ $key }}'" class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition" :class="show === '{{ $key }}' ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-white' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-white'">
-                                        {{ $flabel }} <span class="tabular-nums" :class="show === '{{ $key }}' ? 'text-brand-600 dark:text-brand-300' : 'text-zinc-400'">{{ $fcount }}</span>
-                                    </button>
-                                @endforeach
-                            </div>
-                        @endif
                         <flux:button size="sm" variant="primary" icon="plus" wire:click="newPayment" data-test="record-payment-button">{{ __('Record payment') }}</flux:button>
                     </div>
                 </div>
@@ -1437,7 +1427,7 @@ new #[Title('Client profile')] class extends Component {
                 @if ($allPayments->isEmpty())
                     <div class="flex flex-col items-center gap-3 border-t border-zinc-100 px-5 py-12 text-center dark:border-white/5">
                         <span class="flex size-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10"><flux:icon.banknotes class="size-6" /></span>
-                        <p class="text-sm text-zinc-500">{{ __('No payments recorded yet.') }}</p>
+                        <p class="text-sm text-zinc-500">{{ __('No payments received yet.') }}</p>
                         <flux:button size="sm" variant="primary" icon="plus" wire:click="newPayment">{{ __('Record the first payment') }}</flux:button>
                     </div>
                 @else
@@ -1457,7 +1447,7 @@ new #[Title('Client profile')] class extends Component {
                                     default => 'bg-zinc-50 text-zinc-600 ring-zinc-200/70 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10',
                                 };
                             @endphp
-                            <li wire:key="payment-{{ $payment->id }}" x-show="show === 'all' || (show === 'paid') === {{ $payment->paid_at ? 'true' : 'false' }}" class="group flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5 transition hover:bg-zinc-50/70 sm:flex-nowrap dark:hover:bg-white/[0.02]">
+                            <li wire:key="payment-{{ $payment->id }}" class="group flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5 transition hover:bg-zinc-50/70 sm:flex-nowrap dark:hover:bg-white/[0.02]">
                                 {{-- Date --}}
                                 <div class="flex w-48 shrink-0 items-center gap-3" title="{{ $shownDate?->format('l, j M Y') }}">
                                     <span class="{{ $tile }} flex size-10 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset"><flux:icon.calendar-days variant="mini" class="size-5" /></span>
