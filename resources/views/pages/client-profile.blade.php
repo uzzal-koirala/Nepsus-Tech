@@ -630,6 +630,55 @@ new #[Title('Client profile')] class extends Component {
     {{-- Header --}}
     @php
         $since = $c->contract_start ?? $c->created_at;
+
+        // Countdown for the cover: months left for monthly clients, days to the deadline for projects.
+        $countdown = null;
+        $today = today();
+        if ($c->isRecurring() && $c->contract_start && $c->contract_end) {
+            $totalMonths = max(1, (int) round($c->contract_start->diffInMonths($c->contract_end->copy()->addDay())));
+            $usedMonths = (int) min($totalMonths, max(0, floor($c->contract_start->diffInMonths($today))));
+            $daysToEnd = (int) $today->diffInDays($c->contract_end, false);
+            $monthsLeft = max(0, $totalMonths - $usedMonths);
+            $countdown = [
+                'icon' => 'calendar-days',
+                'label' => __('Agreement'),
+                'value' => match (true) {
+                    $daysToEnd < 0 => __('Ended'),
+                    $monthsLeft <= 1 => trans_choice(':count day left|:count days left', $daysToEnd),
+                    default => trans_choice(':count month left|:count months left', $monthsLeft),
+                },
+                'sub' => $daysToEnd < 0
+                    ? __('Ended :date · renew the agreement', ['date' => $c->contract_end->toNepali()])
+                    : __('Month :now of :total · ends :date', ['now' => min($totalMonths, $usedMonths + 1), 'total' => $totalMonths, 'date' => $c->contract_end->toNepali()]),
+                'pct' => (int) round($usedMonths / $totalMonths * 100),
+                'alert' => $daysToEnd < 0 || $daysToEnd <= 30,
+            ];
+        } elseif ($c->isRecurring() && ($periodEnd = $c->periodEnd())) {
+            $daysToEnd = (int) $today->diffInDays($periodEnd);
+            $countdown = [
+                'icon' => 'arrow-path',
+                'label' => __('Billing period'),
+                'value' => $daysToEnd === 0 ? __('Renews today') : trans_choice('Renews in :count day|Renews in :count days', $daysToEnd),
+                'sub' => __('Period ends :date', ['date' => $periodEnd->toNepali()]),
+                'pct' => (int) max(0, min(100, round(100 - $daysToEnd / max(1, $c->billing_months * 30) * 100))),
+                'alert' => $daysToEnd <= 3,
+            ];
+        } elseif (! $c->isRecurring() && $c->contract_end) {
+            $daysToEnd = (int) $today->diffInDays($c->contract_end, false);
+            $countdown = [
+                'icon' => 'flag',
+                'label' => __('Project deadline'),
+                'value' => match (true) {
+                    $daysToEnd < 0 => trans_choice(':count day overdue|:count days overdue', abs($daysToEnd)),
+                    $daysToEnd === 0 => __('Due today'),
+                    default => trans_choice(':count day left|:count days left', $daysToEnd),
+                },
+                'sub' => __('Deadline :date', ['date' => $c->contract_end->toNepali()]),
+                'pct' => $contractPct ?? 100,
+                'alert' => $daysToEnd <= 7,
+            ];
+        }
+
         $wa = null;
         if ($c->phone) {
             $wa = preg_replace('/\D/', '', $c->phone);
@@ -646,6 +695,20 @@ new #[Title('Client profile')] class extends Component {
             <div class="absolute -right-10 -bottom-24 size-64 rounded-full bg-sun/40 blur-3xl"></div>
             <div class="absolute inset-0 opacity-30 [background-image:radial-gradient(currentColor_1px,transparent_1px)] [background-size:16px_16px] [mask-image:linear-gradient(to_left,black,transparent_65%)]"></div>
             <svg class="absolute inset-x-0 bottom-0 h-10 w-full text-white/10" viewBox="0 0 1200 40" preserveAspectRatio="none" aria-hidden="true"><path fill="currentColor" d="M0 40V22C200 0 400 0 600 18s400 22 600 0v22Z" /></svg>
+
+            @if ($countdown)
+                <div class="absolute top-1/2 right-6 hidden w-72 -translate-y-1/2 rounded-2xl bg-white/15 p-4 text-white shadow-lg ring-1 ring-white/30 backdrop-blur-md sm:block" data-test="profile-countdown">
+                    <div class="flex items-center gap-2 text-[0.6875rem] font-semibold tracking-wider text-white/80 uppercase">
+                        <flux:icon :icon="$countdown['icon']" variant="micro" class="size-3.5" />{{ $countdown['label'] }}
+                        @if ($countdown['alert'])
+                            <span class="ms-auto rounded-full bg-sun px-1.5 py-px text-[0.625rem] font-bold tracking-normal text-zinc-900 normal-case">{{ __('Soon') }}</span>
+                        @endif
+                    </div>
+                    <p class="mt-1.5 text-2xl leading-none font-semibold tracking-tight">{{ $countdown['value'] }}</p>
+                    <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-white/25"><div @class(['h-full rounded-full transition-[width] duration-700', 'bg-sun' => $countdown['alert'], 'bg-white' => ! $countdown['alert']]) style="width: {{ $countdown['pct'] }}%"></div></div>
+                    <p class="mt-2 truncate text-xs text-white/85">{{ $countdown['sub'] }}</p>
+                </div>
+            @endif
         </div>
 
         <div class="px-5 pb-5 sm:px-7">
@@ -672,6 +735,11 @@ new #[Title('Client profile')] class extends Component {
                             @if ($pkg)
                                 <span class="{{ $theme['chip'] }} inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold">
                                     <flux:icon :icon="$pkg->icon" variant="micro" class="size-3.5" />{{ $pkg->name }}
+                                </span>
+                            @endif
+                            @if ($countdown)
+                                <span @class(['inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold sm:hidden', 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' => $countdown['alert'], 'bg-zinc-100 text-zinc-700 dark:bg-white/10 dark:text-zinc-200' => ! $countdown['alert']])>
+                                    <flux:icon :icon="$countdown['icon']" variant="micro" class="size-3.5" />{{ $countdown['value'] }}
                                 </span>
                             @endif
                         </div>
