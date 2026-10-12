@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Date;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -16,6 +17,11 @@ new #[Title('Client profile')] class extends Component {
     use WithFileUploads;
 
     public Client $client;
+
+    public const TABS = ['overview', 'tasks', 'payments', 'documents', 'notes'];
+
+    #[Url(except: 'overview')]
+    public string $tab = 'overview';
 
     public string $taskTitle = '';
     public string $taskDue = '';
@@ -70,6 +76,18 @@ new #[Title('Client profile')] class extends Component {
     public function documents()
     {
         return $this->client->documents()->latest()->get();
+    }
+
+    public function setTab(string $tab): void
+    {
+        $this->tab = in_array($tab, self::TABS) ? $tab : 'overview';
+    }
+
+    /** The earliest unpaid payment, for the "Next up" card. */
+    #[Computed]
+    public function nextPayment(): ?Payment
+    {
+        return $this->payments->whereNull('paid_at')->sortBy(fn ($p) => $p->due_date?->timestamp ?? PHP_INT_MAX)->first();
     }
 
     #[Computed]
@@ -371,46 +389,71 @@ new #[Title('Client profile')] class extends Component {
 @endphp
 
 <div class="flex w-full flex-col gap-6">
-    <a href="{{ route('clients.index') }}" wire:navigate class="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-zinc-500 transition hover:text-brand-600 dark:text-zinc-400">
-        <flux:icon.arrow-left variant="micro" class="size-4" />
-        {{ __('Clients') }}
-    </a>
+    {{-- Breadcrumb --}}
+    <nav class="flex items-center gap-1.5 text-sm" aria-label="{{ __('Breadcrumb') }}">
+        <a href="{{ route('clients.index') }}" wire:navigate class="font-medium text-zinc-500 transition hover:text-brand-600 dark:text-zinc-400">{{ __('Clients') }}</a>
+        <flux:icon.chevron-right variant="micro" class="size-4 text-zinc-300" />
+        <span class="truncate font-medium text-zinc-800 dark:text-zinc-100">{{ $c->displayName() }}</span>
+    </nav>
 
     {{-- Header --}}
     <header class="{{ $panel }} overflow-hidden">
-        <div class="{{ $theme['cover'] ?? 'from-zinc-200 via-zinc-100 to-zinc-300 dark:from-zinc-800 dark:via-zinc-900 dark:to-zinc-800' }} relative h-28 bg-linear-to-r sm:h-32">
-            <div class="absolute inset-0 opacity-30 [background-image:radial-gradient(white_1px,transparent_1px)] [background-size:18px_18px] [mask-image:linear-gradient(to_left,black,transparent_70%)]"></div>
-            @if ($pkg)
-                <flux:icon :icon="$pkg->icon" class="absolute -right-4 -bottom-8 size-40 opacity-20" />
-            @endif
+        <div class="{{ $theme['cover'] ?? 'from-brand-400 via-brand-500 to-brand-700 text-white' }} relative h-28 bg-linear-to-r sm:h-32">
+            <div class="absolute inset-0 opacity-25 [background-image:radial-gradient(currentColor_1px,transparent_1px)] [background-size:18px_18px] [mask-image:linear-gradient(to_left,black,transparent_70%)]"></div>
+            <flux:icon :icon="$pkg->icon ?? (Client::SERVICE_TYPES[$c->service_type]['icon'] ?? 'cube')" class="absolute -right-4 -bottom-8 size-40 opacity-20" />
         </div>
 
-        <div class="flex flex-col gap-5 px-5 pb-5 sm:px-6">
+        <div class="flex flex-col gap-4 px-5 pb-5 sm:px-6">
             <div class="flex flex-wrap items-end justify-between gap-4">
                 <div class="flex min-w-0 items-end gap-4">
-                    <span class="relative -mt-10 shrink-0">
-                        <x-client-avatar :client="$c" tint="bg-brand-100 text-brand-700 dark:bg-brand-500/30 dark:text-white" class="size-20 rounded-2xl text-2xl shadow-lg ring-4 ring-white dark:ring-zinc-950" />
-                        <span class="{{ $dots[$c->status] }} absolute -end-1 -bottom-1 size-4 rounded-full ring-[3px] ring-white dark:ring-zinc-950"></span>
+                    <span class="relative -mt-12 shrink-0">
+                        <x-client-avatar :client="$c" tint="bg-brand-100 text-brand-700 dark:bg-brand-500/30 dark:text-white" class="size-24 rounded-2xl text-3xl shadow-lg ring-4 ring-white dark:ring-zinc-950" />
+                        <span class="{{ $dots[$c->status] }} absolute -end-1 -bottom-1 size-4.5 rounded-full ring-[3px] ring-white dark:ring-zinc-950" title="{{ ucfirst($c->status) }}"></span>
                     </span>
                     <div class="min-w-0 pt-3">
-                        <h1 class="truncate text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-[1.75rem] dark:text-white">{{ $c->name }}</h1>
-                        <p class="truncate text-sm text-zinc-500 dark:text-zinc-400">{{ $c->company ?? __('Independent') }}</p>
+                        <h1 class="truncate text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-[1.75rem] dark:text-white">{{ $c->displayName() }}</h1>
+                        <p class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-500 dark:text-zinc-400">
+                            <span class="inline-flex items-center gap-1.5"><flux:icon.user variant="micro" class="size-3.5 opacity-70" />{{ $c->contactName() }}</span>
+                            @if ($c->phone)
+                                <a href="tel:{{ preg_replace('/[^\d+]/', '', $c->phone) }}" class="inline-flex items-center gap-1.5 tabular-nums hover:text-brand-600"><flux:icon.phone variant="micro" class="size-3.5 opacity-70" />{{ $c->phone }}</a>
+                            @endif
+                            @if ($c->email)
+                                <a href="mailto:{{ $c->email }}" class="inline-flex min-w-0 items-center gap-1.5 hover:text-brand-600"><flux:icon.envelope variant="micro" class="size-3.5 opacity-70" /><span class="truncate">{{ $c->email }}</span></a>
+                            @endif
+                        </p>
                     </div>
                 </div>
 
                 <div class="flex flex-wrap items-center gap-2 pt-3">
-                    <div class="flex items-center">
-                        @foreach ($c->socialLinks() as $network => $link)
-                            <a href="{{ $link }}" target="_blank" rel="noopener noreferrer" class="{{ $socials[$network]['class'] }} flex size-9 items-center justify-center rounded-lg text-zinc-400 transition" title="{{ $socials[$network]['label'] }}">
-                                <x-social-icon :name="$network" class="size-4" />
-                                <span class="sr-only">{{ $socials[$network]['label'] }}</span>
-                            </a>
-                        @endforeach
-                    </div>
+                    @foreach ($c->socialLinks() as $network => $link)
+                        <a href="{{ $link }}" target="_blank" rel="noopener noreferrer" class="{{ $socials[$network]['class'] }} flex size-9 items-center justify-center rounded-lg text-zinc-400 transition" title="{{ $socials[$network]['label'] }}">
+                            <x-social-icon :name="$network" class="size-4" />
+                            <span class="sr-only">{{ $socials[$network]['label'] }}</span>
+                        </a>
+                    @endforeach
                     @if ($c->phone)
-                        <flux:button :href="'tel:'.preg_replace('/[^\d+]/', '', $c->phone)" icon="phone">{{ __('Call') }}</flux:button>
+                        <flux:button :href="'tel:'.preg_replace('/[^\d+]/', '', $c->phone)" icon="phone" :aria-label="__('Call')" class="max-sm:px-2.5">{{ __('Call') }}</flux:button>
+                        @php
+                            $wa = preg_replace('/\D/', '', $c->phone);
+                            $wa = strlen($wa) === 10 && str_starts_with($wa, '9') ? '977'.$wa : $wa;
+                        @endphp
+                        <a href="https://wa.me/{{ $wa }}" target="_blank" rel="noopener noreferrer" class="flex size-10 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-[#25D366]/50 hover:text-[#25D366] dark:border-white/10" title="WhatsApp">
+                            <x-social-icon name="whatsapp" class="size-4.5" /><span class="sr-only">WhatsApp</span>
+                        </a>
                     @endif
-                    <flux:button variant="primary" icon="pencil-square" :href="route('clients.index', ['open' => $c->id])" wire:navigate>{{ __('Edit') }}</flux:button>
+                    <flux:button icon="pencil-square" :href="route('clients.index', ['open' => $c->id])" wire:navigate>{{ __('Edit') }}</flux:button>
+                    <flux:dropdown align="end">
+                        <flux:button variant="primary" icon="plus" icon:trailing="chevron-down" data-test="profile-add-menu">{{ __('Add') }}</flux:button>
+                        <flux:menu>
+                            <flux:menu.item icon="check-circle" wire:click="newTask">{{ __('Task') }}</flux:menu.item>
+                            <flux:menu.item icon="banknotes" wire:click="newPayment">{{ __('Payment') }}</flux:menu.item>
+                            <flux:menu.item icon="calendar-days" wire:click="openPlan">{{ __('Payment plan') }}</flux:menu.item>
+                            <flux:menu.separator />
+                            <flux:menu.item icon="arrow-up-tray" wire:click="newDocument">{{ __('Document') }}</flux:menu.item>
+                            <flux:menu.item icon="document-check" wire:click="editAgreement">{{ __('Agreement') }}</flux:menu.item>
+                            <flux:menu.item icon="pencil" wire:click="editNotes">{{ __('Note') }}</flux:menu.item>
+                        </flux:menu>
+                    </flux:dropdown>
                 </div>
             </div>
 
@@ -419,22 +462,17 @@ new #[Title('Client profile')] class extends Component {
                     <span class="{{ $dots[$c->status] }} size-1.5 rounded-full"></span>
                     {{ __($c->status) }}
                 </span>
+                <span class="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 dark:bg-white/10 dark:text-zinc-200">
+                    <flux:icon :icon="Client::SERVICE_TYPES[$c->service_type]['icon'] ?? 'cube'" variant="micro" class="size-3.5" />
+                    {{ __(Client::SERVICE_TYPES[$c->service_type]['label'] ?? 'Client') }}
+                </span>
                 @if ($pkg)
                     <span class="{{ $theme['chip'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold">
                         <flux:icon :icon="$pkg->icon" variant="micro" class="size-3.5" />
                         {{ $pkg->name }}
                     </span>
                 @endif
-                @if ($c->phone)
-                    <span class="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs text-zinc-600 tabular-nums dark:bg-white/5 dark:text-zinc-300">
-                        <flux:icon.phone variant="micro" class="size-3.5" /> {{ $c->phone }}
-                    </span>
-                @endif
-                <span class="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 dark:bg-white/10 dark:text-zinc-200">
-                    <flux:icon :icon="Client::SERVICE_TYPES[$c->service_type]['icon'] ?? 'cube'" variant="micro" class="size-3.5" />
-                    {{ __(Client::SERVICE_TYPES[$c->service_type]['label'] ?? 'Client') }}
-                </span>
-                <span class="text-xs text-zinc-400" title="{{ $c->created_at->format('j M Y') }}">{{ __('Client since') }} {{ $c->created_at->toNepaliMonth() }}</span>
+                <span class="text-xs text-zinc-400" title="{{ $c->created_at->format('j M Y') }}">· {{ __('Client since') }} {{ $c->created_at->toNepaliMonth() }}</span>
             </div>
         </div>
     </header>
@@ -510,9 +548,189 @@ new #[Title('Client profile')] class extends Component {
         </div>
     </section>
 
-    <div class="grid items-start gap-6 xl:grid-cols-3">
-        {{-- Left column --}}
-        <div class="flex flex-col gap-6 xl:col-span-2">
+    {{-- Tabs --}}
+    @php
+        $openTasks = $this->tasks->whereNull('completed_at');
+        $tabs = [
+            'overview' => ['label' => __('Overview'), 'icon' => 'squares-2x2', 'count' => null],
+            'tasks' => ['label' => __('Tasks'), 'icon' => 'check-circle', 'count' => $openTasks->count() ?: null],
+            'payments' => ['label' => __('Payments'), 'icon' => 'banknotes', 'count' => $this->payments->count() ?: null, 'alert' => $stats['overduePayments']],
+            'documents' => ['label' => __('Documents'), 'icon' => 'document-text', 'count' => $this->documents->count() ?: null],
+            'notes' => ['label' => __('Notes'), 'icon' => 'pencil-square', 'count' => null],
+        ];
+    @endphp
+    <nav class="-mx-1 flex gap-1 overflow-x-auto rounded-2xl bg-white p-1.5 ring-1 ring-zinc-200/70 dark:bg-zinc-950 dark:ring-white/10" aria-label="{{ __('Client sections') }}">
+        @foreach ($tabs as $key => $t)
+            <button
+                type="button"
+                wire:click="setTab('{{ $key }}')"
+                @class([
+                    'flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition',
+                    'bg-brand-500 text-white shadow-md shadow-brand-500/25' => $tab === $key,
+                    'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white' => $tab !== $key,
+                ])
+                @if ($tab === $key) aria-current="page" @endif
+                data-test="tab-{{ $key }}"
+            >
+                <flux:icon :icon="$t['icon']" variant="micro" class="size-4" />
+                {{ $t['label'] }}
+                @if (! empty($t['alert']))
+                    <span class="rounded-md bg-rose-500 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-white tabular-nums">{{ $t['alert'] }}</span>
+                @elseif ($t['count'])
+                    <span @class(['rounded-md px-1.5 py-0.5 text-[0.6875rem] tabular-nums', 'bg-white/20' => $tab === $key, 'bg-zinc-100 text-zinc-500 dark:bg-white/5' => $tab !== $key])>{{ $t['count'] }}</span>
+                @endif
+            </button>
+        @endforeach
+    </nav>
+
+    @if ($tab === 'overview')
+        <div class="grid items-start gap-6 xl:grid-cols-3">
+            <div class="flex flex-col gap-6 xl:col-span-2">
+            {{-- Next up --}}
+            <section class="{{ $panel }}">
+                <div class="{{ $panelHead }}">
+                    <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Next up') }}</h2>
+                </div>
+
+                @if ($np = $this->nextPayment)
+                    @php
+                        $npDays = $np->dueInDays();
+                    @endphp
+                    <div class="flex flex-wrap items-center gap-4 border-b border-zinc-100 px-5 py-4 dark:border-white/5">
+                        <span @class([
+                            $iconTile, 'size-11',
+                            'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300' => $npDays !== null && $npDays < 0,
+                            'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300' => $npDays !== null && $npDays >= 0 && $npDays <= \App\Models\Payment::REMIND_DAYS,
+                            'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300' => $npDays === null || $npDays > \App\Models\Payment::REMIND_DAYS,
+                        ])>
+                            <flux:icon.banknotes variant="mini" class="size-5" />
+                        </span>
+                        <div class="min-w-0 flex-1">
+                            <p class="text-xs text-zinc-500">{{ __('Next payment') }}{{ $np->note ? ' · '.$np->note : '' }}</p>
+                            <p class="text-lg font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ Client::money($np->amount) }}</p>
+                            <p @class(['text-xs', 'font-medium text-rose-600 dark:text-rose-400' => $npDays !== null && $npDays < 0, 'text-zinc-500' => $npDays === null || $npDays >= 0])>
+                                @if ($np->due_date)
+                                    {{ $np->due_date->toNepali() }} ·
+                                    {{ $npDays < 0 ? trans_choice('overdue by :count day|overdue by :count days', abs($npDays)) : ($npDays === 0 ? __('due today') : trans_choice('due tomorrow|due in :count days', $npDays)) }}
+                                @else
+                                    {{ __('No due date') }}
+                                @endif
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <flux:button size="sm" variant="primary" icon="check" wire:click="togglePaid({{ $np->id }})">{{ __('Mark paid') }}</flux:button>
+                            <flux:button size="sm" variant="ghost" wire:click="setTab('payments')">{{ __('All payments') }}</flux:button>
+                        </div>
+                    </div>
+                @else
+                    <div class="flex items-center gap-3 border-b border-zinc-100 px-5 py-4 text-sm text-zinc-500 dark:border-white/5">
+                        <span class="{{ $iconTile }} bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.check-badge variant="mini" class="size-4.5" /></span>
+                        {{ $this->payments->isEmpty() ? __('No payments scheduled yet.') : __('All payments are received.') }}
+                        <flux:button size="sm" variant="ghost" icon="calendar-days" wire:click="openPlan" class="ms-auto">{{ __('Payment plan') }}</flux:button>
+                    </div>
+                @endif
+
+                <div class="flex items-center justify-between px-5 pt-4 pb-1">
+                    <p class="text-xs font-semibold tracking-wide text-zinc-500 uppercase">{{ __('Open tasks') }}</p>
+                    <div class="flex items-center gap-1">
+                        <flux:button size="xs" variant="ghost" icon="plus" wire:click="newTask">{{ __('Add') }}</flux:button>
+                        @if ($openTasks->count() > 5)
+                            <flux:button size="xs" variant="ghost" wire:click="setTab('tasks')">{{ __('See all :count', ['count' => $openTasks->count()]) }}</flux:button>
+                        @endif
+                    </div>
+                </div>
+                @forelse ($openTasks->take(5) as $task)
+                    @include('partials.task-row', ['task' => $task, 'prefix' => 'next'])
+                @empty
+                    <p class="px-5 pt-2 pb-5 text-sm text-zinc-500">{{ __('Nothing open. Nice work.') }}</p>
+                @endforelse
+            </section>
+
+            </div>
+            <div class="flex flex-col gap-6">
+            {{-- Agreement --}}
+            <section class="{{ $panel }}">
+                <div class="{{ $panelHead }}">
+                    <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Agreement') }}</h2>
+                    @if ($hasAgreement)
+                        <flux:button size="sm" icon="pencil-square" wire:click="editAgreement">{{ __('Edit') }}</flux:button>
+                    @endif
+                </div>
+
+                @if (! $hasAgreement)
+                    <div class="flex flex-col items-center gap-3 px-5 py-10 text-center">
+                        <span class="{{ $iconTile }} bg-amber-50 text-amber-600 dark:bg-amber-500/10"><flux:icon.document-check variant="mini" class="size-4.5" /></span>
+                        <div>
+                            <p class="text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ __('No agreement yet') }}</p>
+                            <p class="mt-0.5 text-xs text-zinc-500">{{ __('Add the contract period and upload the signed copy.') }}</p>
+                        </div>
+                        <flux:button size="sm" variant="primary" icon="plus" wire:click="editAgreement" data-test="add-agreement-button">{{ __('Add agreement') }}</flux:button>
+                    </div>
+                @else
+                    <div class="flex flex-col gap-4 p-5">
+                        <div class="flex items-center justify-between">
+                            <span @class([
+                                'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset',
+                                'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-500/10 dark:text-emerald-300' => $c->agreement_signed_at,
+                                'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-300' => ! $c->agreement_signed_at,
+                            ])>
+                                <flux:icon :icon="$c->agreement_signed_at ? 'check-badge' : 'clock'" variant="micro" class="size-3.5" />
+                                {{ $c->agreement_signed_at ? __('Signed :date', ['date' => $c->agreement_signed_at->toNepali()]) : __('Waiting for signature') }}
+                            </span>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="rounded-lg bg-zinc-50 px-3 py-2.5 dark:bg-white/[0.03]">
+                                <p class="text-[0.6875rem] text-zinc-500">{{ __('Starts') }}</p>
+                                <p class="mt-0.5 text-sm font-medium text-zinc-800 dark:text-zinc-100" title="{{ $c->contract_start?->format('j M Y') }}">{{ $c->contract_start?->toNepali() ?: '-' }}</p>
+                            </div>
+                            <div class="rounded-lg bg-zinc-50 px-3 py-2.5 dark:bg-white/[0.03]">
+                                <p class="text-[0.6875rem] text-zinc-500">{{ __('Ends') }}</p>
+                                <p class="mt-0.5 text-sm font-medium text-zinc-800 dark:text-zinc-100" title="{{ $c->contract_end?->format('j M Y') }}">{{ $c->contract_end?->toNepali() ?: '-' }}</p>
+                            </div>
+                        </div>
+
+                        @if ($contractPct !== null)
+                            <div class="flex flex-col gap-1.5">
+                                <div class="flex justify-between text-xs text-zinc-500">
+                                    <span>{{ __('Contract period') }}</span>
+                                    <span class="tabular-nums">{{ $contractPct }}%</span>
+                                </div>
+                                <div class="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div class="h-full rounded-full bg-zinc-800 dark:bg-white" style="width: {{ $contractPct }}%"></div></div>
+                            </div>
+                        @endif
+
+                        @foreach ($agreementDocs as $doc)
+                            @include('partials.document-row', ['doc' => $doc, 'fileSize' => $fileSize])
+                        @endforeach
+                    </div>
+                @endif
+            </section>
+
+            {{-- Details --}}
+            <section class="{{ $panel }}">
+                <h2 class="border-b border-zinc-100 px-5 py-4 font-semibold text-zinc-900 dark:border-white/5 dark:text-white">{{ __('Details') }}</h2>
+                <dl class="divide-y divide-zinc-100 text-sm dark:divide-white/5">
+                    @foreach ([
+                        __('Phone') => $c->phone,
+                        __('Email') => $c->email,
+                        __('Company') => $c->company,
+                        __('Service') => __(Client::SERVICE_TYPES[$c->service_type]['label'] ?? '-'),
+                        __('Billing') => $c->billingText(),
+                        __('Total value') => $c->service_type === 'video' && $c->totalValue() ? Client::money($c->totalValue()) : null,
+                        __('Work progress') => $c->progress.'%',
+                        __('Added') => $c->created_at->toNepali(),
+                    ] as $label => $value)
+                        <div class="flex items-center justify-between gap-4 px-5 py-3">
+                            <dt class="text-zinc-500">{{ $label }}</dt>
+                            <dd class="truncate text-end font-medium text-zinc-800 dark:text-zinc-100">{{ $value ?: '-' }}</dd>
+                        </div>
+                    @endforeach
+                </dl>
+            </section>
+            </div>
+        </div>
+    @elseif ($tab === 'tasks')
             {{-- Tasks --}}
             <section class="{{ $panel }}">
                 <div class="{{ $panelHead }}">
@@ -524,29 +742,7 @@ new #[Title('Client profile')] class extends Component {
                 </div>
 
                 @forelse ($this->tasks as $task)
-                    <div wire:key="task-{{ $task->id }}" class="group flex items-center gap-3 border-b border-zinc-100 px-5 py-3 transition last:border-0 hover:bg-zinc-50/70 dark:border-white/5 dark:hover:bg-white/[0.02]">
-                        <button type="button" wire:click="toggleTask({{ $task->id }})" @class([
-                            'flex size-5 shrink-0 items-center justify-center rounded-md ring-1 transition',
-                            'bg-emerald-500 text-white ring-emerald-500' => $task->completed_at,
-                            'text-transparent ring-zinc-300 hover:ring-brand-500 dark:ring-zinc-600' => ! $task->completed_at,
-                        ]) aria-label="{{ $task->completed_at ? __('Mark as not done') : __('Mark as done') }}">
-                            <flux:icon.check variant="micro" class="size-3.5" />
-                        </button>
-                        <p @class(['min-w-0 flex-1 truncate text-sm', 'text-zinc-400 line-through' => $task->completed_at, 'text-zinc-800 dark:text-zinc-100' => ! $task->completed_at])>{{ $task->title }}</p>
-                        @if ($task->due_date)
-                            <span @class([
-                                'inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs',
-                                'bg-rose-50 font-medium text-rose-700 dark:bg-rose-500/10 dark:text-rose-300' => $task->isOverdue(),
-                                'text-zinc-400' => ! $task->isOverdue(),
-                            ]) title="{{ $task->due_date->format('j M Y') }}">
-                                <flux:icon.calendar variant="micro" class="size-3" />
-                                {{ $task->due_date->toNepali(withYear: false) }}
-                            </span>
-                        @endif
-                        <button type="button" wire:click="deleteTask({{ $task->id }})" class="text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:text-rose-500 focus:opacity-100" aria-label="{{ __('Delete task') }}">
-                            <flux:icon.trash variant="micro" class="size-4" />
-                        </button>
-                    </div>
+                    @include('partials.task-row', ['task' => $task])
                 @empty
                     <div class="flex flex-col items-center gap-3 px-5 py-12 text-center">
                         <span class="{{ $iconTile }} bg-brand-50 text-brand-500 dark:bg-brand-500/15"><flux:icon.check-circle variant="mini" class="size-4.5" /></span>
@@ -555,7 +751,19 @@ new #[Title('Client profile')] class extends Component {
                     </div>
                 @endforelse
             </section>
-
+    @elseif ($tab === 'payments')
+        <section class="grid gap-3 sm:grid-cols-3">
+            @foreach ([
+                [__('Billed'), $stats['billed'], 'text-zinc-900 dark:text-white'],
+                [__('Received'), $stats['received'], 'text-emerald-600 dark:text-emerald-400'],
+                [__('Still due'), $stats['billed'] - $stats['received'], $stats['overduePayments'] ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'],
+            ] as [$label, $value, $tone])
+                <div class="{{ $panel }} px-5 py-4">
+                    <p class="text-xs text-zinc-500">{{ $label }}</p>
+                    <p class="{{ $tone }} mt-1 text-xl font-semibold tracking-tight tabular-nums">{{ Client::money($value) }}</p>
+                </div>
+            @endforeach
+        </section>
             {{-- Payments --}}
             <section class="{{ $panel }}">
                 <div class="{{ $panelHead }}">
@@ -642,10 +850,26 @@ new #[Title('Client profile')] class extends Component {
                     </div>
                 @endif
             </section>
-        </div>
+    @elseif ($tab === 'documents')
+        <div class="grid items-start gap-6 lg:grid-cols-2">
+            {{-- Documents --}}
+            <section class="{{ $panel }}">
+                <div class="{{ $panelHead }}">
+                    <div class="flex items-center gap-2.5">
+                        <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Documents') }}</h2>
+                        <span class="rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-500 tabular-nums dark:bg-white/5">{{ $this->documents->count() }}</span>
+                    </div>
+                    <flux:button size="sm" icon="arrow-up-tray" wire:click="newDocument" data-test="upload-document-button">{{ __('Upload') }}</flux:button>
+                </div>
+                <div class="flex flex-col gap-2 p-5">
+                    @forelse ($this->documents as $doc)
+                        @include('partials.document-row', ['doc' => $doc, 'fileSize' => $fileSize])
+                    @empty
+                        <p class="py-4 text-center text-sm text-zinc-500">{{ __('Invoices, proposals and other files will show here.') }}</p>
+                    @endforelse
+                </div>
+            </section>
 
-        {{-- Right column --}}
-        <div class="flex flex-col gap-6">
             {{-- Agreement --}}
             <section class="{{ $panel }}">
                 <div class="{{ $panelHead }}">
@@ -704,25 +928,8 @@ new #[Title('Client profile')] class extends Component {
                     </div>
                 @endif
             </section>
-
-            {{-- Documents --}}
-            <section class="{{ $panel }}">
-                <div class="{{ $panelHead }}">
-                    <div class="flex items-center gap-2.5">
-                        <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Documents') }}</h2>
-                        <span class="rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-500 tabular-nums dark:bg-white/5">{{ $otherDocs->count() }}</span>
-                    </div>
-                    <flux:button size="sm" icon="arrow-up-tray" wire:click="newDocument" data-test="upload-document-button">{{ __('Upload') }}</flux:button>
-                </div>
-                <div class="flex flex-col gap-2 p-5">
-                    @forelse ($otherDocs as $doc)
-                        @include('partials.document-row', ['doc' => $doc, 'fileSize' => $fileSize])
-                    @empty
-                        <p class="py-4 text-center text-sm text-zinc-500">{{ __('Invoices, proposals and other files will show here.') }}</p>
-                    @endforelse
-                </div>
-            </section>
-
+        </div>
+    @else
             {{-- Notes --}}
             <section class="{{ $panel }}">
                 <div class="{{ $panelHead }}">
@@ -737,30 +944,7 @@ new #[Title('Client profile')] class extends Component {
                     @endif
                 </div>
             </section>
-
-            {{-- Details --}}
-            <section class="{{ $panel }}">
-                <h2 class="border-b border-zinc-100 px-5 py-4 font-semibold text-zinc-900 dark:border-white/5 dark:text-white">{{ __('Details') }}</h2>
-                <dl class="divide-y divide-zinc-100 text-sm dark:divide-white/5">
-                    @foreach ([
-                        __('Phone') => $c->phone,
-                        __('Email') => $c->email,
-                        __('Company') => $c->company,
-                        __('Service') => __(Client::SERVICE_TYPES[$c->service_type]['label'] ?? '-'),
-                        __('Billing') => $c->billingText(),
-                        __('Total value') => $c->service_type === 'video' && $c->totalValue() ? Client::money($c->totalValue()) : null,
-                        __('Work progress') => $c->progress.'%',
-                        __('Added') => $c->created_at->toNepali(),
-                    ] as $label => $value)
-                        <div class="flex items-center justify-between gap-4 px-5 py-3">
-                            <dt class="text-zinc-500">{{ $label }}</dt>
-                            <dd class="truncate text-end font-medium text-zinc-800 dark:text-zinc-100">{{ $value ?: '-' }}</dd>
-                        </div>
-                    @endforeach
-                </dl>
-            </section>
-        </div>
-    </div>
+    @endif
 
     {{-- Add task --}}
     <flux:modal name="task-form" class="w-full max-w-md">

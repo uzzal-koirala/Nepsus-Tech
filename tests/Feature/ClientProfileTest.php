@@ -135,6 +135,26 @@ class ClientProfileTest extends TestCase
         $this->assertSame(['15 Bhadra 2083', '15 Ashoj 2083', '15 Kartik 2083'], $rows->map(fn ($r) => $r->due_date->toNepali())->all());
     }
 
+    public function test_profile_tabs_and_next_up(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $client = Client::factory()->create();
+        $first = $client->payments()->create(['amount' => 12000, 'due_date' => today()->addDays(2), 'note' => 'Advance (50%)']);
+        $client->payments()->create(['amount' => 12000, 'due_date' => today()->addMonth()]);
+        $client->tasks()->create(['title' => 'Design Facebook cover']);
+
+        $page = Livewire::test('pages::client-profile', ['client' => $client])
+            ->assertSet('tab', 'overview')
+            ->assertSee('Next payment')
+            ->assertSee('Design Facebook cover')
+            ->call('togglePaid', $first->id);
+
+        $this->assertNotNull($first->fresh()->paid_at);
+
+        $page->call('setTab', 'payments')->assertSet('tab', 'payments')->assertSee('Still due')
+            ->call('setTab', 'nope')->assertSet('tab', 'overview');
+    }
+
     public function test_another_clients_task_cannot_be_changed_from_this_profile(): void
     {
         $this->actingAs(User::factory()->create());
