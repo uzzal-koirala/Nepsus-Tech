@@ -1198,6 +1198,12 @@ new #[Title('Client profile')] class extends Component {
             $allTasks = $this->tasks;
             $shown = $allTasks;
             $byStage = $shown->groupBy(fn ($t) => $t->stage());
+            // History holds finished work outside the board: from earlier months, or from boxes with nothing open.
+            $monthStart = NepaliDate::monthRange(today())[0];
+            $openTypes = $allTasks->reject(fn ($t) => $t->stage() === 'done')->pluck('type')->unique();
+            $boardTasks = $allTasks->filter(fn ($t) => $openTypes->contains($t->type) && ($t->stage() !== 'done' || $t->completed_at->gte($monthStart)));
+            $historyTasks = $allTasks->filter(fn ($t) => $t->stage() === 'done')->diffKeys($boardTasks);
+            $historyCount = $historyTasks->count();
             $doneCount = isset($byStage['done']) ? $byStage['done']->count() : 0;
             $lateCount = $shown->filter->isOverdue()->count();
             $donePct = $shown->count() ? (int) round($doneCount / $shown->count() * 100) : 0;
@@ -1213,7 +1219,7 @@ new #[Title('Client profile')] class extends Component {
             };
         @endphp
 
-        <div class="flex flex-col gap-5">
+        <div class="flex flex-col gap-5" x-data="{ history: false }">
             {{-- Head --}}
             <section class="{{ $panel }} flex flex-col gap-4 p-5 sm:px-6">
                 <div class="flex flex-wrap items-center justify-between gap-4">
@@ -1231,6 +1237,11 @@ new #[Title('Client profile')] class extends Component {
                             <div class="h-2 w-40 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div class="h-full rounded-full bg-linear-to-r from-brand-400 to-brand-600 transition-[width] duration-700" style="width: {{ $donePct }}%"></div></div>
                             <span class="text-sm font-semibold text-zinc-800 tabular-nums dark:text-zinc-100">{{ $donePct }}%</span>
                         </div>
+                        <button type="button" @click="history = ! history; if (history) $nextTick(() => document.getElementById('history').scrollIntoView({ behavior: 'smooth', block: 'start' }))" class="inline-flex h-10 items-center gap-2 rounded-lg px-3.5 text-sm font-medium ring-1 transition" :class="history ? 'bg-emerald-50 text-emerald-700 ring-emerald-300 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/30' : 'bg-white text-zinc-700 ring-zinc-200 hover:bg-zinc-50 dark:bg-white/5 dark:text-zinc-200 dark:ring-white/10'" :aria-pressed="history" data-test="task-history-button">
+                            <flux:icon.clock variant="micro" class="size-4" />
+                            <span x-text="history ? @js(__('Hide history')) : @js(__('History'))">{{ __('History') }}</span>
+                            <span class="rounded-full bg-emerald-100 px-1.5 text-xs font-semibold text-emerald-700 tabular-nums dark:bg-emerald-500/15 dark:text-emerald-300">{{ $historyCount }}</span>
+                        </button>
                         <flux:button variant="primary" icon="plus" wire:click="newTask" class="shadow-md shadow-brand-500/20" data-test="add-task-button">{{ __('Add task') }}</flux:button>
                     </div>
                 </div>
@@ -1240,10 +1251,6 @@ new #[Title('Client profile')] class extends Component {
             @php
                 // A box stays on the board while it has open work; work finished this month stays in it, crossed out.
                 // When everything in a box is done, the box moves to History.
-                $monthStart = NepaliDate::monthRange(today())[0];
-                $openTypes = $allTasks->reject(fn ($t) => $t->stage() === 'done')->pluck('type')->unique();
-                $boardTasks = $allTasks->filter(fn ($t) => $openTypes->contains($t->type) && ($t->stage() !== 'done' || $t->completed_at->gte($monthStart)));
-                $historyTasks = $allTasks->filter(fn ($t) => $t->stage() === 'done')->diffKeys($boardTasks);
                 $order = array_flip(array_keys($types));
                 $sortTypes = fn ($groups) => $groups->sortBy(fn ($g, $k) => $order[$k] ?? PHP_INT_MAX);
                 $boxes = $sortTypes($boardTasks->groupBy('type'));
@@ -1309,16 +1316,16 @@ new #[Title('Client profile')] class extends Component {
             </div>
 
             {{-- History --}}
-            <section id="history" class="{{ $panel }} overflow-hidden" x-data="{ open: false }">
-                <button type="button" @click="open = ! open" class="flex w-full items-center gap-3 px-5 py-4 text-start transition hover:bg-zinc-50/70 dark:hover:bg-white/[0.02]" :aria-expanded="open" data-test="history-toggle">
+            <section id="history" class="{{ $panel }} scroll-mt-6 overflow-hidden" x-show="history" x-collapse x-cloak>
+                <div class="flex w-full items-center gap-3 px-5 py-4">
                     <span class="flex size-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.clock variant="mini" class="size-4.5" /></span>
                     <span class="min-w-0 flex-1">
                         <span class="block font-semibold text-zinc-900 dark:text-white">{{ __('History') }}</span>
                         <span class="block text-xs text-zinc-500">{{ trans_choice(':count finished task|:count finished tasks', $historyTasks->count()) }}@if ($historyBoxes->isNotEmpty()) · {{ $historyBoxes->keys()->map(fn ($k) => $typeOf($k)['label'])->implode(', ') }}@endif</span>
                     </span>
-                    <flux:icon.chevron-down variant="mini" class="size-5 text-zinc-400 transition" ::class="open ? 'rotate-180' : ''" />
-                </button>
-                <div x-show="open" x-collapse>
+                    <button type="button" @click="history = false" class="flex size-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-white/10" aria-label="{{ __('Close history') }}"><flux:icon.x-mark variant="mini" class="size-5" /></button>
+                </div>
+                <div>
                     @if ($historyBoxes->isEmpty())
                         <p class="border-t border-zinc-100 px-5 py-8 text-center text-sm text-zinc-500 dark:border-white/5">{{ __('Finished boxes move here once all their work is done.') }}</p>
                     @else
