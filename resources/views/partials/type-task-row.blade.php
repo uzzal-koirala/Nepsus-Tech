@@ -20,11 +20,11 @@
                 <flux:icon.flag variant="micro" @class(['size-3.5 shrink-0', 'text-orange-500' => $t->priority === 'high', 'text-rose-500' => $t->priority === 'urgent']) />
             @endif
         </p>
-        <p class="mt-0.5 flex items-center gap-2 text-xs text-zinc-500">
+        <p class="mt-0.5 flex min-w-0 items-center gap-2 overflow-hidden text-xs whitespace-nowrap text-zinc-500">
             @if ($done)
                 <span class="text-emerald-600 dark:text-emerald-400">{{ __('Done :date', ['date' => $t->completed_at->toNepali(withYear: false)]) }}</span>
             @else
-                <span class="inline-flex items-center gap-1"><span class="{{ $statusTones[$stage]['dot'] }} size-1.5 rounded-full"></span>{{ __(\App\Models\Task::STATUSES[$stage]['label']) }}</span>
+                <span class="inline-flex shrink-0 items-center gap-1"><span class="{{ $statusTones[$stage]['dot'] }} size-1.5 rounded-full"></span>{{ __(\App\Models\Task::STATUSES[$stage]['label']) }}</span>
                 @if ($dates)
                     <span @class(['inline-flex items-center gap-1', 'font-medium text-rose-600 dark:text-rose-400' => $late])>
                         <flux:icon :icon="$late ? 'exclamation-circle' : 'calendar'" variant="micro" class="size-3" />{{ $dates }}

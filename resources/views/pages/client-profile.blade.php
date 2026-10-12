@@ -1207,7 +1207,8 @@ new #[Title('Client profile')] class extends Component {
             $historyCount = $historyTasks->count();
             $order = array_flip(array_keys($types));
             $sortTypes = fn ($groups) => $groups->sortBy(fn ($g, $k) => $order[$k] ?? PHP_INT_MAX);
-            $boxes = $sortTypes($boardTasks->groupBy('type'));
+            $pinned = collect(array_slice(array_keys($types), 0, 4))->mapWithKeys(fn ($k) => [$k => collect()]);
+            $boxes = $sortTypes($pinned->merge($boardTasks->groupBy('type')));
             $historyBoxes = $sortTypes($historyTasks->groupBy('type'));
             $doneCount = isset($byStage['done']) ? $byStage['done']->count() : 0;
             $lateCount = $shown->filter->isOverdue()->count();
@@ -1301,16 +1302,8 @@ new #[Title('Client profile')] class extends Component {
                 // When everything in a box is done, the box moves to History.
             @endphp
 
-            @if ($boxes->isEmpty())
-                <section class="{{ $panel }} flex flex-col items-center gap-3 px-6 py-14 text-center">
-                    <span class="flex size-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-500 dark:bg-brand-500/15"><flux:icon.clipboard-document-check class="size-6" /></span>
-                    <p class="font-semibold text-zinc-900 dark:text-white">{{ $allTasks->isEmpty() ? __('No work planned yet') : __('All work is done') }}</p>
-                    <p class="text-sm text-zinc-500">{{ $allTasks->isEmpty() ? __('Add posts, reels, videos or tasks for this client.') : __('Finished work is in History below.') }}</p>
-                    <flux:button variant="primary" size="sm" icon="plus" wire:click="newTask">{{ __('Add task') }}</flux:button>
-                </section>
-            @endif
 
-            <div class="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div class="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-4">
                 @foreach ($boxes as $kind => $items)
                     @php
                         $kt = $typeOf($kind);
@@ -1326,7 +1319,7 @@ new #[Title('Client profile')] class extends Component {
                                 <span class="{{ $ktone['dot'] }} flex size-8 shrink-0 items-center justify-center rounded-lg text-white shadow-sm"><flux:icon :icon="$kt['icon']" variant="micro" class="size-4" /></span>
                                 <span class="min-w-0">
                                     <span class="block truncate text-sm font-semibold">{{ $kt['label'] }}</span>
-                                    <span class="block text-[0.6875rem] opacity-80">{{ $doneHere }}/{{ $rows->count() }} {{ __('done') }}@if ($lateHere) · {{ trans_choice(':count late|:count late', $lateHere) }}@endif</span>
+                                    <span class="block text-[0.6875rem] opacity-80">@if ($rows->isEmpty()){{ __('Nothing yet') }}@else{{ $doneHere }}/{{ $rows->count() }} {{ __('done') }}@if ($lateHere) · {{ trans_choice(':count late|:count late', $lateHere) }}@endif @endif</span>
                                 </span>
                                 <flux:icon.chevron-down variant="micro" class="ms-auto size-4 shrink-0 opacity-60 transition" ::class="open ? '' : '-rotate-90'" />
                             </button>
@@ -1349,11 +1342,17 @@ new #[Title('Client profile')] class extends Component {
                         </div>
 
                         <div x-show="open" x-collapse>
-                            <ul class="divide-y divide-zinc-100 dark:divide-white/5">
-                                @foreach ($rows as $t)
-                                    @include('partials.type-task-row', ['t' => $t, 'prefix' => 'box'])
-                                @endforeach
-                            </ul>
+                            @if ($rows->isEmpty())
+                                <button type="button" wire:click="newTask('todo', '{{ $kind }}')" class="flex w-full items-center justify-center gap-1.5 px-4 py-6 text-sm text-zinc-400 transition hover:bg-zinc-50 hover:text-brand-600 dark:hover:bg-white/[0.03]">
+                                    <flux:icon.plus variant="micro" class="size-4" />{{ __('Add :type', ['type' => $kt['label']]) }}
+                                </button>
+                            @else
+                                <ul class="divide-y divide-zinc-100 dark:divide-white/5">
+                                    @foreach ($rows as $t)
+                                        @include('partials.type-task-row', ['t' => $t, 'prefix' => 'box'])
+                                    @endforeach
+                                </ul>
+                            @endif
                         </div>
                     </section>
                 @endforeach
