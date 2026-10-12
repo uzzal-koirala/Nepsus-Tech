@@ -119,6 +119,20 @@ new #[Title('Employee')] class extends Component {
         ];
     }
 
+    /** All-time attendance counts. */
+    #[Computed]
+    public function attendanceTotals(): array
+    {
+        $counts = $this->employee->attendances()->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status');
+        $totals = collect(Attendance::STATUSES)->map(fn ($v, $k) => (int) ($counts[$k] ?? 0))->all();
+        $marked = array_sum($totals);
+
+        return $totals + [
+            'marked' => $marked,
+            'rate' => $marked ? (int) round(($totals['present'] + $totals['half_day'] * 0.5) / $marked * 100) : null,
+        ];
+    }
+
     public function markDay(string $date, string $status): void
     {
         $day = Carbon::parse($date)->toDateString();
@@ -130,7 +144,7 @@ new #[Title('Employee')] class extends Component {
             $this->employee->attendances()->updateOrCreate(['date' => $day], ['status' => $status]);
         }
 
-        unset($this->calendar);
+        unset($this->calendar, $this->attendanceTotals);
     }
 
     /** Marks every unmarked working day (not Saturday) of the shown month, up to today, as present. */
@@ -148,7 +162,7 @@ new #[Title('Employee')] class extends Component {
             $count += $mark->wasRecentlyCreated ? 1 : 0;
         }
 
-        unset($this->calendar);
+        unset($this->calendar, $this->attendanceTotals);
         Flux::toast(variant: 'success', text: trans_choice(':count day marked present.|:count days marked present.', $count));
     }
 
@@ -715,6 +729,56 @@ new #[Title('Employee')] class extends Component {
                             <flux:icon.arrow-up-tray variant="micro" class="size-3.5" />{{ $agreementDocs->isEmpty() ? __('Upload signed agreement') : __('Upload another') }}
                         </button>
                     </div>
+                </section>
+
+                {{-- All-time attendance --}}
+                @php
+                    $at = $this->attendanceTotals;
+                    $atLook = [
+                        'present' => ['bar' => 'bg-emerald-500', 'tile' => 'bg-emerald-50 text-emerald-600 ring-emerald-200/70 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20'],
+                        'half_day' => ['bar' => 'bg-amber-400', 'tile' => 'bg-amber-50 text-amber-600 ring-amber-200/70 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20'],
+                        'leave' => ['bar' => 'bg-sky-500', 'tile' => 'bg-sky-50 text-sky-600 ring-sky-200/70 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-500/20'],
+                        'absent' => ['bar' => 'bg-rose-500', 'tile' => 'bg-rose-50 text-rose-600 ring-rose-200/70 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20'],
+                    ];
+                @endphp
+                <section class="{{ $panel }} p-5" data-test="attendance-totals">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Attendance') }}</h2>
+                            <p class="text-xs text-zinc-500">{{ __('All time') }} · {{ trans_choice(':count day marked|:count days marked', $at['marked']) }}</p>
+                        </div>
+                        @if ($at['rate'] !== null)
+                            <div class="text-end">
+                                <p @class(['text-2xl leading-none font-bold tracking-tight tabular-nums', 'text-emerald-600 dark:text-emerald-400' => $at['rate'] >= 90, 'text-amber-600 dark:text-amber-400' => $at['rate'] >= 75 && $at['rate'] < 90, 'text-rose-600 dark:text-rose-400' => $at['rate'] < 75])>{{ $at['rate'] }}%</p>
+                                <p class="mt-1 text-[0.6875rem] text-zinc-500">{{ __('attendance') }}</p>
+                            </div>
+                        @endif
+                    </div>
+
+                    @if ($at['marked'])
+                        <div class="mt-4 flex h-2.5 gap-0.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10" role="img" aria-label="{{ __('Attendance split') }}">
+                            @foreach (Attendance::STATUSES as $key => $st)
+                                @if ($at[$key])
+                                    <div class="{{ $atLook[$key]['bar'] }} h-full" style="width: {{ $at[$key] / $at['marked'] * 100 }}%" title="{{ __($st['label']) }}: {{ $at[$key] }}"></div>
+                                @endif
+                            @endforeach
+                        </div>
+                    @endif
+
+                    <div class="mt-4 grid grid-cols-2 gap-2.5">
+                        @foreach (Attendance::STATUSES as $key => $st)
+                            <div class="{{ $atLook[$key]['tile'] }} flex items-center gap-3 rounded-xl px-3 py-2.5 ring-1 ring-inset">
+                                <flux:icon :icon="$st['icon']" variant="mini" class="size-5 shrink-0" />
+                                <div class="min-w-0">
+                                    <p class="text-xl leading-none font-bold text-zinc-900 tabular-nums dark:text-white">{{ $at[$key] }}</p>
+                                    <p class="mt-1 truncate text-xs font-medium">{{ __($st['label']) }}</p>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                    @unless ($at['marked'])
+                        <p class="mt-3 text-xs text-zinc-500">{{ __('Mark days on the calendar to build the record.') }}</p>
+                    @endunless
                 </section>
 
                 {{-- Details --}}
