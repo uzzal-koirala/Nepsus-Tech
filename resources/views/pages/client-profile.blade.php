@@ -1445,23 +1445,28 @@ new #[Title('Client profile')] class extends Component {
                             @endphp
                             <li wire:key="payment-{{ $payment->id }}" x-show="show === 'all' || (show === 'paid') === {{ $payment->paid_at ? 'true' : 'false' }}" class="group flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5 transition hover:bg-zinc-50/70 sm:flex-nowrap dark:hover:bg-white/[0.02]">
                                 {{-- Date --}}
-                                <span class="{{ $tile }} flex size-12 shrink-0 flex-col items-center justify-center rounded-xl leading-none ring-1 ring-inset" title="{{ $shownDate?->format('j M Y') }}">
-                                    @if ($bs)
-                                        <span class="text-base font-semibold tabular-nums">{{ $bs[2] }}</span>
-                                        <span class="mt-1 text-[0.625rem] font-semibold uppercase">{{ mb_substr(NepaliDate::MONTHS[$bs[1] - 1], 0, 3) }}</span>
-                                    @else
-                                        <flux:icon.calendar variant="micro" class="size-4" />
-                                    @endif
-                                </span>
+                                <div class="flex w-48 shrink-0 items-center gap-3" title="{{ $shownDate?->format('l, j M Y') }}">
+                                    <span class="{{ $tile }} flex size-10 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset"><flux:icon.calendar-days variant="mini" class="size-5" /></span>
+                                    <div class="min-w-0">
+                                        <p class="text-[0.6875rem] font-medium tracking-wide text-zinc-400 uppercase">{{ $payment->paid_at ? __('Received on') : __('Due on') }}</p>
+                                        <p class="truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $shownDate ? $shownDate->toNepali() : __('No date') }}</p>
+                                    </div>
+                                </div>
 
                                 {{-- Amount and type --}}
                                 <div class="min-w-0 flex-1">
-                                    <p class="text-[0.9375rem] font-semibold text-zinc-900 tabular-nums dark:text-white">{{ Client::money($payment->amount) }}</p>
-                                    <p class="truncate text-xs text-zinc-500">
-                                        {{ $payment->typeLabel() }}
-                                        @if ($payment->reference) · <span class="tabular-nums">{{ $payment->reference }}</span>@endif
-                                        @if ($payment->note) · {{ $payment->note }}@endif
-                                    </p>
+                                    <p class="text-base font-semibold text-zinc-900 tabular-nums dark:text-white">{{ Client::money($payment->amount) }}</p>
+                                    <div class="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+                                        <span class="inline-flex items-center gap-1 rounded-md bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700 ring-1 ring-brand-200/70 ring-inset dark:bg-brand-500/10 dark:text-brand-200 dark:ring-brand-500/20">
+                                            <flux:icon :icon="Payment::TYPES[$payment->type]['icon'] ?? 'tag'" variant="micro" class="size-3.5" />{{ $payment->typeLabel() }}
+                                        </span>
+                                        @if ($payment->reference)
+                                            <span class="truncate text-xs text-zinc-500 tabular-nums">#{{ $payment->reference }}</span>
+                                        @endif
+                                        @if ($payment->note)
+                                            <span class="truncate text-xs text-zinc-500">· {{ $payment->note }}</span>
+                                        @endif
+                                    </div>
                                 </div>
 
                                 {{-- Received in --}}
