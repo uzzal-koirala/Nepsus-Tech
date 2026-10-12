@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Client;
 use App\Models\Task;
+use App\Support\NepaliDate;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -191,5 +192,39 @@ class ClientProfileTest extends TestCase
 
         Livewire::test('pages::client-profile', ['client' => $client])->call('deleteDocument', $doc->id);
         Storage::disk('local')->assertMissing($doc->path);
+    }
+
+    public function test_work_calendar_adds_work_on_a_day_and_repeats_last_month(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $client = Client::factory()->create(['service_type' => 'social_media']);
+        [$y, $m] = NepaliDate::fromAd(today());
+
+        $page = Livewire::test('pages::client-profile', ['client' => $client])
+            ->assertSee(NepaliDate::MONTHS[$m - 1].' '.$y)
+            ->call('addWorkOn', NepaliDate::toAd($y, $m, 5)->toDateString())
+            ->assertSet('taskType', 'post')
+            ->set('taskType', 'reel')
+            ->set('taskTitle', 'Dashain offer reel')
+            ->call('addTask')
+            ->assertHasNoErrors()
+            ->assertSee('Dashain offer reel');
+
+        $task = $client->tasks()->sole();
+        $this->assertSame('reel', $task->type);
+        $this->assertSame([$y, $m, 5], NepaliDate::fromAd($task->due_date));
+
+        // Next month starts empty; repeating copies the reel onto the same BS day.
+        $page->call('shiftMonth', 1);
+        $this->assertCount(0, $page->instance()->calendar['tasks']);
+        $page->call('repeatLastMonth');
+        $this->assertCount(1, $page->instance()->calendar['tasks']);
+
+        $copy = $client->tasks()->latest('id')->first();
+        $this->assertNotSame($task->id, $copy->id);
+        $this->assertSame(5, NepaliDate::fromAd($copy->due_date)[2]);
+        $this->assertNull($copy->completed_at);
+
+        $page->call('goToday')->assertSet('calMonth', $m);
     }
 }

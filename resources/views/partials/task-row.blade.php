@@ -6,6 +6,11 @@
     ]) aria-label="{{ $task->completed_at ? __('Mark as not done') : __('Mark as done') }}">
         <flux:icon.check variant="micro" class="size-3.5" />
     </button>
+    @if ($type = \App\Models\Task::TYPES[$task->type] ?? null)
+        <span class="inline-flex shrink-0 items-center gap-1 text-[0.6875rem] font-medium text-zinc-500" title="{{ __($type['label']) }}">
+            <span class="{{ $workTones[$task->type]['dot'] ?? 'bg-zinc-400' }} size-1.5 rounded-full"></span>{{ __($type['label']) }}
+        </span>
+    @endif
     <p @class(['min-w-0 flex-1 truncate text-sm', 'text-zinc-400 line-through' => $task->completed_at, 'text-zinc-800 dark:text-zinc-100' => ! $task->completed_at])>{{ $task->title }}</p>
     @if ($task->due_date)
         <span @class([

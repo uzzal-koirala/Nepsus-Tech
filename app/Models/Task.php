@@ -8,11 +8,23 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['title', 'due_date', 'completed_at'])]
+#[Fillable(['title', 'type', 'due_date', 'completed_at'])]
 class Task extends Model
 {
     /** @use HasFactory<TaskFactory> */
     use HasFactory;
+
+    /** Kinds of work, shown colour-coded on the client's work calendar. */
+    public const TYPES = [
+        'post' => ['label' => 'Post', 'icon' => 'photo'],
+        'reel' => ['label' => 'Reel', 'icon' => 'film'],
+        'story' => ['label' => 'Story', 'icon' => 'bolt'],
+        'video' => ['label' => 'Video', 'icon' => 'video-camera'],
+        'shoot' => ['label' => 'Photoshoot', 'icon' => 'camera'],
+        'design' => ['label' => 'Design', 'icon' => 'paint-brush'],
+        'meeting' => ['label' => 'Meeting', 'icon' => 'users'],
+        'task' => ['label' => 'Task', 'icon' => 'check-circle'],
+    ];
 
     protected function casts(): array
     {
