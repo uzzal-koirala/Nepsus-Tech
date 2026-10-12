@@ -1243,7 +1243,7 @@ new #[Title('Client profile')] class extends Component {
                         $rows = $openWork[$kind]->sortBy(fn ($t) => [array_search($t->stage(), array_keys(Task::STATUSES)), $t->due_date?->timestamp ?? PHP_INT_MAX, $t->id])->values();
                         $lateHere = $rows->filter->isOverdue()->count();
                     @endphp
-                    <section wire:key="box-{{ $kind }}" class="flex flex-col overflow-hidden rounded-2xl bg-zinc-100/70 ring-1 ring-zinc-200/50 dark:bg-white/[0.03] dark:ring-white/5">
+                    <section wire:key="box-{{ $kind }}" class="{{ $panel }} flex flex-col overflow-hidden">
                         <div class="{{ $ktone['chip'] }} flex items-center gap-2.5 px-4 py-3">
                             <span class="{{ $ktone['dot'] }} flex size-8 items-center justify-center rounded-lg text-white shadow-sm"><flux:icon :icon="$kt['icon']" variant="micro" class="size-4" /></span>
                             <div class="min-w-0">
@@ -1253,73 +1253,48 @@ new #[Title('Client profile')] class extends Component {
                             <button type="button" wire:click="newTask('todo', '{{ $kind }}')" class="ms-auto flex size-8 items-center justify-center rounded-lg bg-white/70 transition hover:bg-white dark:bg-white/10 dark:hover:bg-white/20" aria-label="{{ __('Add :type', ['type' => $kt['label']]) }}"><flux:icon.plus variant="micro" class="size-4" /></button>
                         </div>
 
-                        <div class="flex flex-col gap-2.5 p-2.5">
-                            @forelse ($rows as $t)
+                        <ul class="divide-y divide-zinc-100 dark:divide-white/5">
+                            @foreach ($rows as $t)
                                 @php
                                     $stage = $t->stage();
-                                    $tt = $typeOf($t->type);
-                                    $tone = $toneOf($t->type);
-                                    $done = false;
                                     $late = $t->isOverdue();
                                     $dates = $range($t);
                                     $people = $t->assignees;
                                 @endphp
-                            @php
-                                $dueDays = $t->due_date ? (int) today()->diffInDays($t->due_date, false) : null;
-                                $datePill = match (true) {
-                                    $late => 'bg-rose-50 text-rose-600 ring-rose-200/70 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20',
-                                    $dueDays === 0 => 'bg-brand-50 text-brand-700 ring-brand-200/70 dark:bg-brand-500/10 dark:text-brand-200 dark:ring-brand-500/20',
-                                    default => 'bg-zinc-50 text-zinc-600 ring-zinc-200/70 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10',
-                                };
-                            @endphp
-                            <article wire:key="task-card-{{ $t->id }}" wire:click="openTask({{ $t->id }})" class="group relative cursor-pointer rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgb(15_23_42/0.05)] ring-1 ring-zinc-200/70 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_34px_-18px_rgb(15_23_42/0.45)] hover:ring-zinc-300 dark:bg-zinc-950 dark:ring-white/10" role="button" tabindex="0" @keydown.enter="$wire.openTask({{ $t->id }})" aria-label="{{ __('Open :task', ['task' => $t->title]) }}">
-                                {{-- Pills and check --}}
-                                <div class="flex items-center gap-1.5">
-                                    <span class="{{ $statusTones[$stage]['pill'] }} inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold">
-                                        <span class="{{ $statusTones[$stage]['dot'] }} size-1.5 rounded-full"></span>{{ __(Task::STATUSES[$stage]['label']) }}
-                                    </span>
-                                    @if (in_array($t->priority, ['high', 'urgent']))
-                                        <span class="{{ $priorityTones[$t->priority] }} inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold ring-1 ring-inset">
-                                            <flux:icon.flag variant="micro" class="size-3" />{{ __(Task::PRIORITIES[$t->priority]) }}
-                                        </span>
-                                    @endif
-                                    <button type="button" wire:click.stop="toggleTask({{ $t->id }})" class="ms-auto flex size-6 shrink-0 items-center justify-center rounded-full border-[1.5px] border-zinc-300 text-transparent transition hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-500 dark:border-zinc-600 dark:hover:bg-emerald-500/10" title="{{ __('Mark as done') }}" aria-label="{{ __('Mark as done') }}"><flux:icon.check variant="micro" class="size-3.5" /></button>
-                                </div>
+                                <li wire:key="task-row-{{ $t->id }}" wire:click="openTask({{ $t->id }})" class="group flex cursor-pointer items-center gap-3 px-4 py-3 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]" role="button" tabindex="0" @keydown.enter="$wire.openTask({{ $t->id }})">
+                                    <button type="button" wire:click.stop="toggleTask({{ $t->id }})" class="flex size-5 shrink-0 items-center justify-center rounded-full border-[1.5px] border-zinc-300 text-transparent transition hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-500 dark:border-zinc-600 dark:hover:bg-emerald-500/10" title="{{ __('Mark as done') }}" aria-label="{{ __('Mark as done') }}"><flux:icon.check variant="micro" class="size-3" /></button>
 
-                                {{-- Title and description --}}
-                                <h4 class="mt-3 text-[0.9375rem] leading-snug font-semibold text-zinc-900 transition group-hover:text-brand-600 dark:text-white">{{ $t->title }}</h4>
-                                @if ($t->description)
-                                    <p class="mt-1.5 line-clamp-2 text-xs leading-relaxed text-zinc-500">{{ $t->description }}</p>
-                                @endif
-
-                                {{-- Date and people --}}
-                                <div class="mt-4 flex items-center justify-between gap-2 border-t border-dashed border-zinc-200/80 pt-3 dark:border-white/10">
-                                    @if ($dates)
-                                        <span class="{{ $datePill }} inline-flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-[0.6875rem] font-medium ring-1 ring-inset" title="{{ $t->due_date?->format('j M Y') }}">
-                                            <flux:icon :icon="$late ? 'exclamation-circle' : 'calendar'" variant="micro" class="size-3.5 shrink-0" />
-                                            <span class="truncate">{{ $dates }}</span>
-                                        </span>
-                                    @else
-                                        <span class="inline-flex items-center gap-1.5 text-[0.6875rem] text-zinc-400"><flux:icon.calendar variant="micro" class="size-3.5" />{{ __('No date') }}</span>
-                                    @endif
+                                    <div class="min-w-0 flex-1">
+                                        <p class="flex items-center gap-1.5">
+                                            <span class="truncate text-sm font-medium text-zinc-900 transition group-hover:text-brand-600 dark:text-white">{{ $t->title }}</span>
+                                            @if (in_array($t->priority, ['high', 'urgent']))
+                                                <flux:icon.flag variant="micro" @class(['size-3.5 shrink-0', 'text-orange-500' => $t->priority === 'high', 'text-rose-500' => $t->priority === 'urgent']) title="{{ __(Task::PRIORITIES[$t->priority]) }}" />
+                                            @endif
+                                        </p>
+                                        <p class="mt-0.5 flex items-center gap-2 text-xs text-zinc-500">
+                                            <span class="inline-flex items-center gap-1"><span class="{{ $statusTones[$stage]['dot'] }} size-1.5 rounded-full"></span>{{ __(Task::STATUSES[$stage]['label']) }}</span>
+                                            @if ($dates)
+                                                <span @class(['inline-flex items-center gap-1', 'font-medium text-rose-600 dark:text-rose-400' => $late])>
+                                                    <flux:icon :icon="$late ? 'exclamation-circle' : 'calendar'" variant="micro" class="size-3" />{{ $dates }}
+                                                </span>
+                                            @endif
+                                        </p>
+                                    </div>
 
                                     @if ($people->isNotEmpty())
                                         <div class="flex shrink-0 -space-x-1.5">
-                                            @foreach ($people->take(3) as $person)
+                                            @foreach ($people->take(2) as $person)
                                                 <x-employee-avatar :employee="$person" class="size-7 text-[0.625rem] ring-2 ring-white dark:ring-zinc-950" />
                                             @endforeach
-                                            @if ($people->count() > 3)
-                                                <span class="flex size-7 items-center justify-center rounded-full bg-zinc-100 text-[0.625rem] font-semibold text-zinc-600 ring-2 ring-white dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-950">+{{ $people->count() - 3 }}</span>
+                                            @if ($people->count() > 2)
+                                                <span class="flex size-7 items-center justify-center rounded-full bg-zinc-100 text-[0.625rem] font-semibold text-zinc-600 ring-2 ring-white dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-950">+{{ $people->count() - 2 }}</span>
                                             @endif
                                         </div>
-                                    @else
-                                        <span class="flex size-7 shrink-0 items-center justify-center rounded-full border border-dashed border-zinc-300 text-zinc-300 dark:border-white/20" title="{{ __('Nobody assigned') }}"><flux:icon.user variant="micro" class="size-3.5" /></span>
                                     @endif
-                                </div>
-                            </article>
-                            @empty
-                            @endforelse
-                        </div>
+                                    <flux:icon.chevron-right variant="micro" class="size-4 shrink-0 text-zinc-300 transition group-hover:translate-x-0.5 group-hover:text-zinc-500" />
+                                </li>
+                            @endforeach
+                        </ul>
                     </section>
                 @endforeach
             </div>
