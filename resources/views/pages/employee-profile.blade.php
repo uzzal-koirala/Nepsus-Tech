@@ -731,54 +731,6 @@ new #[Title('Employee')] class extends Component {
                     @endif
                 </section>
 
-                {{-- Employment agreement --}}
-                @php
-                    $agreementDocs = $docs->where('type', 'agreement');
-                    $agreeDays = $e->contract_end ? (int) today()->diffInDays($e->contract_end, false) : null;
-                    $agreePct = $e->contract_start && $e->contract_end && $e->contract_end->gt($e->contract_start)
-                        ? (int) max(0, min(100, round($e->contract_start->diffInDays(today()) / $e->contract_start->diffInDays($e->contract_end) * 100))) : null;
-                @endphp
-                <section class="{{ $panel }} p-5">
-                    <div class="flex items-center justify-between">
-                        <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Employment agreement') }}</h2>
-                        <flux:button size="xs" variant="ghost" icon="pencil-square" wire:click="edit">{{ __('Edit') }}</flux:button>
-                    </div>
-                    @if ($e->contract_start || $e->contract_end)
-                        <div class="mt-4 flex items-center gap-3">
-                            <div class="min-w-0 flex-1 rounded-lg bg-zinc-50 px-3 py-2 dark:bg-white/[0.03]">
-                                <p class="text-[0.6875rem] text-zinc-500">{{ __('Starts') }}</p>
-                                <p class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $e->contract_start?->toNepali() ?: '-' }}</p>
-                            </div>
-                            <flux:icon.arrow-right variant="micro" class="size-4 shrink-0 text-zinc-300" />
-                            <div class="min-w-0 flex-1 rounded-lg bg-zinc-50 px-3 py-2 dark:bg-white/[0.03]">
-                                <p class="text-[0.6875rem] text-zinc-500">{{ __('Ends') }}</p>
-                                <p class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $e->contract_end?->toNepali() ?: '-' }}</p>
-                            </div>
-                        </div>
-                        @if ($agreePct !== null)
-                            <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div @class(['h-full rounded-full', 'bg-rose-500' => $agreeDays < 0, 'bg-amber-400' => $agreeDays >= 0 && $agreeDays <= 30, 'bg-brand-500' => $agreeDays > 30]) style="width: {{ $agreePct }}%"></div></div>
-                        @endif
-                        @if ($agreeDays !== null)
-                            <p @class(['mt-1.5 text-xs', 'font-medium text-rose-600 dark:text-rose-400' => $agreeDays < 0, 'text-amber-600 dark:text-amber-400' => $agreeDays >= 0 && $agreeDays <= 30, 'text-zinc-500' => $agreeDays > 30])>
-                                {{ $agreeDays < 0 ? __('Ended :count days ago', ['count' => abs($agreeDays)]) : trans_choice(':count day left|:count days left', $agreeDays) }}
-                            </p>
-                        @endif
-                    @else
-                        <p class="mt-3 text-sm text-zinc-500">{{ __('No agreement dates yet.') }}</p>
-                    @endif
-                    <div class="mt-4 flex flex-col gap-1.5">
-                        @foreach ($agreementDocs as $doc)
-                            <a href="{{ route('employee-documents.download', $doc) }}" class="flex items-center gap-2.5 rounded-lg bg-zinc-50 px-3 py-2 text-sm transition hover:bg-zinc-100 dark:bg-white/[0.03] dark:hover:bg-white/5">
-                                <flux:icon.document-check variant="micro" class="size-4 text-emerald-600" />
-                                <span class="min-w-0 flex-1 truncate font-medium text-zinc-700 dark:text-zinc-200">{{ $doc->name }}</span>
-                                <flux:icon.arrow-down-tray variant="micro" class="size-4 text-zinc-400" />
-                            </a>
-                        @endforeach
-                        <button type="button" x-on:click="$wire.docType = 'agreement'; $wire.setTab('documents')" class="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-zinc-300 py-2 text-xs font-medium text-zinc-500 transition hover:border-brand-400 hover:text-brand-600 dark:border-white/15">
-                            <flux:icon.arrow-up-tray variant="micro" class="size-3.5" />{{ $agreementDocs->isEmpty() ? __('Upload signed agreement') : __('Upload another') }}
-                        </button>
-                    </div>
-                </section>
 
                 {{-- All-time attendance --}}
                 @php
@@ -1023,7 +975,56 @@ new #[Title('Employee')] class extends Component {
     @else
         {{-- Documents --}}
         <div class="grid items-start gap-6 lg:grid-cols-[22rem_minmax(0,1fr)]">
+            <div class="flex flex-col gap-6">
+            {{-- Employment agreement --}}
+            @php
+                $agreementDocs = $docs->where('type', 'agreement');
+                $agreeDays = $e->contract_end ? (int) today()->diffInDays($e->contract_end, false) : null;
+                $agreePct = $e->contract_start && $e->contract_end && $e->contract_end->gt($e->contract_start)
+                    ? (int) max(0, min(100, round($e->contract_start->diffInDays(today()) / $e->contract_start->diffInDays($e->contract_end) * 100))) : null;
+            @endphp
             <section class="{{ $panel }} p-5">
+                <div class="flex items-center justify-between">
+                    <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Employment agreement') }}</h2>
+                    <flux:button size="xs" variant="ghost" icon="pencil-square" wire:click="edit">{{ __('Edit') }}</flux:button>
+                </div>
+                @if ($e->contract_start || $e->contract_end)
+                    <div class="mt-4 flex items-center gap-3">
+                        <div class="min-w-0 flex-1 rounded-lg bg-zinc-50 px-3 py-2 dark:bg-white/[0.03]">
+                            <p class="text-[0.6875rem] text-zinc-500">{{ __('Starts') }}</p>
+                            <p class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $e->contract_start?->toNepali() ?: '-' }}</p>
+                        </div>
+                        <flux:icon.arrow-right variant="micro" class="size-4 shrink-0 text-zinc-300" />
+                        <div class="min-w-0 flex-1 rounded-lg bg-zinc-50 px-3 py-2 dark:bg-white/[0.03]">
+                            <p class="text-[0.6875rem] text-zinc-500">{{ __('Ends') }}</p>
+                            <p class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $e->contract_end?->toNepali() ?: '-' }}</p>
+                        </div>
+                    </div>
+                    @if ($agreePct !== null)
+                        <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div @class(['h-full rounded-full', 'bg-rose-500' => $agreeDays < 0, 'bg-amber-400' => $agreeDays >= 0 && $agreeDays <= 30, 'bg-brand-500' => $agreeDays > 30]) style="width: {{ $agreePct }}%"></div></div>
+                    @endif
+                    @if ($agreeDays !== null)
+                        <p @class(['mt-1.5 text-xs', 'font-medium text-rose-600 dark:text-rose-400' => $agreeDays < 0, 'text-amber-600 dark:text-amber-400' => $agreeDays >= 0 && $agreeDays <= 30, 'text-zinc-500' => $agreeDays > 30])>
+                            {{ $agreeDays < 0 ? __('Ended :count days ago', ['count' => abs($agreeDays)]) : trans_choice(':count day left|:count days left', $agreeDays) }}
+                        </p>
+                    @endif
+                @else
+                    <p class="mt-3 text-sm text-zinc-500">{{ __('No agreement dates yet.') }}</p>
+                @endif
+                <div class="mt-4 flex flex-col gap-1.5">
+                    @foreach ($agreementDocs as $doc)
+                        <a href="{{ route('employee-documents.download', $doc) }}" class="flex items-center gap-2.5 rounded-lg bg-zinc-50 px-3 py-2 text-sm transition hover:bg-zinc-100 dark:bg-white/[0.03] dark:hover:bg-white/5">
+                            <flux:icon.document-check variant="micro" class="size-4 text-emerald-600" />
+                            <span class="min-w-0 flex-1 truncate font-medium text-zinc-700 dark:text-zinc-200">{{ $doc->name }}</span>
+                            <flux:icon.arrow-down-tray variant="micro" class="size-4 text-zinc-400" />
+                        </a>
+                    @endforeach
+                    <button type="button" x-on:click="$wire.docType = 'agreement'; $nextTick(() => document.getElementById('employee-upload')?.scrollIntoView({ behavior: 'smooth', block: 'center' }))" class="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-zinc-300 py-2 text-xs font-medium text-zinc-500 transition hover:border-brand-400 hover:text-brand-600 dark:border-white/15">
+                        <flux:icon.arrow-up-tray variant="micro" class="size-3.5" />{{ $agreementDocs->isEmpty() ? __('Upload the signed agreement below') : __('Upload another below') }}
+                    </button>
+                </div>
+            </section>
+            <section id="employee-upload" class="{{ $panel }} scroll-mt-6 p-5">
                 <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Upload a document') }}</h2>
                 <p class="mt-0.5 text-xs text-zinc-500">{{ __('Kept private: only signed-in users can open it.') }}</p>
                 <form wire:submit="uploadDocument" class="mt-4 flex flex-col gap-4">
@@ -1043,6 +1044,7 @@ new #[Title('Employee')] class extends Component {
                     <flux:button type="submit" variant="primary" icon="arrow-up-tray" data-test="upload-employee-document">{{ __('Upload') }}</flux:button>
                 </form>
             </section>
+            </div>
 
             <section class="{{ $panel }} overflow-hidden">
                 <div class="flex items-center gap-2.5 border-b border-zinc-100 px-5 py-4 dark:border-white/5">
