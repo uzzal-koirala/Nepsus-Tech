@@ -411,7 +411,7 @@ new #[Title('Client profile')] class extends Component {
                         <span class="{{ $dots[$c->status] }} absolute -end-1 -bottom-1 size-4.5 rounded-full ring-[3px] ring-white dark:ring-zinc-950" title="{{ ucfirst($c->status) }}"></span>
                     </span>
                     <div class="min-w-0 pt-3">
-                        <h1 class="truncate text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-[1.75rem] dark:text-white">{{ $c->displayName() }}</h1>
+                        <h1 class="flex items-center gap-1.5 text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-[1.75rem] dark:text-white"><span class="truncate">{{ $c->displayName() }}</span>@if ($c->agreement_signed_at)<x-verified-badge class="size-6" />@endif</h1>
                         <p class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-500 dark:text-zinc-400">
                             <span class="inline-flex items-center gap-1.5"><flux:icon.user variant="micro" class="size-3.5 opacity-70" />{{ $c->contactName() }}</span>
                             @if ($c->phone)

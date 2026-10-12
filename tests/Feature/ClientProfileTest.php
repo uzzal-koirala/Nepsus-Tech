@@ -71,14 +71,15 @@ class ClientProfileTest extends TestCase
             ->set('agreementFile', UploadedFile::fake()->create('signed-agreement.pdf', 80, 'application/pdf'))
             ->call('saveAgreement')
             ->assertHasNoErrors()
-            ->assertSee('17 Baisakh 2084'); // 2027-04-30 in BS
+            ->assertSee('17 Baisakh 2084') // 2027-04-30 in BS
+            ->assertSee('Verified: agreement signed');
 
         $client->refresh();
         $this->assertSame('2027-04-30', $client->contract_end->toDateString());
         $this->assertNotNull($client->agreement_signed_at);
         $this->assertSame('agreement', $client->documents()->sole()->type);
 
-        $page->call('editAgreement')->set('agreementSigned', false)->call('saveAgreement');
+        $page->call('editAgreement')->set('agreementSigned', false)->call('saveAgreement')->assertDontSee('Verified: agreement signed');
         $this->assertNull($client->fresh()->agreement_signed_at);
 
         $page->call('editNotes')->set('notes', 'Prefers WhatsApp')->call('saveNotes');
