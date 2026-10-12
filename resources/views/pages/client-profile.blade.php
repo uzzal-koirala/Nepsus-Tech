@@ -1303,78 +1303,68 @@ new #[Title('Client profile')] class extends Component {
             @endphp
 
 
-            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                @foreach ($boxes as $kind => $items)
-                    @php
-                        $kt = $typeOf($kind);
-                        $ktone = $toneOf($kind);
-                        $rows = $items->sortBy(fn ($t) => [array_search($t->stage(), array_keys(Task::STATUSES)), $t->due_date?->timestamp ?? PHP_INT_MAX, $t->id])->values();
-                        $openHere = $rows->reject(fn ($t) => $t->stage() === 'done');
-                        $doneHere = $rows->count() - $openHere->count();
-                        $lateHere = $openHere->filter->isOverdue()->count();
-                        $boxPct = $rows->count() ? (int) round($doneHere / $rows->count() * 100) : 0;
-                        $iconBtn = 'flex size-7 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-white/10 dark:hover:text-white';
-                    @endphp
-                    <section wire:key="box-{{ $kind }}" class="{{ $panel }} relative flex h-full flex-col overflow-hidden" x-data="{ open: true }">
-                        <span class="{{ $ktone['dot'] }} absolute inset-x-0 top-0 h-1"></span>
+            @php
+                $columns = [[], [], [], []];
+                foreach ($boxes->keys()->values() as $i => $key) {
+                    $columns[$i % 4][$key] = $boxes[$key];
+                }
+            @endphp
+            <div class="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-4">
+                @foreach ($columns as $column)
+                    <div class="flex flex-col gap-4">
+                        @foreach ($column as $kind => $items)
+                            @php
+                                $kt = $typeOf($kind);
+                                $ktone = $toneOf($kind);
+                                $rows = $items->sortBy(fn ($t) => [array_search($t->stage(), array_keys(Task::STATUSES)), $t->due_date?->timestamp ?? PHP_INT_MAX, $t->id])->values();
+                                $openHere = $rows->reject(fn ($t) => $t->stage() === 'done');
+                                $doneHere = $rows->count() - $openHere->count();
+                                $lateHere = $openHere->filter->isOverdue()->count();
+                            @endphp
+                            <section wire:key="box-{{ $kind }}" class="{{ $panel }} flex flex-col overflow-hidden" x-data="{ open: true }">
+                                <div class="{{ $ktone['chip'] }} flex items-center gap-2.5 px-4 py-3">
+                                    <button type="button" @click="open = ! open" class="flex min-w-0 flex-1 items-center gap-2.5 text-start" :aria-expanded="open">
+                                        <span class="{{ $ktone['dot'] }} flex size-8 shrink-0 items-center justify-center rounded-lg text-white shadow-sm"><flux:icon :icon="$kt['icon']" variant="micro" class="size-4" /></span>
+                                        <span class="min-w-0">
+                                            <span class="block truncate text-sm font-semibold">{{ $kt['label'] }}</span>
+                                            <span class="block text-[0.6875rem] opacity-80">@if ($rows->isEmpty()){{ __('Nothing yet') }}@else{{ $doneHere }}/{{ $rows->count() }} {{ __('done') }}@if ($lateHere) · {{ trans_choice(':count late|:count late', $lateHere) }}@endif @endif</span>
+                                        </span>
+                                        <flux:icon.chevron-down variant="micro" class="ms-auto size-4 shrink-0 opacity-60 transition" ::class="open ? '' : '-rotate-90'" />
+                                    </button>
+                                    <button type="button" wire:click="newTask('todo', '{{ $kind }}')" class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/70 transition hover:bg-white dark:bg-white/10 dark:hover:bg-white/20" aria-label="{{ __('Add :type', ['type' => $kt['label']]) }}" title="{{ __('Add :type', ['type' => $kt['label']]) }}"><flux:icon.plus variant="micro" class="size-4" /></button>
+                                    <flux:dropdown align="end">
+                                        <button type="button" class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/70 transition hover:bg-white dark:bg-white/10 dark:hover:bg-white/20" aria-label="{{ __(':type settings', ['type' => $kt['label']]) }}" title="{{ __('Settings') }}" data-test="box-settings-{{ $kind }}"><flux:icon.cog-6-tooth variant="micro" class="size-4" /></button>
+                                        <flux:menu>
+                                            <flux:menu.submenu :heading="__('Assign all to')" icon="user-plus">
+                                                @forelse ($this->team as $member)
+                                                    <flux:menu.item wire:click="assignBox('{{ $kind }}', {{ $member->id }})">{{ $member->name }}</flux:menu.item>
+                                                @empty
+                                                    <flux:menu.item disabled>{{ __('No employees yet') }}</flux:menu.item>
+                                                @endforelse
+                                            </flux:menu.submenu>
+                                            <flux:menu.item icon="plus" wire:click="newTask('todo', '{{ $kind }}')">{{ __('Add :type', ['type' => $kt['label']]) }}</flux:menu.item>
+                                            <flux:menu.separator />
+                                            <flux:menu.item icon="check-circle" wire:click="completeBox('{{ $kind }}')" wire:confirm="{{ __('Mark all :type work as done?', ['type' => $kt['label']]) }}">{{ __('Mark all as done') }}</flux:menu.item>
+                                        </flux:menu>
+                                    </flux:dropdown>
+                                </div>
 
-                        {{-- Header: type, progress, actions --}}
-                        <div class="flex items-center gap-3 px-4 pt-4 pb-3">
-                            <span class="{{ $ktone['chip'] }} flex size-9 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset"><flux:icon :icon="$kt['icon']" variant="mini" class="size-4.5" /></span>
-                            <div class="min-w-0 flex-1">
-                                <h3 class="truncate text-[0.9375rem] font-semibold text-zinc-900 dark:text-white">{{ $kt['label'] }}</h3>
-                                <p class="text-xs text-zinc-500">
+                                <div x-show="open" x-collapse>
                                     @if ($rows->isEmpty())
-                                        {{ __('Nothing yet') }}
+                                        <button type="button" wire:click="newTask('todo', '{{ $kind }}')" class="flex w-full items-center justify-center gap-1.5 px-4 py-6 text-sm text-zinc-400 transition hover:bg-zinc-50 hover:text-brand-600 dark:hover:bg-white/[0.03]">
+                                            <flux:icon.plus variant="micro" class="size-4" />{{ __('Add :type', ['type' => $kt['label']]) }}
+                                        </button>
                                     @else
-                                        <span class="font-medium text-zinc-700 tabular-nums dark:text-zinc-200">{{ $doneHere }}/{{ $rows->count() }}</span> {{ __('done') }}
-                                        @if ($lateHere)
-                                            · <span class="font-medium text-rose-600 dark:text-rose-400">{{ trans_choice(':count late|:count late', $lateHere) }}</span>
-                                        @endif
+                                        <ul class="divide-y divide-zinc-100 dark:divide-white/5">
+                                            @foreach ($rows as $t)
+                                                @include('partials.type-task-row', ['t' => $t, 'prefix' => 'box'])
+                                            @endforeach
+                                        </ul>
                                     @endif
-                                </p>
-                            </div>
-                            <div class="flex shrink-0 items-center">
-                                <button type="button" wire:click="newTask('todo', '{{ $kind }}')" class="{{ $iconBtn }}" aria-label="{{ __('Add :type', ['type' => $kt['label']]) }}" title="{{ __('Add :type', ['type' => $kt['label']]) }}"><flux:icon.plus variant="micro" class="size-4" /></button>
-                                <flux:dropdown align="end">
-                                    <button type="button" class="{{ $iconBtn }}" aria-label="{{ __(':type settings', ['type' => $kt['label']]) }}" title="{{ __('Settings') }}" data-test="box-settings-{{ $kind }}"><flux:icon.cog-6-tooth variant="micro" class="size-4" /></button>
-                                    <flux:menu>
-                                        <flux:menu.submenu :heading="__('Assign all to')" icon="user-plus">
-                                            @forelse ($this->team as $member)
-                                                <flux:menu.item wire:click="assignBox('{{ $kind }}', {{ $member->id }})">{{ $member->name }}</flux:menu.item>
-                                            @empty
-                                                <flux:menu.item disabled>{{ __('No employees yet') }}</flux:menu.item>
-                                            @endforelse
-                                        </flux:menu.submenu>
-                                        <flux:menu.item icon="plus" wire:click="newTask('todo', '{{ $kind }}')">{{ __('Add :type', ['type' => $kt['label']]) }}</flux:menu.item>
-                                        <flux:menu.separator />
-                                        <flux:menu.item icon="check-circle" wire:click="completeBox('{{ $kind }}')" wire:confirm="{{ __('Mark all :type work as done?', ['type' => $kt['label']]) }}">{{ __('Mark all as done') }}</flux:menu.item>
-                                    </flux:menu>
-                                </flux:dropdown>
-                                <button type="button" @click="open = ! open" class="{{ $iconBtn }}" :aria-expanded="open" aria-label="{{ __('Show or hide :type', ['type' => $kt['label']]) }}"><flux:icon.chevron-down variant="micro" class="size-4 transition" ::class="open ? '' : '-rotate-90'" /></button>
-                            </div>
-                        </div>
-
-                        {{-- Progress --}}
-                        <div class="px-4 pb-3">
-                            <div class="h-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div class="{{ $ktone['dot'] }} h-full rounded-full transition-[width] duration-700" style="width: {{ $boxPct }}%"></div></div>
-                        </div>
-
-                        {{-- Work --}}
-                        <div x-show="open" x-collapse class="flex flex-1 flex-col border-t border-zinc-100 dark:border-white/5">
-                            @if ($rows->isEmpty())
-                                <button type="button" wire:click="newTask('todo', '{{ $kind }}')" class="m-3 flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-200 py-6 text-sm text-zinc-400 transition hover:border-brand-300 hover:bg-brand-50/40 hover:text-brand-600 dark:border-white/10 dark:hover:bg-white/[0.03]">
-                                    <flux:icon.plus variant="micro" class="size-4" />{{ __('Add :type', ['type' => $kt['label']]) }}
-                                </button>
-                            @else
-                                <ul class="divide-y divide-zinc-100 dark:divide-white/5">
-                                    @foreach ($rows as $t)
-                                        @include('partials.type-task-row', ['t' => $t, 'prefix' => 'box'])
-                                    @endforeach
-                                </ul>
-                            @endif
-                        </div>
-                    </section>
+                                </div>
+                            </section>
+                        @endforeach
+                    </div>
                 @endforeach
             </div>
 
