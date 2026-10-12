@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
-#[Fillable(['name', 'designation', 'department', 'email', 'phone', 'status', 'salary', 'joined_on'])]
+#[Fillable(['name', 'designation', 'department', 'email', 'phone', 'status', 'salary', 'salary_day', 'joined_on', 'contract_start', 'contract_end'])]
 class Employee extends Model
 {
     /** @use HasFactory<EmployeeFactory> */
@@ -34,8 +34,20 @@ class Employee extends Model
     {
         return [
             'joined_on' => 'date',
+            'contract_start' => 'date',
+            'contract_end' => 'date',
             'salary' => 'decimal:2',
         ];
+    }
+
+    public function attendances(): HasMany
+    {
+        return $this->hasMany(Attendance::class);
+    }
+
+    public function documents(): HasMany
+    {
+        return $this->hasMany(EmployeeDocument::class);
     }
 
     public function tasks(): BelongsToMany
@@ -78,6 +90,21 @@ class Employee extends Model
             'left' => max(0.0, $salary - $paid),
             'percent' => (int) min(100, round($paid / $salary * 100)),
         ];
+    }
+
+    /** Next salary day on the Nepali calendar (today counts), or null when no salary day is set. */
+    public function nextSalaryDate(): ?\Illuminate\Support\Carbon
+    {
+        if (! $this->salary_day || ! $bs = NepaliDate::fromAd(today())) {
+            return null;
+        }
+
+        [$year, $month, $day] = $bs;
+        if ($day > min($this->salary_day, NepaliDate::monthLength($year, $month))) {
+            [$year, $month] = $month === 12 ? [$year + 1, 1] : [$year, $month + 1];
+        }
+
+        return NepaliDate::toAd($year, $month, min($this->salary_day, NepaliDate::monthLength($year, $month)));
     }
 
     public function initials(): string

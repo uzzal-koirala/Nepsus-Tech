@@ -3,6 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\Employee;
+use App\Models\Task;
+use App\Support\NepaliDate;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -97,7 +101,8 @@ class EmployeesTest extends TestCase
 
         $this->get(route('employees.show', $employee))->assertRedirect(route('login'));
         $this->actingAs(User::factory()->create());
-        $this->get(route('employees.show', $employee))->assertOk()->assertSee('Bina Rai')->assertSee('Salary by month');
+        $this->get(route('employees.show', $employee))->assertOk()->assertSee(['Bina Rai', 'Attendance', 'Next salary']);
+        $this->get(route('employees.show', ['employee' => $employee, 'tab' => 'salary']))->assertOk()->assertSee('Salary by month');
 
         $page = Livewire::test('pages::employee-profile', ['employee' => $employee])
             ->call('openPay')
@@ -116,5 +121,72 @@ class EmployeesTest extends TestCase
 
         $page->call('delete')->assertRedirect(route('employees.index'));
         $this->assertModelMissing($employee);
+    }
+
+    public function test_attendance_can_be_marked_on_the_calendar(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $employee = Employee::factory()->create(['status' => 'active']);
+        [$y, $m] = NepaliDate::fromAd(today());
+        $day = NepaliDate::toAd($y, $m, 1)->toDateString();
+
+        $page = Livewire::test('pages::employee-profile', ['employee' => $employee])
+            ->call('markDay', $day, 'leave');
+        $this->assertSame('leave', $employee->attendances()->sole()->status);
+
+        $page->call('markDay', $day, 'present');
+        $this->assertSame('present', $employee->attendances()->sole()->status);
+        $this->assertSame(1, $page->instance()->calendar['counts']['present']);
+
+        $page->call('markDay', $day, '');
+        $this->assertSame(0, $employee->attendances()->count());
+
+        // Fills every past working day of the month that is not marked yet (Saturdays are off).
+        $page->call('markWorkdaysPresent');
+        $expected = collect(range(1, NepaliDate::fromAd(today())[2]))
+            ->map(fn ($d) => NepaliDate::toAd($y, $m, $d))
+            ->reject->isSaturday()->count();
+        $this->assertSame($expected, $employee->attendances()->where('status', 'present')->count());
+    }
+
+    public function test_salary_day_agreement_work_and_documents(): void
+    {
+        Storage::fake('local');
+        $this->actingAs(User::factory()->create());
+        $employee = Employee::factory()->create(['status' => 'active', 'salary' => 30000]);
+        $task = Task::factory()->for(\App\Models\Client::factory())->create(['title' => 'Edit Dashain reel', 'completed_at' => null]);
+        $task->assignees()->attach($employee);
+
+        $page = Livewire::test('pages::employee-profile', ['employee' => $employee])
+            ->call('edit')
+            ->set('salaryDay', '40')
+            ->call('save')
+            ->assertHasErrors(['salaryDay'])
+            ->set('salaryDay', '1')
+            ->set('contractStart', '2026-04-14')
+            ->set('contractEnd', '2027-04-13')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $employee->refresh();
+        $this->assertSame(1, $employee->salary_day);
+        $this->assertSame(1, NepaliDate::fromAd($employee->nextSalaryDate())[2]);
+        $this->assertFalse($employee->nextSalaryDate()->isBefore(today()));
+
+        $page->call('setTab', 'work')->assertSee('Edit Dashain reel');
+
+        $page->call('setTab', 'documents')
+            ->set('docType', 'agreement')
+            ->set('docUpload', UploadedFile::fake()->create('contract.pdf', 120, 'application/pdf'))
+            ->call('uploadDocument')
+            ->assertHasNoErrors()
+            ->assertSee('contract.pdf');
+
+        $doc = $employee->documents()->sole();
+        Storage::disk('local')->assertExists($doc->path);
+        $this->get(route('employee-documents.download', $doc))->assertOk()->assertDownload('contract.pdf');
+
+        $page->call('deleteDocument', $doc->id);
+        Storage::disk('local')->assertMissing($doc->path);
     }
 }
