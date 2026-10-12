@@ -24,10 +24,6 @@ new #[Title('Finance')] class extends Component {
     #[Url]
     public string $to = '';
 
-    // Custom range picker
-    public string $customFrom = '';
-    public string $customTo = '';
-
     #[Url(except: 'all')]
     public string $show = 'all';
 
@@ -48,6 +44,21 @@ new #[Title('Finance')] class extends Component {
         $valid = fn ($d) => preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) && strtotime($d);
         if (! $valid($this->from) || ! $valid($this->to) || $this->from > $this->to) {
             $this->setMonth(NepaliDate::period(today()));
+        }
+    }
+
+    /** Picking a date: ignore blanks and keep From on or before To. */
+    public function updated($property): void
+    {
+        if (! in_array($property, ['from', 'to'])) {
+            return;
+        }
+
+        foreach (['from', 'to'] as $field) {
+            $this->{$field} = strtotime($this->{$field}) ? Carbon::parse($this->{$field})->toDateString() : today()->toDateString();
+        }
+        if ($this->from > $this->to) {
+            [$this->from, $this->to] = [$this->to, $this->from];
         }
     }
 
@@ -79,43 +90,6 @@ new #[Title('Finance')] class extends Component {
     public function goToday(): void
     {
         $this->setMonth(NepaliDate::period(today()));
-    }
-
-    public function preset(string $name): void
-    {
-        [$y, $m] = NepaliDate::fromAd(today());
-
-        match ($name) {
-            'last_month' => $this->setMonth($m === 1 ? sprintf('%d-12', $y - 1) : sprintf('%d-%02d', $y, $m - 1)),
-            'last_3' => [$this->from, $this->to] = [
-                NepaliDate::addMonths(NepaliDate::toAd($y, $m, 1), -2)->toDateString(),
-                NepaliDate::toAd($y, $m, NepaliDate::monthLength($y, $m))->toDateString(),
-            ],
-            'this_year' => [$this->from, $this->to] = [
-                NepaliDate::toAd($y, 1, 1)->toDateString(),
-                NepaliDate::toAd($y, 12, NepaliDate::monthLength($y, 12))->toDateString(),
-            ],
-            default => $this->goToday(),
-        };
-    }
-
-    public function openCustomRange(): void
-    {
-        [$this->customFrom, $this->customTo] = [$this->from, $this->to];
-        $this->resetErrorBag();
-        Flux::modal('date-range')->show();
-    }
-
-    public function applyCustomRange(): void
-    {
-        $data = $this->validate([
-            'customFrom' => ['required', 'date'],
-            'customTo' => ['required', 'date', 'after_or_equal:customFrom'],
-        ], attributes: ['customFrom' => __('from date'), 'customTo' => __('to date')]);
-
-        $this->from = Carbon::parse($data['customFrom'])->toDateString();
-        $this->to = Carbon::parse($data['customTo'])->toDateString();
-        Flux::modal('date-range')->close();
     }
 
     /** First and last AD day of a BS month key. */
@@ -336,18 +310,14 @@ new #[Title('Finance')] class extends Component {
                 <button type="button" wire:click="shiftMonth(1)" class="flex size-10 items-center justify-center rounded-e-lg text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:hover:bg-white/5 dark:hover:text-white" aria-label="{{ __('Next month') }}"><flux:icon.chevron-right variant="mini" class="size-4" /></button>
             </div>
 
-            {{-- Date filter --}}
-            <flux:dropdown align="end">
-                <flux:button icon="calendar-days" icon:trailing="chevron-down" data-test="date-filter">{{ __('Date') }}</flux:button>
-                <flux:menu>
-                    <flux:menu.item icon="calendar" wire:click="preset('this_month')">{{ __('This month') }}</flux:menu.item>
-                    <flux:menu.item icon="arrow-uturn-left" wire:click="preset('last_month')">{{ __('Last month') }}</flux:menu.item>
-                    <flux:menu.item icon="calendar-days" wire:click="preset('last_3')">{{ __('Last 3 months') }}</flux:menu.item>
-                    <flux:menu.item icon="sun" wire:click="preset('this_year')">{{ __('This year (:year)', ['year' => NepaliDate::fromAd(today())[0]]) }}</flux:menu.item>
-                    <flux:menu.separator />
-                    <flux:menu.item icon="adjustments-horizontal" wire:click="openCustomRange">{{ __('Custom range…') }}</flux:menu.item>
-                </flux:menu>
-            </flux:dropdown>
+            {{-- Date filter: from → to --}}
+            <div class="flex items-center gap-2 rounded-lg bg-white p-1 ring-1 ring-zinc-200 dark:bg-zinc-950 dark:ring-white/10" data-test="date-filter">
+                <span class="ps-2 text-xs font-medium text-zinc-500">{{ __('From') }}</span>
+                <x-nepali-date wire:model.live="from" class="w-60" />
+                <flux:icon.arrow-right variant="micro" class="size-4 text-zinc-400" />
+                <span class="text-xs font-medium text-zinc-500">{{ __('To') }}</span>
+                <x-nepali-date wire:model.live="to" class="w-60" />
+            </div>
 
             {{-- Export --}}
             <flux:button icon="arrow-down-tray" wire:click="export" data-test="export">{{ __('Export') }}</flux:button>
@@ -565,28 +535,6 @@ new #[Title('Finance')] class extends Component {
             </div>
         </template>
     </section>
-
-    {{-- Custom date range --}}
-    <flux:modal name="date-range" class="w-full max-w-md">
-        <form wire:submit="applyCustomRange" class="flex flex-col gap-5">
-            <div class="flex items-start gap-3">
-                <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300"><flux:icon.calendar-days variant="mini" class="size-5" /></span>
-                <div>
-                    <flux:heading size="lg">{{ __('Custom date range') }}</flux:heading>
-                    <flux:text class="mt-0.5">{{ __('Show money in and out between two dates.') }}</flux:text>
-                </div>
-            </div>
-            <div class="grid gap-4 sm:grid-cols-2">
-                <x-nepali-date wire:model="customFrom" :label="__('From')" />
-                <x-nepali-date wire:model="customTo" :label="__('To')" />
-            </div>
-            <flux:error name="customTo" />
-            <div class="flex justify-end gap-2">
-                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
-                <flux:button type="submit" variant="primary" icon="check" data-test="apply-range">{{ __('Apply') }}</flux:button>
-            </div>
-        </form>
-    </flux:modal>
 
     {{-- Add transaction --}}
     <flux:modal name="entry-form" class="w-full max-w-xl overflow-visible p-0!" :closable="false">

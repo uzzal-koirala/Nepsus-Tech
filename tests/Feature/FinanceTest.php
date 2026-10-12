@@ -108,22 +108,17 @@ class FinanceTest extends TestCase
 
         $page = Livewire::test('pages::finance')
             ->assertSee('Rent now')->assertDontSee('Rent before')
-            ->call('preset', 'last_month')
-            ->assertSee('Rent before')->assertDontSee('Rent now')
-            ->call('preset', 'last_3')
-            ->assertSee(['Rent now', 'Rent before'])
-            ->call('openCustomRange')
-            ->set('customFrom', $thisMonth->toDateString())
-            ->set('customTo', $lastMonth->toDateString())
-            ->call('applyCustomRange')
-            ->assertHasErrors(['customTo'])
-            ->set('customFrom', $lastMonth->toDateString())
-            ->set('customTo', $lastMonth->toDateString())
-            ->call('applyCustomRange')
-            ->assertHasNoErrors()
+            ->set('from', $lastMonth->toDateString())
+            ->set('to', $lastMonth->toDateString())
             ->assertSee('Rent before')->assertDontSee('Rent now');
         $this->assertSame(2000.0, $page->instance()->summary['expenses']);
 
-        $page->call('preset', 'last_3')->call('export')->assertFileDownloaded();
+        // A reversed range is swapped, so both months show.
+        // Range is last month only; moving From past To swaps them.
+        $page->set('from', $thisMonth->toDateString())
+            ->assertSet('from', $lastMonth->toDateString())->assertSet('to', $thisMonth->toDateString())
+            ->assertSee(['Rent now', 'Rent before']);
+
+        $page->call('export')->assertFileDownloaded();
     }
 }
