@@ -90,4 +90,31 @@ class EmployeesTest extends TestCase
         $this->assertSame('5m', Employee::factory()->make(['joined_on' => '2026-05-10'])->tenure());
         $this->assertSame('New', Employee::factory()->make(['joined_on' => '2026-10-05'])->tenure());
     }
+
+    public function test_profile_shows_salary_and_records_payments(): void
+    {
+        $employee = Employee::factory()->create(['name' => 'Bina Rai', 'status' => 'active', 'salary' => 40000, 'joined_on' => today()->subYear()]);
+
+        $this->get(route('employees.show', $employee))->assertRedirect(route('login'));
+        $this->actingAs(User::factory()->create());
+        $this->get(route('employees.show', $employee))->assertOk()->assertSee('Bina Rai')->assertSee('Salary by month');
+
+        $page = Livewire::test('pages::employee-profile', ['employee' => $employee])
+            ->call('openPay')
+            ->assertSet('payAmount', '40000')
+            ->set('payAmount', '15000')
+            ->call('savePay')
+            ->assertHasNoErrors()
+            ->assertSee('NPR 25,000 still to pay');
+
+        $payment = $employee->salaryPayments()->sole();
+        $page->call('deleteSalaryPayment', $payment->id);
+        $this->assertSame(0, $employee->salaryPayments()->count());
+
+        $page->call('edit')->set('salary', '45000')->call('save')->assertHasNoErrors();
+        $this->assertSame('45000.00', $employee->fresh()->salary);
+
+        $page->call('delete')->assertRedirect(route('employees.index'));
+        $this->assertModelMissing($employee);
+    }
 }

@@ -386,7 +386,7 @@ new #[Title('Employees')] class extends Component {
                             <span class="{{ $statusDot[$e->status] }} absolute -end-1 -bottom-1 size-3.5 rounded-full ring-[3px] ring-white dark:ring-zinc-950" title="{{ __(Employee::STATUSES[$e->status]) }}"></span>
                         </span>
                         <div class="min-w-0 flex-1">
-                            <h3 class="truncate leading-snug font-semibold text-zinc-900 dark:text-white">{{ $e->name }}</h3>
+                            <h3 class="truncate leading-snug font-semibold text-zinc-900 dark:text-white"><a href="{{ route('employees.show', $e) }}" wire:navigate class="hover:text-brand-600 dark:hover:text-brand-300">{{ $e->name }}</a></h3>
                             <p class="truncate text-[0.8125rem] text-zinc-500 dark:text-zinc-400">{{ $e->designation ?? __('No role set') }}</p>
                             <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
                                 <span class="{{ $d['chip'] }} inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium">
@@ -401,6 +401,7 @@ new #[Title('Employees')] class extends Component {
                         <flux:dropdown align="end">
                             <flux:button variant="ghost" size="sm" icon="ellipsis-horizontal" class="-me-2 -mt-1" :aria-label="__('Actions for :name', ['name' => $e->name])" />
                             <flux:menu>
+                                <flux:menu.item icon="user" :href="route('employees.show', $e)" wire:navigate>{{ __('View profile') }}</flux:menu.item>
                                 <flux:menu.item icon="banknotes" wire:click="openPay({{ $e->id }})">{{ __('Pay salary') }}</flux:menu.item>
                                 <flux:menu.item icon="clock" wire:click="openHistory({{ $e->id }})">{{ __('Salary history') }}</flux:menu.item>
                                 <flux:menu.item icon="pencil-square" wire:click="edit({{ $e->id }})">{{ __('Edit') }}</flux:menu.item>
@@ -493,7 +494,7 @@ new #[Title('Employees')] class extends Component {
                                         <span class="{{ $statusDot[$e->status] }} absolute -end-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-white dark:ring-zinc-950"></span>
                                     </span>
                                     <div class="min-w-0">
-                                        <p class="truncate font-medium text-zinc-900 dark:text-white">{{ $e->name }}</p>
+                                        <a href="{{ route('employees.show', $e) }}" wire:navigate class="block truncate font-medium text-zinc-900 hover:text-brand-600 dark:text-white">{{ $e->name }}</a>
                                         <p class="truncate text-xs text-zinc-500">{{ $e->designation ?? __('No role set') }}</p>
                                     </div>
                                 </div>
@@ -526,7 +527,8 @@ new #[Title('Employees')] class extends Component {
                                 <flux:dropdown align="end">
                                     <flux:button variant="ghost" size="sm" icon="ellipsis-horizontal" :aria-label="__('Actions for :name', ['name' => $e->name])" />
                                     <flux:menu>
-                                        <flux:menu.item icon="banknotes" wire:click="openPay({{ $e->id }})">{{ __('Pay salary') }}</flux:menu.item>
+                                        <flux:menu.item icon="user" :href="route('employees.show', $e)" wire:navigate>{{ __('View profile') }}</flux:menu.item>
+                                <flux:menu.item icon="banknotes" wire:click="openPay({{ $e->id }})">{{ __('Pay salary') }}</flux:menu.item>
                                         <flux:menu.item icon="clock" wire:click="openHistory({{ $e->id }})">{{ __('Salary history') }}</flux:menu.item>
                                         <flux:menu.item icon="pencil-square" wire:click="edit({{ $e->id }})">{{ __('Edit') }}</flux:menu.item>
                                         <flux:menu.separator />
