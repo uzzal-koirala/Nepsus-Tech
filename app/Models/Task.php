@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Str;
 
 #[Fillable(['title', 'description', 'type', 'status', 'priority', 'start_date', 'due_date', 'completed_at'])]
 class Task extends Model
@@ -14,17 +16,23 @@ class Task extends Model
     /** @use HasFactory<TaskFactory> */
     use HasFactory;
 
-    /** Kinds of work, shown colour-coded on the client's work calendar. */
-    public const TYPES = [
-        'post' => ['label' => 'Post', 'icon' => 'photo'],
-        'reel' => ['label' => 'Reel', 'icon' => 'film'],
-        'story' => ['label' => 'Story', 'icon' => 'bolt'],
-        'video' => ['label' => 'Video', 'icon' => 'video-camera'],
-        'shoot' => ['label' => 'Photoshoot', 'icon' => 'camera'],
-        'design' => ['label' => 'Design', 'icon' => 'paint-brush'],
-        'meeting' => ['label' => 'Meeting', 'icon' => 'users'],
-        'task' => ['label' => 'Task', 'icon' => 'check-circle'],
-    ];
+    /**
+     * Work types from the database, keyed by slug: [slug => [label, icon, color]].
+     *
+     * @return array<string, array{label: string, icon: string, color: string}>
+     */
+    public static function types(): array
+    {
+        return WorkType::orderBy('position')->orderBy('id')->get()
+            ->mapWithKeys(fn ($w) => [$w->slug => ['label' => $w->name, 'icon' => $w->icon, 'color' => $w->color]])
+            ->all();
+    }
+
+    /** Shown for a task whose type was deleted. */
+    public static function unknownType(?string $slug): array
+    {
+        return ['label' => $slug ? Str::headline($slug) : 'Task', 'icon' => 'tag', 'color' => 'zinc'];
+    }
 
     /** Workflow stages, in board order. */
     public const STATUSES = [
@@ -53,6 +61,11 @@ class Task extends Model
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
+    }
+
+    public function assignees(): BelongsToMany
+    {
+        return $this->belongsToMany(Employee::class);
     }
 
     /** The stage shown in lists: completed work is always done. */

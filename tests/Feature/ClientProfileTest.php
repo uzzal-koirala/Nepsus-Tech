@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Client;
+use App\Models\Employee;
+use App\Models\WorkType;
 use App\Models\Task;
 use App\Support\NepaliDate;
 use App\Models\User;
@@ -276,5 +278,40 @@ class ClientProfileTest extends TestCase
 
         $page->call('setTaskPriority', $task->id, 'urgent');
         $this->assertSame('urgent', $task->fresh()->priority);
+    }
+
+    public function test_work_types_can_be_added_and_deleted_and_people_assigned(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $client = Client::factory()->create();
+        $bina = Employee::factory()->create(['name' => 'Bina Rai', 'status' => 'active']);
+        $kiran = Employee::factory()->create(['name' => 'Kiran Shrestha', 'status' => 'active']);
+
+        $page = Livewire::test('pages::client-profile', ['client' => $client])
+            ->call('newTask')
+            ->set('newTypeName', 'Blog article')
+            ->call('addWorkType')
+            ->assertSet('taskType', 'blog-article')
+            ->set('taskTitle', 'Write Dashain blog')
+            ->set('taskAssignees', [$bina->id, $kiran->id])
+            ->call('addTask')
+            ->assertHasNoErrors()
+            ->call('setTab', 'tasks')
+            ->assertSee(['Blog article', 'Write Dashain blog', 'BR']);
+
+        $task = $client->tasks()->sole();
+        $this->assertSame('blog-article', $task->type);
+        $this->assertEqualsCanonicalizing([$bina->id, $kiran->id], $task->assignees->pluck('id')->all());
+
+        $page->call('editTask', $task->id)
+            ->assertSet('taskAssignees', [$bina->id, $kiran->id])
+            ->set('taskAssignees', [$kiran->id])
+            ->call('addTask');
+        $this->assertSame([$kiran->id], $task->fresh()->assignees->pluck('id')->all());
+
+        $page->call('deleteWorkType', 'blog-article');
+        $this->assertNull(WorkType::firstWhere('slug', 'blog-article'));
+        $this->assertSame('blog-article', $task->fresh()->type); // the task keeps its name
+        $page->call('setTab', 'tasks')->assertSee('Blog Article');
     }
 }

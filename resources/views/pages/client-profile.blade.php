@@ -2,8 +2,10 @@
 
 use App\Models\Client;
 use App\Models\Document;
+use App\Models\Employee;
 use App\Models\Payment;
 use App\Models\Task;
+use App\Models\WorkType;
 use Flux\Flux;
 use App\Support\NepaliDate;
 use Illuminate\Support\Facades\Date;
@@ -32,6 +34,9 @@ new #[Title('Client profile')] class extends Component {
     public string $taskStatus = 'todo';
     public string $taskPriority = 'medium';
     public string $taskStart = '';
+    /** @var list<int> */
+    public array $taskAssignees = [];
+    public string $newTypeName = '';
 
     /** Tasks tab: show one kind of work only. */
     public string $workKind = '';
@@ -125,7 +130,7 @@ new #[Title('Client profile')] class extends Component {
         $to = NepaliDate::toAd($py, $pm, NepaliDate::monthLength($py, $pm));
         $length = NepaliDate::monthLength($this->calYear, $this->calMonth);
 
-        $previous = $this->client->tasks()->whereBetween('due_date', [$from->toDateString(), $to->toDateString()])->get();
+        $previous = $this->client->tasks()->with('assignees')->whereBetween('due_date', [$from->toDateString(), $to->toDateString()])->get();
 
         foreach ($previous as $task) {
             $day = min(NepaliDate::fromAd($task->due_date)[2], $length);
@@ -135,7 +140,7 @@ new #[Title('Client profile')] class extends Component {
                 'type' => $task->type,
                 'priority' => $task->priority,
                 'due_date' => NepaliDate::toAd($this->calYear, $this->calMonth, $day),
-            ]);
+            ])->assignees()->sync($task->assignees->pluck('id'));
         }
 
         unset($this->tasks, $this->calendar);
@@ -154,6 +159,7 @@ new #[Title('Client profile')] class extends Component {
     public function tasks()
     {
         return $this->client->tasks()
+            ->with('assignees')
             ->orderByRaw('completed_at is not null')
             ->orderByRaw('due_date is null')
             ->orderBy('due_date')
@@ -171,6 +177,55 @@ new #[Title('Client profile')] class extends Component {
     public function documents()
     {
         return $this->client->documents()->latest()->get();
+    }
+
+    /** Work types (editable from the work popup). */
+    #[Computed]
+    public function types(): array
+    {
+        return Task::types();
+    }
+
+    /** People who can be assigned to work. */
+    #[Computed]
+    public function team()
+    {
+        return Employee::where('status', '!=', 'inactive')->orderBy('name')->get();
+    }
+
+    public function addWorkType(): void
+    {
+        $data = $this->validate(['newTypeName' => ['required', 'string', 'max:40']], attributes: ['newTypeName' => __('type name')]);
+
+        $existing = WorkType::whereRaw('lower(name) = ?', [mb_strtolower(trim($data['newTypeName']))])->first();
+        $type = $existing ?? WorkType::add(trim($data['newTypeName']));
+
+        $this->taskType = $type->slug;
+        $this->reset('newTypeName');
+        unset($this->types);
+    }
+
+    public function deleteWorkType(string $slug): void
+    {
+        if (WorkType::count() <= 1) {
+            Flux::toast(variant: 'warning', text: __('Keep at least one type of work.'));
+
+            return;
+        }
+
+        WorkType::where('slug', $slug)->delete(); // tasks keep the name; they show it in grey
+        unset($this->types);
+
+        if ($this->taskType === $slug) {
+            $this->taskType = array_key_first($this->types);
+        }
+    }
+
+    private function defaultType(): string
+    {
+        $wanted = $this->client->service_type === 'social_media' ? 'post' : 'task';
+
+        return array_key_exists($wanted, $this->types) ? $wanted : (string) array_key_first($this->types);
     }
 
     public function setTab(string $tab): void
@@ -205,8 +260,8 @@ new #[Title('Client profile')] class extends Component {
 
     public function newTask(string $status = 'todo'): void
     {
-        $this->reset('taskTitle', 'taskDue', 'taskId', 'taskDescription', 'taskStart');
-        $this->taskType = $this->client->service_type === 'social_media' ? 'post' : 'task';
+        $this->reset('taskTitle', 'taskDue', 'taskId', 'taskDescription', 'taskStart', 'taskAssignees', 'newTypeName');
+        $this->taskType = $this->defaultType();
         $this->taskStatus = array_key_exists($status, Task::STATUSES) ? $status : 'todo';
         $this->taskPriority = 'medium';
         $this->resetErrorBag();
@@ -226,6 +281,8 @@ new #[Title('Client profile')] class extends Component {
         $this->taskPriority = $task->priority;
         $this->taskStart = (string) $task->start_date?->toDateString();
         $this->taskDue = (string) $task->due_date?->toDateString();
+        $this->taskAssignees = $task->assignees->pluck('id')->all();
+        $this->reset('newTypeName');
         Flux::modal('task-form')->show();
     }
 
@@ -236,7 +293,9 @@ new #[Title('Client profile')] class extends Component {
             'taskDescription' => ['nullable', 'string', 'max:2000'],
             'taskStart' => ['nullable', 'date'],
             'taskDue' => array_filter(['nullable', 'date', $this->taskStart ? 'after_or_equal:taskStart' : null]),
-            'taskType' => ['required', Rule::in(array_keys(Task::TYPES))],
+            'taskType' => ['required', Rule::exists('work_types', 'slug')],
+            'taskAssignees' => ['array'],
+            'taskAssignees.*' => ['integer', Rule::exists('employees', 'id')],
             'taskStatus' => ['required', Rule::in(array_keys(Task::STATUSES))],
             'taskPriority' => ['required', Rule::in(array_keys(Task::PRIORITIES))],
         ], attributes: ['taskDue' => __('due date'), 'taskStart' => __('start date')]);
@@ -252,10 +311,11 @@ new #[Title('Client profile')] class extends Component {
             'due_date' => $data['taskDue'] ?: null,
             'completed_at' => $data['taskStatus'] === 'done' ? ($task->completed_at ?? now()) : null,
         ])->save();
+        $task->assignees()->sync($data['taskAssignees'] ?? []);
 
         Flux::modal('task-form')->close();
         Flux::toast(variant: 'success', text: $this->taskId ? __('Task updated.') : __('Task added.'));
-        $this->reset('taskTitle', 'taskDue', 'taskId', 'taskDescription', 'taskStart');
+        $this->reset('taskTitle', 'taskDue', 'taskId', 'taskDescription', 'taskStart', 'taskAssignees');
     }
 
     public function toggleTask(int $id): void
@@ -453,16 +513,26 @@ new #[Title('Client profile')] class extends Component {
     ];
 
     $panel = 'rounded-xl bg-white ring-1 ring-zinc-200/70 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:ring-white/10';
-    $workTones = [
-        'post' => ['dot' => 'bg-sky-500', 'chip' => 'bg-sky-50 text-sky-700 ring-sky-200/80 hover:bg-sky-100 dark:bg-sky-500/10 dark:text-sky-200 dark:ring-sky-500/20', 'pick' => 'bg-sky-50 text-sky-700 ring-sky-500 dark:bg-sky-500/10 dark:text-sky-200'],
-        'reel' => ['dot' => 'bg-fuchsia-500', 'chip' => 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200/80 hover:bg-fuchsia-100 dark:bg-fuchsia-500/10 dark:text-fuchsia-200 dark:ring-fuchsia-500/20', 'pick' => 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-500 dark:bg-fuchsia-500/10 dark:text-fuchsia-200'],
-        'story' => ['dot' => 'bg-amber-400', 'chip' => 'bg-amber-50 text-amber-700 ring-amber-200/80 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-200 dark:ring-amber-500/20', 'pick' => 'bg-amber-50 text-amber-700 ring-amber-400 dark:bg-amber-500/10 dark:text-amber-200'],
-        'video' => ['dot' => 'bg-rose-500', 'chip' => 'bg-rose-50 text-rose-700 ring-rose-200/80 hover:bg-rose-100 dark:bg-rose-500/10 dark:text-rose-200 dark:ring-rose-500/20', 'pick' => 'bg-rose-50 text-rose-700 ring-rose-500 dark:bg-rose-500/10 dark:text-rose-200'],
-        'shoot' => ['dot' => 'bg-orange-500', 'chip' => 'bg-orange-50 text-orange-700 ring-orange-200/80 hover:bg-orange-100 dark:bg-orange-500/10 dark:text-orange-200 dark:ring-orange-500/20', 'pick' => 'bg-orange-50 text-orange-700 ring-orange-500 dark:bg-orange-500/10 dark:text-orange-200'],
-        'design' => ['dot' => 'bg-emerald-500', 'chip' => 'bg-emerald-50 text-emerald-700 ring-emerald-200/80 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-200 dark:ring-emerald-500/20', 'pick' => 'bg-emerald-50 text-emerald-700 ring-emerald-500 dark:bg-emerald-500/10 dark:text-emerald-200'],
-        'meeting' => ['dot' => 'bg-violet-500', 'chip' => 'bg-violet-50 text-violet-700 ring-violet-200/80 hover:bg-violet-100 dark:bg-violet-500/10 dark:text-violet-200 dark:ring-violet-500/20', 'pick' => 'bg-violet-50 text-violet-700 ring-violet-500 dark:bg-violet-500/10 dark:text-violet-200'],
-        'task' => ['dot' => 'bg-zinc-400', 'chip' => 'bg-zinc-50 text-zinc-700 ring-zinc-200/80 hover:bg-zinc-100 dark:bg-zinc-500/10 dark:text-zinc-200 dark:ring-zinc-500/20', 'pick' => 'bg-zinc-100 text-zinc-800 ring-zinc-500 dark:bg-white/10 dark:text-zinc-100'],
+    $types = $this->types;
+    $palette = [
+        'sky' => ['dot' => 'bg-sky-500', 'chip' => 'bg-sky-50 text-sky-700 ring-sky-200/80 hover:bg-sky-100 dark:bg-sky-500/10 dark:text-sky-200 dark:ring-sky-500/20', 'pick' => 'bg-sky-50 text-sky-700 ring-sky-500 dark:bg-sky-500/10 dark:text-sky-200'],
+        'fuchsia' => ['dot' => 'bg-fuchsia-500', 'chip' => 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200/80 hover:bg-fuchsia-100 dark:bg-fuchsia-500/10 dark:text-fuchsia-200 dark:ring-fuchsia-500/20', 'pick' => 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-500 dark:bg-fuchsia-500/10 dark:text-fuchsia-200'],
+        'amber' => ['dot' => 'bg-amber-400', 'chip' => 'bg-amber-50 text-amber-700 ring-amber-200/80 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-200 dark:ring-amber-500/20', 'pick' => 'bg-amber-50 text-amber-700 ring-amber-400 dark:bg-amber-500/10 dark:text-amber-200'],
+        'rose' => ['dot' => 'bg-rose-500', 'chip' => 'bg-rose-50 text-rose-700 ring-rose-200/80 hover:bg-rose-100 dark:bg-rose-500/10 dark:text-rose-200 dark:ring-rose-500/20', 'pick' => 'bg-rose-50 text-rose-700 ring-rose-500 dark:bg-rose-500/10 dark:text-rose-200'],
+        'orange' => ['dot' => 'bg-orange-500', 'chip' => 'bg-orange-50 text-orange-700 ring-orange-200/80 hover:bg-orange-100 dark:bg-orange-500/10 dark:text-orange-200 dark:ring-orange-500/20', 'pick' => 'bg-orange-50 text-orange-700 ring-orange-500 dark:bg-orange-500/10 dark:text-orange-200'],
+        'emerald' => ['dot' => 'bg-emerald-500', 'chip' => 'bg-emerald-50 text-emerald-700 ring-emerald-200/80 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-200 dark:ring-emerald-500/20', 'pick' => 'bg-emerald-50 text-emerald-700 ring-emerald-500 dark:bg-emerald-500/10 dark:text-emerald-200'],
+        'violet' => ['dot' => 'bg-violet-500', 'chip' => 'bg-violet-50 text-violet-700 ring-violet-200/80 hover:bg-violet-100 dark:bg-violet-500/10 dark:text-violet-200 dark:ring-violet-500/20', 'pick' => 'bg-violet-50 text-violet-700 ring-violet-500 dark:bg-violet-500/10 dark:text-violet-200'],
+        'zinc' => ['dot' => 'bg-zinc-400', 'chip' => 'bg-zinc-50 text-zinc-700 ring-zinc-200/80 hover:bg-zinc-100 dark:bg-zinc-500/10 dark:text-zinc-200 dark:ring-zinc-500/20', 'pick' => 'bg-zinc-100 text-zinc-800 ring-zinc-500 dark:bg-white/10 dark:text-zinc-100'],
+        'teal' => ['dot' => 'bg-teal-500', 'chip' => 'bg-teal-50 text-teal-700 ring-teal-200/80 hover:bg-teal-100 dark:bg-teal-500/10 dark:text-teal-200 dark:ring-teal-500/20', 'pick' => 'bg-teal-50 text-teal-700 ring-teal-500 dark:bg-teal-500/10 dark:text-teal-200'],
+        'indigo' => ['dot' => 'bg-indigo-500', 'chip' => 'bg-indigo-50 text-indigo-700 ring-indigo-200/80 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-200 dark:ring-indigo-500/20', 'pick' => 'bg-indigo-50 text-indigo-700 ring-indigo-500 dark:bg-indigo-500/10 dark:text-indigo-200'],
+        'lime' => ['dot' => 'bg-lime-500', 'chip' => 'bg-lime-50 text-lime-700 ring-lime-200/80 hover:bg-lime-100 dark:bg-lime-500/10 dark:text-lime-200 dark:ring-lime-500/20', 'pick' => 'bg-lime-50 text-lime-700 ring-lime-500 dark:bg-lime-500/10 dark:text-lime-200'],
+        'pink' => ['dot' => 'bg-pink-500', 'chip' => 'bg-pink-50 text-pink-700 ring-pink-200/80 hover:bg-pink-100 dark:bg-pink-500/10 dark:text-pink-200 dark:ring-pink-500/20', 'pick' => 'bg-pink-50 text-pink-700 ring-pink-500 dark:bg-pink-500/10 dark:text-pink-200'],
+        'cyan' => ['dot' => 'bg-cyan-500', 'chip' => 'bg-cyan-50 text-cyan-700 ring-cyan-200/80 hover:bg-cyan-100 dark:bg-cyan-500/10 dark:text-cyan-200 dark:ring-cyan-500/20', 'pick' => 'bg-cyan-50 text-cyan-700 ring-cyan-500 dark:bg-cyan-500/10 dark:text-cyan-200'],
     ];
+    // Colours per work type slug; unknown (deleted) types fall back to grey.
+    $workTones = collect($types)->map(fn ($t) => $palette[$t['color']] ?? $palette['zinc'])->all();
+    $typeOf = fn (?string $slug) => $types[$slug] ?? Task::unknownType($slug);
+    $toneOf = fn (?string $slug) => $workTones[$slug] ?? $palette['zinc'];
     $statusTones = [
         'todo' => ['dot' => 'bg-zinc-400', 'pill' => 'bg-zinc-200/70 text-zinc-700 dark:bg-white/10 dark:text-zinc-200'],
         'in_progress' => ['dot' => 'bg-brand-500', 'pill' => 'bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-200'],
@@ -834,7 +904,7 @@ new #[Title('Client profile')] class extends Component {
                         $count = 'rounded-full px-1.5 py-px text-[0.6875rem] font-semibold tabular-nums';
                     @endphp
                     <div class="flex flex-wrap items-center gap-1.5 border-y border-zinc-100 bg-zinc-50/60 px-5 py-2.5 dark:border-white/5 dark:bg-white/[0.02]">
-                        @foreach (Task::TYPES as $key => $type)
+                        @foreach ($types as $key => $type)
                             @php
                                 $all = isset($byType[$key]) ? $byType[$key]->count() : 0;
                                 $done = $all ? $byType[$key]->whereNotNull('completed_at')->count() : 0;
@@ -847,7 +917,7 @@ new #[Title('Client profile')] class extends Component {
                                 'text-zinc-400 ring-transparent' => ! $all,
                             ]) title="{{ __(':done of :all :type done this month', ['done' => $done, 'all' => $all, 'type' => __($type['label'])]) }}">
                                 <span @class([$workTones[$key]['dot'], 'size-2 rounded-full', 'opacity-40' => ! $all])></span>
-                                {{ __($type['label']) }}
+                                {{ $type['label'] }}
                                 @if ($all)
                                     <span @class([$count, 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' => $complete, 'bg-zinc-100 text-zinc-600 dark:bg-white/10 dark:text-zinc-300' => ! $complete])>
                                         @if ($complete)&#10003; @endif{{ $done }}/{{ $all }}
@@ -931,16 +1001,16 @@ new #[Title('Client profile')] class extends Component {
                                                 @endforeach
 
                                                 @foreach ($cell['tasks']->take(3) as $t)
-                                                    @php $tone = $workTones[$t->type] ?? $workTones['task']; @endphp
+                                                    @php $tone = $toneOf($t->type); @endphp
                                                     <button type="button" wire:key="cal-task-{{ $t->id }}" wire:click="toggleTask({{ $t->id }})" @class([
                                                         'flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-start text-[0.6875rem] leading-tight font-medium ring-1 ring-inset transition hover:shadow-sm',
                                                         $tone['chip'] => ! $t->completed_at,
                                                         'bg-zinc-50 text-zinc-400 ring-zinc-200/80 dark:bg-white/5 dark:ring-white/10' => $t->completed_at,
-                                                    ]) title="{{ __(Task::TYPES[$t->type]['label'] ?? 'Task') }}: {{ $t->title }} · {{ $t->completed_at ? __('done, click to reopen') : __('click to mark done') }}">
+                                                    ]) title="{{ $typeOf($t->type)['label'] }}: {{ $t->title }} · {{ $t->completed_at ? __('done, click to reopen') : __('click to mark done') }}">
                                                         @if ($t->completed_at)
                                                             <span class="flex size-3.5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"><flux:icon.check variant="micro" class="size-2.5" /></span>
                                                         @else
-                                                            <flux:icon :icon="Task::TYPES[$t->type]['icon'] ?? 'check-circle'" variant="micro" class="size-3 shrink-0 opacity-80" />
+                                                            <flux:icon :icon="$typeOf($t->type)['icon']" variant="micro" class="size-3 shrink-0 opacity-80" />
                                                         @endif
                                                         <span @class(['truncate', 'line-through' => $t->completed_at])>{{ $t->title }}</span>
                                                     </button>
@@ -1002,7 +1072,7 @@ new #[Title('Client profile')] class extends Component {
 
                     @if ($byType->isNotEmpty())
                         <div class="relative mt-5 grid grid-cols-2 gap-2">
-                            @foreach (Task::TYPES as $key => $type)
+                            @foreach ($types as $key => $type)
                                 @continue(! isset($byType[$key]))
                                 @php
                                     $all = $byType[$key]->count();
@@ -1010,7 +1080,7 @@ new #[Title('Client profile')] class extends Component {
                                 @endphp
                                 <div class="flex items-center gap-2 rounded-lg bg-white/10 px-2.5 py-2 ring-1 ring-white/10">
                                     <flux:icon :icon="$type['icon']" variant="micro" class="size-3.5 shrink-0 text-white/80" />
-                                    <span class="min-w-0 flex-1 truncate text-xs">{{ __($type['label']) }}</span>
+                                    <span class="min-w-0 flex-1 truncate text-xs">{{ $type['label'] }}</span>
                                     <span class="text-xs font-semibold tabular-nums">{{ $done }}/{{ $all }}</span>
                                 </div>
                             @endforeach
@@ -1095,7 +1165,6 @@ new #[Title('Client profile')] class extends Component {
             $doneCount = isset($byStage['done']) ? $byStage['done']->count() : 0;
             $lateCount = $shown->filter->isOverdue()->count();
             $donePct = $shown->count() ? (int) round($doneCount / $shown->count() * 100) : 0;
-            $th = 'px-3 py-2 text-start text-[0.6875rem] font-medium tracking-wide text-zinc-400 uppercase';
             $range = function ($t) {
                 if (! $t->start_date && ! $t->due_date) {
                     return null;
@@ -1136,138 +1205,134 @@ new #[Title('Client profile')] class extends Component {
                             'bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900' => $workKind === '',
                             'bg-white text-zinc-600 ring-zinc-200 hover:ring-zinc-300 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10' => $workKind !== '',
                         ])>{{ __('All types') }} <span class="opacity-60 tabular-nums">{{ $allTasks->count() }}</span></button>
-                        @foreach (Task::TYPES as $key => $type)
-                            @continue(! isset($kinds[$key]))
+                        @foreach ($kinds as $key => $items)
+                            @php $kt = $typeOf($key); @endphp
                             <button type="button" wire:click="$set('workKind', '{{ $key }}')" @class([
                                 'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset transition',
                                 'bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900' => $workKind === $key,
                                 'bg-white text-zinc-600 ring-zinc-200 hover:ring-zinc-300 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10' => $workKind !== $key,
                             ])>
-                                <flux:icon :icon="$type['icon']" variant="micro" class="size-3.5 opacity-70" />{{ __($type['label']) }}
-                                <span class="opacity-60 tabular-nums">{{ $kinds[$key]->count() }}</span>
+                                <span class="{{ $toneOf($key)['dot'] }} size-1.5 rounded-full"></span>{{ $kt['label'] }}
+                                <span class="opacity-60 tabular-nums">{{ $items->count() }}</span>
                             </button>
                         @endforeach
                     </div>
                 @endif
             </section>
 
-            {{-- Groups by status --}}
-            <section class="{{ $panel }} overflow-hidden">
-                <div class="overflow-x-auto">
-                    <div class="min-w-[58rem]">
-                        @foreach (Task::STATUSES as $stage => $st)
-                            @php
-                                $rows = ($byStage[$stage] ?? collect())->sortBy(fn ($t) => [$t->due_date?->timestamp ?? PHP_INT_MAX, $t->id])->values();
-                                $tone = $statusTones[$stage];
-                            @endphp
-                            <div x-data="{ open: {{ $stage === 'done' && $rows->count() > 8 ? 'false' : 'true' }} }" class="border-b border-zinc-100 last:border-0 dark:border-white/5" wire:key="stage-{{ $stage }}">
-                                {{-- Group header --}}
-                                <div class="flex items-center gap-2 bg-zinc-50/80 px-4 py-2.5 dark:bg-white/[0.02]">
-                                    <button type="button" @click="open = ! open" class="flex size-6 items-center justify-center rounded-md text-zinc-400 transition hover:bg-white hover:text-zinc-700 dark:hover:bg-white/10" :aria-expanded="open" aria-label="{{ __('Show or hide :status', ['status' => __($st['label'])]) }}">
-                                        <flux:icon.chevron-down variant="micro" class="size-4 transition" ::class="open ? '' : '-rotate-90'" />
-                                    </button>
-                                    <span class="{{ $tone['pill'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-semibold">
-                                        <flux:icon :icon="$st['icon']" variant="micro" class="size-3.5" />{{ __($st['label']) }}
-                                    </span>
-                                    <span class="text-xs font-medium text-zinc-400 tabular-nums">{{ $rows->count() }}</span>
-                                    <button type="button" wire:click="newTask('{{ $stage }}')" class="ms-auto flex size-7 items-center justify-center rounded-md text-zinc-400 transition hover:bg-white hover:text-brand-600 dark:hover:bg-white/10" aria-label="{{ __('Add a task to :status', ['status' => __($st['label'])]) }}"><flux:icon.plus variant="micro" class="size-4" /></button>
-                                </div>
-
-                                <div x-show="open" x-collapse>
-                                    @if ($rows->isEmpty())
-                                        <button type="button" wire:click="newTask('{{ $stage }}')" class="flex w-full items-center gap-2 px-6 py-3 text-sm text-zinc-400 transition hover:bg-zinc-50 hover:text-brand-600 dark:hover:bg-white/[0.02]">
-                                            <flux:icon.plus variant="micro" class="size-4" />{{ __('Add task') }}
-                                        </button>
-                                    @else
-                                        <table class="w-full table-fixed text-sm">
-                                            <colgroup>
-                                                <col class="w-12"><col class="w-[26%]"><col><col class="w-44"><col class="w-32"><col class="w-28"><col class="w-12">
-                                            </colgroup>
-                                            <thead>
-                                                <tr class="border-b border-zinc-100 dark:border-white/5">
-                                                    <th class="{{ $th }}"><span class="sr-only">{{ __('Done') }}</span></th>
-                                                    <th class="{{ $th }}">{{ __('Task name') }}</th>
-                                                    <th class="{{ $th }}">{{ __('Description') }}</th>
-                                                    <th class="{{ $th }}">{{ __('Dates') }}</th>
-                                                    <th class="{{ $th }}">{{ __('Type') }}</th>
-                                                    <th class="{{ $th }}">{{ __('Priority') }}</th>
-                                                    <th class="{{ $th }}"><span class="sr-only">{{ __('Actions') }}</span></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody class="divide-y divide-zinc-100 dark:divide-white/5">
-                                                @foreach ($rows as $t)
-                                                    @php
-                                                        $tt = Task::TYPES[$t->type] ?? Task::TYPES['task'];
-                                                        $done = (bool) $t->completed_at;
-                                                        $late = $t->isOverdue();
-                                                        $dates = $range($t);
-                                                    @endphp
-                                                    <tr wire:key="task-row-{{ $t->id }}" class="group transition hover:bg-brand-50/30 dark:hover:bg-white/[0.02]">
-                                                        <td class="px-3 py-3 ps-4">
-                                                            <button type="button" wire:click="toggleTask({{ $t->id }})" @class([
-                                                                'flex size-5 items-center justify-center rounded-md border-[1.5px] transition',
-                                                                'border-emerald-500 bg-emerald-500 text-white' => $done,
-                                                                'border-zinc-300 text-transparent hover:border-emerald-500 hover:text-emerald-500 dark:border-zinc-600' => ! $done,
-                                                            ]) aria-label="{{ $done ? __('Mark as not done') : __('Mark as done') }}"><flux:icon.check variant="micro" class="size-3.5" /></button>
-                                                        </td>
-                                                        <td class="px-3 py-3">
-                                                            <button type="button" wire:click="editTask({{ $t->id }})" @class(['block w-full truncate text-start', 'text-zinc-400 line-through' => $done, 'font-medium text-zinc-900 hover:text-brand-600 dark:text-white' => ! $done]) title="{{ $t->title }}">{{ $t->title }}</button>
-                                                        </td>
-                                                        <td class="px-3 py-3">
-                                                            <p class="line-clamp-2 text-xs leading-relaxed text-zinc-500">{{ $t->description ?: '–' }}</p>
-                                                        </td>
-                                                        <td class="px-3 py-3">
-                                                            @if ($dates)
-                                                                <span @class(['inline-flex items-center gap-1.5 text-xs whitespace-nowrap', 'font-medium text-rose-600 dark:text-rose-400' => $late, 'text-zinc-600 dark:text-zinc-300' => ! $late]) title="{{ $t->due_date?->format('j M Y') }}">
-                                                                    <flux:icon.calendar variant="micro" class="size-3.5 shrink-0 opacity-60" />{{ $dates }}
-                                                                </span>
-                                                            @else
-                                                                <span class="text-xs text-zinc-300 dark:text-zinc-600">–</span>
-                                                            @endif
-                                                        </td>
-                                                        <td class="px-3 py-3">
-                                                            <span class="{{ $workTones[$t->type]['chip'] ?? $workTones['task']['chip'] }} inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset">
-                                                                <flux:icon :icon="$tt['icon']" variant="micro" class="size-3" />{{ __($tt['label']) }}
-                                                            </span>
-                                                        </td>
-                                                        <td class="px-3 py-3">
-                                                            <flux:dropdown>
-                                                                <button type="button" class="{{ $priorityTones[$t->priority] ?? $priorityTones['medium'] }} inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset transition hover:brightness-95">
-                                                                    <flux:icon.flag variant="micro" class="size-3" />{{ __(Task::PRIORITIES[$t->priority] ?? 'Medium') }}
-                                                                </button>
-                                                                <flux:menu>
-                                                                    @foreach (Task::PRIORITIES as $pk => $pl)
-                                                                        <flux:menu.item icon="flag" wire:click="setTaskPriority({{ $t->id }}, '{{ $pk }}')">{{ __($pl) }}</flux:menu.item>
-                                                                    @endforeach
-                                                                </flux:menu>
-                                                            </flux:dropdown>
-                                                        </td>
-                                                        <td class="px-3 py-3 text-end">
-                                                            <flux:dropdown align="end">
-                                                                <flux:button variant="ghost" size="sm" icon="ellipsis-horizontal" :aria-label="__('Task actions')" />
-                                                                <flux:menu>
-                                                                    <flux:menu.item icon="pencil-square" wire:click="editTask({{ $t->id }})">{{ __('Edit') }}</flux:menu.item>
-                                                                    <flux:menu.separator />
-                                                                    @foreach (Task::STATUSES as $sk => $sv)
-                                                                        @continue($sk === $stage)
-                                                                        <flux:menu.item :icon="$sv['icon']" wire:click="setTaskStatus({{ $t->id }}, '{{ $sk }}')">{{ __('Move to :status', ['status' => __($sv['label'])]) }}</flux:menu.item>
-                                                                    @endforeach
-                                                                    <flux:menu.separator />
-                                                                    <flux:menu.item icon="trash" variant="danger" wire:click="deleteTask({{ $t->id }})" wire:confirm="{{ __('Delete this task?') }}">{{ __('Delete') }}</flux:menu.item>
-                                                                </flux:menu>
-                                                            </flux:dropdown>
-                                                        </td>
-                                                    </tr>
-                                                @endforeach
-                                            </tbody>
-                                        </table>
-                                    @endif
-                                </div>
-                            </div>
-                        @endforeach
+            {{-- Status groups with cards --}}
+            @foreach (Task::STATUSES as $stage => $st)
+                @php
+                    $rows = ($byStage[$stage] ?? collect())->sortBy(fn ($t) => [$t->due_date?->timestamp ?? PHP_INT_MAX, $t->id])->values();
+                @endphp
+                <section wire:key="stage-{{ $stage }}" x-data="{ open: {{ $stage === 'done' && $rows->count() > 8 ? 'false' : 'true' }} }">
+                    <div class="mb-3 flex items-center gap-2">
+                        <button type="button" @click="open = ! open" class="flex size-6 items-center justify-center rounded-md text-zinc-400 transition hover:bg-white hover:text-zinc-700 dark:hover:bg-white/10" :aria-expanded="open" aria-label="{{ __('Show or hide :status', ['status' => __($st['label'])]) }}">
+                            <flux:icon.chevron-down variant="micro" class="size-4 transition" ::class="open ? '' : '-rotate-90'" />
+                        </button>
+                        <span class="{{ $statusTones[$stage]['pill'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-semibold">
+                            <flux:icon :icon="$st['icon']" variant="micro" class="size-3.5" />{{ __($st['label']) }}
+                        </span>
+                        <span class="text-xs font-medium text-zinc-400 tabular-nums">{{ $rows->count() }}</span>
+                        <span class="h-px flex-1 bg-zinc-200/80 dark:bg-white/10"></span>
+                        <button type="button" wire:click="newTask('{{ $stage }}')" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-zinc-500 transition hover:bg-white hover:text-brand-600 dark:hover:bg-white/10"><flux:icon.plus variant="micro" class="size-3.5" />{{ __('Add') }}</button>
                     </div>
-                </div>
-            </section>
+
+                    <div x-show="open" x-collapse>
+                        @if ($rows->isEmpty())
+                            <button type="button" wire:click="newTask('{{ $stage }}')" class="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-zinc-200 py-6 text-sm text-zinc-400 transition hover:border-brand-300 hover:text-brand-600 dark:border-white/10">
+                                <flux:icon.plus variant="micro" class="size-4" />{{ __('Add a task to :status', ['status' => __($st['label'])]) }}
+                            </button>
+                        @else
+                            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                                @foreach ($rows as $t)
+                                    @php
+                                        $tt = $typeOf($t->type);
+                                        $tone = $toneOf($t->type);
+                                        $done = (bool) $t->completed_at;
+                                        $late = $t->isOverdue();
+                                        $dates = $range($t);
+                                        $people = $t->assignees;
+                                    @endphp
+                                    <article wire:key="task-card-{{ $t->id }}" @class([
+                                        'group flex flex-col overflow-hidden rounded-2xl bg-white ring-1 transition duration-200 dark:bg-zinc-950',
+                                        'shadow-[0_1px_2px_rgb(15_23_42/0.05)] ring-zinc-200/70 hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-22px_rgb(15_23_42/0.45)] dark:ring-white/10' => ! $done,
+                                        'opacity-70 ring-zinc-200/60 hover:opacity-100 dark:ring-white/5' => $done,
+                                    ])>
+                                        {{-- Type band --}}
+                                        <div class="{{ $tone['chip'] }} flex items-center gap-2 px-4 py-2.5">
+                                            <span class="{{ $tone['dot'] }} flex size-6 items-center justify-center rounded-md text-white shadow-sm"><flux:icon :icon="$tt['icon']" variant="micro" class="size-3.5" /></span>
+                                            <span class="text-xs font-semibold">{{ $tt['label'] }}</span>
+                                            <flux:dropdown class="ms-auto">
+                                                <button type="button" class="{{ $priorityTones[$t->priority] ?? $priorityTones['medium'] }} inline-flex items-center gap-1 rounded-md bg-white/80 px-1.5 py-0.5 text-[0.6875rem] font-medium ring-1 ring-inset" title="{{ __('Priority') }}">
+                                                    <flux:icon.flag variant="micro" class="size-3" />{{ __(Task::PRIORITIES[$t->priority] ?? 'Medium') }}
+                                                </button>
+                                                <flux:menu>
+                                                    @foreach (Task::PRIORITIES as $pk => $pl)
+                                                        <flux:menu.item icon="flag" wire:click="setTaskPriority({{ $t->id }}, '{{ $pk }}')">{{ __($pl) }}</flux:menu.item>
+                                                    @endforeach
+                                                </flux:menu>
+                                            </flux:dropdown>
+                                            <flux:dropdown align="end">
+                                                <button type="button" class="flex size-6 items-center justify-center rounded-md opacity-70 transition hover:bg-white/70 hover:opacity-100" aria-label="{{ __('Task actions') }}"><flux:icon.ellipsis-horizontal variant="micro" class="size-4" /></button>
+                                                <flux:menu>
+                                                    <flux:menu.item icon="pencil-square" wire:click="editTask({{ $t->id }})">{{ __('Edit') }}</flux:menu.item>
+                                                    <flux:menu.separator />
+                                                    @foreach (Task::STATUSES as $sk => $sv)
+                                                        @continue($sk === $stage)
+                                                        <flux:menu.item :icon="$sv['icon']" wire:click="setTaskStatus({{ $t->id }}, '{{ $sk }}')">{{ __('Move to :status', ['status' => __($sv['label'])]) }}</flux:menu.item>
+                                                    @endforeach
+                                                    <flux:menu.separator />
+                                                    <flux:menu.item icon="trash" variant="danger" wire:click="deleteTask({{ $t->id }})" wire:confirm="{{ __('Delete this task?') }}">{{ __('Delete') }}</flux:menu.item>
+                                                </flux:menu>
+                                            </flux:dropdown>
+                                        </div>
+
+                                        {{-- Body --}}
+                                        <div class="flex flex-1 flex-col gap-2 p-4">
+                                            <div class="flex items-start gap-3">
+                                                <button type="button" wire:click="editTask({{ $t->id }})" @class(['min-w-0 flex-1 text-start leading-snug', 'text-zinc-400 line-through' => $done, 'font-semibold text-zinc-900 hover:text-brand-600 dark:text-white' => ! $done])>{{ $t->title }}</button>
+                                                <button type="button" wire:click="toggleTask({{ $t->id }})" @class([
+                                                    'flex size-6 shrink-0 items-center justify-center rounded-full border-[1.5px] transition',
+                                                    'border-emerald-500 bg-emerald-500 text-white' => $done,
+                                                    'border-zinc-300 text-transparent hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-500 dark:border-zinc-600 dark:hover:bg-emerald-500/10' => ! $done,
+                                                ]) aria-label="{{ $done ? __('Mark as not done') : __('Mark as done') }}"><flux:icon.check variant="micro" class="size-3.5" /></button>
+                                            </div>
+                                            @if ($t->description)
+                                                <p class="line-clamp-2 text-xs leading-relaxed text-zinc-500">{{ $t->description }}</p>
+                                            @endif
+                                        </div>
+
+                                        {{-- Footer --}}
+                                        <div class="flex items-center justify-between gap-2 border-t border-zinc-100 px-4 py-3 dark:border-white/5">
+                                            @if ($dates)
+                                                <span @class(['inline-flex min-w-0 items-center gap-1.5 text-xs', 'rounded-md bg-rose-50 px-1.5 py-0.5 font-medium text-rose-600 dark:bg-rose-500/10 dark:text-rose-300' => $late, 'text-zinc-500' => ! $late]) title="{{ $t->due_date?->format('j M Y') }}">
+                                                    <flux:icon.calendar variant="micro" class="size-3.5 shrink-0 opacity-70" /><span class="truncate">{{ $dates }}</span>
+                                                </span>
+                                            @else
+                                                <span class="text-xs text-zinc-400">{{ __('No date') }}</span>
+                                            @endif
+
+                                            @if ($people->isNotEmpty())
+                                                <div class="flex shrink-0 items-center -space-x-1.5">
+                                                    @foreach ($people->take(3) as $person)
+                                                        <x-employee-avatar :employee="$person" class="size-7 text-[0.625rem] ring-2 ring-white dark:ring-zinc-950" />
+                                                    @endforeach
+                                                    @if ($people->count() > 3)
+                                                        <span class="flex size-7 items-center justify-center rounded-full bg-zinc-100 text-[0.625rem] font-semibold text-zinc-600 ring-2 ring-white dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-950">+{{ $people->count() - 3 }}</span>
+                                                    @endif
+                                                </div>
+                                            @else
+                                                <button type="button" wire:click="editTask({{ $t->id }})" class="flex size-7 shrink-0 items-center justify-center rounded-full border border-dashed border-zinc-300 text-zinc-400 transition hover:border-brand-400 hover:text-brand-600 dark:border-white/20" title="{{ __('Assign someone') }}"><flux:icon.user-plus variant="micro" class="size-3.5" /></button>
+                                            @endif
+                                        </div>
+                                    </article>
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
+                </section>
+            @endforeach
         </div>
     @elseif ($tab === 'payments')
         <section class="grid gap-3 sm:grid-cols-3">
@@ -1466,8 +1531,30 @@ new #[Title('Client profile')] class extends Component {
     @endif
 
     {{-- Add / edit task --}}
+    @php
+        $empTints = [
+            'design' => 'bg-rose-100 text-rose-700', 'development' => 'bg-brand-100 text-brand-700', 'marketing' => 'bg-amber-100 text-amber-800',
+            'content' => 'bg-emerald-100 text-emerald-700', 'sales' => 'bg-sky-100 text-sky-700', 'management' => 'bg-violet-100 text-violet-700', 'hr' => 'bg-teal-100 text-teal-700',
+        ];
+        $teamJs = $this->team->map(fn ($e) => [
+            'id' => $e->id, 'name' => $e->name, 'role' => $e->designation ?? __(Employee::DEPARTMENTS[$e->department]['label'] ?? ''),
+            'initials' => $e->initials(), 'tint' => $empTints[$e->department] ?? $empTints['development'],
+        ])->values();
+        $typesJs = collect($types)->map(fn ($t, $slug) => ['label' => $t['label'], 'tile' => ($palette[$t['color']] ?? $palette['zinc'])['chip']]);
+        $label = 'mb-1.5 block text-sm font-medium text-zinc-800 dark:text-white';
+        $trigger = 'flex h-11 w-full items-center gap-2.5 rounded-xl bg-white px-3 text-start ring-1 ring-zinc-200 transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 focus:outline-none dark:bg-white/5 dark:ring-white/10';
+        $panelBox = 'absolute inset-x-0 top-full z-40 mt-1.5 overflow-hidden rounded-xl bg-white shadow-[0_20px_50px_-12px_rgb(15_23_42/0.35)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10';
+    @endphp
     <flux:modal name="task-form" class="w-full max-w-2xl overflow-visible p-0!" :closable="false">
-        <form wire:submit="addTask" class="flex flex-col">
+        <form wire:submit="addTask" class="flex flex-col"
+            x-data="{
+                typeOpen: false, peopleOpen: false, q: '',
+                team: @js($teamJs), types: @js($typesJs),
+                has(id) { return ($wire.taskAssignees || []).includes(id) },
+                toggle(id) { $wire.taskAssignees = this.has(id) ? $wire.taskAssignees.filter(x => x !== id) : [...($wire.taskAssignees || []), id] },
+                get chosen() { return this.team.filter(e => this.has(e.id)) },
+                get found() { const s = this.q.toLowerCase(); return this.team.filter(e => ! s || e.name.toLowerCase().includes(s) || (e.role || '').toLowerCase().includes(s)) },
+            }">
             <div class="flex items-start gap-4 border-b border-zinc-100 px-6 py-5 dark:border-white/5">
                 <span class="flex size-11 shrink-0 items-center justify-center rounded-xl bg-linear-to-br from-brand-400 to-brand-600 text-white shadow-md shadow-brand-500/30"><flux:icon.clipboard-document-check variant="mini" class="size-5" /></span>
                 <div class="min-w-0 flex-1">
@@ -1478,20 +1565,95 @@ new #[Title('Client profile')] class extends Component {
             </div>
 
             <div class="flex flex-col gap-5 px-6 py-5">
-                <div>
-                    <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Type of work') }}</span>
-                    <div class="mt-2 grid grid-cols-4 gap-1.5 sm:grid-cols-8">
-                        @foreach (Task::TYPES as $key => $type)
-                            <button type="button" @click="$wire.taskType = '{{ $key }}'" class="flex flex-col items-center gap-1 rounded-lg px-1 py-2 text-[0.6875rem] font-medium ring-1 transition" :class="$wire.taskType === '{{ $key }}' ? @js($workTones[$key]['pick'].' ring-2') : 'text-zinc-500 ring-zinc-200 hover:bg-zinc-50 dark:ring-white/10 dark:hover:bg-white/5'">
-                                <flux:icon :icon="$type['icon']" variant="mini" class="size-4" />
-                                {{ __($type['label']) }}
-                            </button>
-                        @endforeach
+                <flux:input wire:model="taskTitle" :label="__('Task name')" :placeholder="__('e.g. Dashain offer post')" required autofocus />
+
+                <div class="grid gap-4 sm:grid-cols-2">
+                    {{-- Type of work --}}
+                    <div class="relative" @click.outside="typeOpen = false" @keydown.escape.stop="typeOpen = false">
+                        <span class="{{ $label }}">{{ __('Type of work') }}</span>
+                        <button type="button" @click="typeOpen = ! typeOpen; peopleOpen = false" class="{{ $trigger }}" :aria-expanded="typeOpen" aria-haspopup="listbox" data-test="work-type-button">
+                            @foreach ($types as $key => $type)
+                                <span x-show="$wire.taskType === @js($key)" class="flex min-w-0 items-center gap-2.5" x-cloak>
+                                    <span class="{{ $toneOf($key)['chip'] }} flex size-7 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset"><flux:icon :icon="$type['icon']" variant="micro" class="size-3.5" /></span>
+                                    <span class="truncate text-sm font-medium text-zinc-900 dark:text-white">{{ $type['label'] }}</span>
+                                </span>
+                            @endforeach
+                            <span x-show="! types[$wire.taskType]" class="text-sm text-zinc-400">{{ __('Choose a type') }}</span>
+                            <flux:icon.chevron-up-down variant="mini" class="ms-auto size-4 shrink-0 text-zinc-400" />
+                        </button>
+                        <div x-show="typeOpen" x-transition.origin.top x-cloak class="{{ $panelBox }}" role="listbox">
+                            <div class="max-h-60 overflow-y-auto p-1.5">
+                                @foreach ($types as $key => $type)
+                                    <div wire:key="type-opt-{{ $key }}" class="group flex items-center gap-1 rounded-lg transition hover:bg-zinc-50 dark:hover:bg-white/5" :class="$wire.taskType === @js($key) && 'bg-brand-50/70 dark:bg-brand-500/10'">
+                                        <button type="button" role="option" @click="$wire.taskType = @js($key); typeOpen = false" class="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-start">
+                                            <span class="{{ $toneOf($key)['chip'] }} flex size-7 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset"><flux:icon :icon="$type['icon']" variant="micro" class="size-3.5" /></span>
+                                            <span class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $type['label'] }}</span>
+                                            <flux:icon.check variant="mini" class="ms-auto size-4 text-brand-600" x-show="$wire.taskType === @js($key)" />
+                                        </button>
+                                        <button type="button" wire:click="deleteWorkType('{{ $key }}')" wire:confirm="{{ __('Delete the type “:name”? Work already using it keeps its name.', ['name' => $type['label']]) }}" class="me-1 rounded-md p-1.5 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 focus:opacity-100 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete :name', ['name' => $type['label']]) }}">
+                                            <flux:icon.trash variant="micro" class="size-3.5" />
+                                        </button>
+                                    </div>
+                                @endforeach
+                            </div>
+                            <div class="flex items-center gap-1.5 border-t border-zinc-100 bg-zinc-50/70 p-2 dark:border-white/5 dark:bg-white/[0.02]">
+                                <input wire:model="newTypeName" type="text" maxlength="40" placeholder="{{ __('Add a new type…') }}" @keydown.enter.prevent="$wire.addWorkType()" class="h-8 min-w-0 flex-1 rounded-lg border-0 bg-white px-2.5 text-sm ring-1 ring-zinc-200 placeholder:text-zinc-400 focus:ring-2 focus:ring-brand-500 focus:outline-none dark:bg-white/5 dark:text-white dark:ring-white/10" data-test="new-type-input" />
+                                <button type="button" wire:click="addWorkType" class="inline-flex h-8 items-center gap-1 rounded-lg bg-brand-500 px-2.5 text-xs font-semibold text-white transition hover:bg-brand-600"><flux:icon.plus variant="micro" class="size-3.5" />{{ __('Add') }}</button>
+                            </div>
+                            <flux:error name="newTypeName" class="px-3 pb-2" />
+                        </div>
+                        <flux:error name="taskType" />
                     </div>
-                    <flux:error name="taskType" />
+
+                    {{-- Assign --}}
+                    <div class="relative" @click.outside="peopleOpen = false" @keydown.escape.stop="peopleOpen = false">
+                        <span class="{{ $label }}">{{ __('Assign to') }}</span>
+                        <button type="button" @click="peopleOpen = ! peopleOpen; typeOpen = false" class="{{ $trigger }}" :aria-expanded="peopleOpen" aria-haspopup="listbox" data-test="assign-button">
+                            <template x-if="chosen.length === 0">
+                                <span class="flex items-center gap-2.5 text-sm text-zinc-400">
+                                    <span class="flex size-7 items-center justify-center rounded-full border border-dashed border-zinc-300 dark:border-white/20"><flux:icon.user-plus variant="micro" class="size-3.5" /></span>
+                                    {{ __('Assign people') }}
+                                </span>
+                            </template>
+                            <template x-if="chosen.length > 0">
+                                <span class="flex min-w-0 items-center gap-2.5">
+                                    <span class="flex -space-x-1.5">
+                                        <template x-for="e in chosen.slice(0, 4)" :key="e.id">
+                                            <span class="flex size-7 items-center justify-center rounded-full text-[0.625rem] font-semibold ring-2 ring-white dark:ring-zinc-900" :class="e.tint" x-text="e.initials" :title="e.name"></span>
+                                        </template>
+                                    </span>
+                                    <span class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100" x-text="chosen.length === 1 ? chosen[0].name : chosen.length + ' ' + @js(__('people'))"></span>
+                                </span>
+                            </template>
+                            <flux:icon.chevron-up-down variant="mini" class="ms-auto size-4 shrink-0 text-zinc-400" />
+                        </button>
+                        <div x-show="peopleOpen" x-transition.origin.top x-cloak class="{{ $panelBox }}" role="listbox" aria-multiselectable="true">
+                            <div class="border-b border-zinc-100 p-2 dark:border-white/5">
+                                <div class="relative">
+                                    <flux:icon.magnifying-glass variant="micro" class="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
+                                    <input x-model="q" type="text" placeholder="{{ __('Search the team') }}" class="h-8 w-full rounded-lg border-0 bg-zinc-50 ps-8 pe-2.5 text-sm ring-1 ring-zinc-200 placeholder:text-zinc-400 focus:ring-2 focus:ring-brand-500 focus:outline-none dark:bg-white/5 dark:text-white dark:ring-white/10" />
+                                </div>
+                            </div>
+                            <div class="max-h-60 overflow-y-auto p-1.5">
+                                <template x-for="e in found" :key="e.id">
+                                    <button type="button" role="option" @click="toggle(e.id)" :aria-selected="has(e.id)" class="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-start transition hover:bg-zinc-50 dark:hover:bg-white/5">
+                                        <span class="flex size-8 shrink-0 items-center justify-center rounded-full text-[0.6875rem] font-semibold" :class="e.tint" x-text="e.initials"></span>
+                                        <span class="min-w-0 flex-1">
+                                            <span class="block truncate text-sm font-medium text-zinc-900 dark:text-white" x-text="e.name"></span>
+                                            <span class="block truncate text-xs text-zinc-500" x-text="e.role"></span>
+                                        </span>
+                                        <span class="flex size-5 shrink-0 items-center justify-center rounded-md border-[1.5px] transition" :class="has(e.id) ? 'border-brand-500 bg-brand-500 text-white' : 'border-zinc-300 text-transparent dark:border-zinc-600'"><flux:icon.check variant="micro" class="size-3.5" /></span>
+                                    </button>
+                                </template>
+                                <p x-show="found.length === 0" class="px-3 py-6 text-center text-sm text-zinc-400">
+                                    {{ $this->team->isEmpty() ? __('Add employees first to assign work.') : __('Nobody matches.') }}
+                                </p>
+                            </div>
+                        </div>
+                        <flux:error name="taskAssignees" />
+                    </div>
                 </div>
 
-                <flux:input wire:model="taskTitle" :label="__('Task name')" :placeholder="__('e.g. Dashain offer post')" required />
                 <flux:textarea wire:model="taskDescription" :label="__('Description')" :placeholder="__('Details, captions, links or notes for the team')" rows="3" />
 
                 <div class="grid gap-4 sm:grid-cols-2">
@@ -1508,9 +1670,9 @@ new #[Title('Client profile')] class extends Component {
                     <div>
                         <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Priority') }}</span>
                         <div class="mt-2 grid grid-cols-2 gap-1.5">
-                            @foreach (Task::PRIORITIES as $key => $label)
+                            @foreach (Task::PRIORITIES as $key => $plabel)
                                 <button type="button" @click="$wire.taskPriority = '{{ $key }}'" class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium ring-1 transition" :class="$wire.taskPriority === '{{ $key }}' ? @js($priorityTones[$key].' ring-2') : 'text-zinc-600 ring-zinc-200 hover:bg-zinc-50 dark:text-zinc-300 dark:ring-white/10 dark:hover:bg-white/5'">
-                                    <flux:icon.flag variant="micro" class="size-3.5" />{{ __($label) }}
+                                    <flux:icon.flag variant="micro" class="size-3.5" />{{ __($plabel) }}
                                 </button>
                             @endforeach
                         </div>

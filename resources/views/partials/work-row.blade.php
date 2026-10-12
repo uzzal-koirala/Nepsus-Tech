@@ -15,7 +15,7 @@
         default => 'bg-zinc-100 text-zinc-400 dark:bg-white/5',
     };
     $check = 'flex size-6 shrink-0 items-center justify-center rounded-full border-[1.5px] transition';
-    $type = $isPay ? null : (\App\Models\Task::TYPES[$m->type] ?? \App\Models\Task::TYPES['task']);
+    $type = $isPay ? null : ($types[$m->type] ?? \App\Models\Task::unknownType($m->type));
 @endphp
 <li wire:key="{{ $prefix ?? 'work' }}-{{ $isPay ? 'p' : 't' }}-{{ $m->id }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
     <span class="{{ $tone }} flex size-11 shrink-0 flex-col items-center justify-center rounded-xl leading-none" title="{{ $date ? \App\Support\NepaliDate::format($date).' · '.$date->format('l, j M Y') : __('No date') }}">
@@ -39,7 +39,7 @@
             <p @class(['truncate text-sm', 'text-zinc-400 line-through decoration-zinc-300' => $done, 'font-semibold text-zinc-900 dark:text-white' => ! $done])>{{ $m->title }}</p>
             <p class="mt-0.5 flex items-center gap-1.5 truncate text-xs text-zinc-500">
                 <span class="{{ $workTones[$m->type]['dot'] ?? 'bg-zinc-400' }} size-1.5 shrink-0 rounded-full"></span>
-                {{ __($type['label']) }}
+                {{ $type['label'] }}
                 @if ($done)
                     <span class="text-emerald-600 dark:text-emerald-400">· {{ __('Done') }}</span>
                 @elseif ($late)

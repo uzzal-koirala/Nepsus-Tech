@@ -23,7 +23,7 @@ class TaskFactory extends Factory
                 'Monthly performance report', 'Update Google Business photos', 'Reply to reviews', 'Run boosted post',
                 'Product photoshoot', 'Website speed check', 'Keyword research', 'Content calendar for next month',
             ]),
-            'type' => fake()->randomElement(array_keys(Task::TYPES)),
+            'type' => fake()->randomElement(['post', 'reel', 'story', 'video', 'shoot', 'design', 'meeting', 'task']),
             'due_date' => fake()->optional(0.8)->dateTimeBetween('-3 weeks', '+3 weeks'),
             'completed_at' => fake()->optional(0.55)->dateTimeBetween('-1 month'),
         ];
