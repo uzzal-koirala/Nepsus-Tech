@@ -397,53 +397,78 @@ new #[Title('Client profile')] class extends Component {
     </nav>
 
     {{-- Header --}}
+    @php
+        $since = $c->contract_start ?? $c->created_at;
+        $wa = null;
+        if ($c->phone) {
+            $wa = preg_replace('/\D/', '', $c->phone);
+            $wa = strlen($wa) === 10 && str_starts_with($wa, '9') ? '977'.$wa : $wa;
+        }
+        $metaLabel = 'text-[0.6875rem] font-medium tracking-wider text-zinc-400 uppercase';
+        $metaValue = 'mt-1 flex min-w-0 items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-100';
+        $metaIcon = 'flex size-7 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-white/5 dark:text-zinc-400';
+    @endphp
     <header class="{{ $panel }} overflow-hidden">
-        <div class="{{ $theme['cover'] ?? 'from-brand-400 via-brand-500 to-brand-700 text-white' }} relative h-28 bg-linear-to-r sm:h-32">
-            <div class="absolute inset-0 opacity-25 [background-image:radial-gradient(currentColor_1px,transparent_1px)] [background-size:18px_18px] [mask-image:linear-gradient(to_left,black,transparent_70%)]"></div>
-            <flux:icon :icon="$pkg->icon ?? (Client::SERVICE_TYPES[$c->service_type]['icon'] ?? 'cube')" class="absolute -right-4 -bottom-8 size-40 opacity-20" />
+        {{-- Cover --}}
+        <div class="{{ $theme['cover'] ?? 'from-brand-400 via-brand-500 to-brand-700 text-white' }} relative h-32 overflow-hidden bg-linear-to-br sm:h-36">
+            <div class="absolute -top-16 left-1/3 size-56 rounded-full bg-white/20 blur-3xl"></div>
+            <div class="absolute -right-10 -bottom-24 size-64 rounded-full bg-sun/40 blur-3xl"></div>
+            <div class="absolute inset-0 opacity-30 [background-image:radial-gradient(currentColor_1px,transparent_1px)] [background-size:16px_16px] [mask-image:linear-gradient(to_left,black,transparent_65%)]"></div>
+            <svg class="absolute inset-x-0 bottom-0 h-10 w-full text-white/10" viewBox="0 0 1200 40" preserveAspectRatio="none" aria-hidden="true"><path fill="currentColor" d="M0 40V22C200 0 400 0 600 18s400 22 600 0v22Z" /></svg>
+            <flux:icon :icon="$pkg->icon ?? (Client::SERVICE_TYPES[$c->service_type]['icon'] ?? 'cube')" class="absolute right-8 -bottom-6 size-36 rotate-[-12deg] opacity-20" />
         </div>
 
-        <div class="flex flex-col gap-4 px-5 pb-5 sm:px-6">
-            <div class="flex flex-wrap items-end justify-between gap-4">
-                <div class="flex min-w-0 items-end gap-4">
-                    <span class="relative -mt-12 shrink-0">
-                        <x-client-avatar :client="$c" tint="bg-brand-100 text-brand-700 dark:bg-brand-500/30 dark:text-white" class="size-24 rounded-2xl text-3xl shadow-lg ring-4 ring-white dark:ring-zinc-950" />
-                        <span class="{{ $dots[$c->status] }} absolute -end-1 -bottom-1 size-4.5 rounded-full ring-[3px] ring-white dark:ring-zinc-950" title="{{ ucfirst($c->status) }}"></span>
+        <div class="px-5 pb-5 sm:px-7">
+            <div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+                {{-- Identity --}}
+                <div class="flex min-w-0 items-end gap-4 sm:gap-5">
+                    <span class="relative -mt-10 shrink-0 sm:-mt-14">
+                        <x-client-avatar :client="$c" tint="bg-linear-to-br from-brand-50 to-brand-100 text-brand-700 dark:from-brand-500/30 dark:to-brand-500/20 dark:text-white" class="size-20 rounded-2xl text-2xl sm:size-28 sm:rounded-3xl sm:text-4xl shadow-[0_18px_40px_-18px_rgb(15_23_42/0.45)] ring-[5px] ring-white dark:ring-zinc-950" />
+                        <span class="{{ $dots[$c->status] }} absolute end-0 bottom-0 size-5 rounded-full ring-4 ring-white dark:ring-zinc-950" title="{{ ucfirst($c->status) }}"></span>
                     </span>
-                    <div class="min-w-0 pt-3">
-                        <h1 class="flex items-center gap-1.5 text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-[1.75rem] dark:text-white"><span class="truncate">{{ $c->displayName() }}</span>@if ($c->agreement_signed_at)<x-verified-badge class="size-6" />@endif</h1>
-                        <p class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-500 dark:text-zinc-400">
-                            <span class="inline-flex items-center gap-1.5"><flux:icon.user variant="micro" class="size-3.5 opacity-70" />{{ $c->contactName() }}</span>
-                            @if ($c->phone)
-                                <a href="tel:{{ preg_replace('/[^\d+]/', '', $c->phone) }}" class="inline-flex items-center gap-1.5 tabular-nums hover:text-brand-600"><flux:icon.phone variant="micro" class="size-3.5 opacity-70" />{{ $c->phone }}</a>
+                    <div class="min-w-0 pb-1">
+                        <h1 class="flex items-center gap-2 text-2xl font-semibold tracking-[-0.025em] text-zinc-900 sm:text-[1.875rem] dark:text-white">
+                            <span class="truncate">{{ $c->displayName() }}</span>
+                            @if ($c->agreement_signed_at)<x-verified-badge class="size-6" />@endif
+                        </h1>
+                        <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                            <span class="{{ $badges[$c->status] }} inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ring-1 ring-inset">
+                                <span class="{{ $dots[$c->status] }} size-1.5 rounded-full"></span>{{ __($c->status) }}
+                            </span>
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700 dark:bg-white/10 dark:text-zinc-200">
+                                <flux:icon :icon="Client::SERVICE_TYPES[$c->service_type]['icon'] ?? 'cube'" variant="micro" class="size-3.5" />
+                                {{ __(Client::SERVICE_TYPES[$c->service_type]['label'] ?? 'Client') }}
+                            </span>
+                            @if ($pkg)
+                                <span class="{{ $theme['chip'] }} inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                                    <flux:icon :icon="$pkg->icon" variant="micro" class="size-3.5" />{{ $pkg->name }}
+                                </span>
                             @endif
-                            @if ($c->email)
-                                <a href="mailto:{{ $c->email }}" class="inline-flex min-w-0 items-center gap-1.5 hover:text-brand-600"><flux:icon.envelope variant="micro" class="size-3.5 opacity-70" /><span class="truncate">{{ $c->email }}</span></a>
-                            @endif
-                        </p>
+                        </div>
                     </div>
                 </div>
 
-                <div class="flex flex-wrap items-center gap-2 pt-3">
-                    @foreach ($c->socialLinks() as $network => $link)
-                        <a href="{{ $link }}" target="_blank" rel="noopener noreferrer" class="{{ $socials[$network]['class'] }} flex size-9 items-center justify-center rounded-lg text-zinc-400 transition" title="{{ $socials[$network]['label'] }}">
-                            <x-social-icon :name="$network" class="size-4" />
-                            <span class="sr-only">{{ $socials[$network]['label'] }}</span>
-                        </a>
-                    @endforeach
+                {{-- Actions --}}
+                <div class="flex flex-wrap items-center gap-2 pb-1">
+                    @if ($c->socialLinks())
+                        <div class="flex items-center rounded-xl bg-zinc-50 p-1 ring-1 ring-zinc-200/70 dark:bg-white/5 dark:ring-white/10">
+                            @foreach ($c->socialLinks() as $network => $link)
+                                <a href="{{ $link }}" target="_blank" rel="noopener noreferrer" class="{{ $socials[$network]['class'] }} flex size-8 items-center justify-center rounded-lg text-zinc-400 transition" title="{{ $socials[$network]['label'] }}">
+                                    <x-social-icon :name="$network" class="size-4" />
+                                    <span class="sr-only">{{ $socials[$network]['label'] }}</span>
+                                </a>
+                            @endforeach
+                        </div>
+                    @endif
                     @if ($c->phone)
-                        <flux:button :href="'tel:'.preg_replace('/[^\d+]/', '', $c->phone)" icon="phone" :aria-label="__('Call')" class="max-sm:px-2.5">{{ __('Call') }}</flux:button>
-                        @php
-                            $wa = preg_replace('/\D/', '', $c->phone);
-                            $wa = strlen($wa) === 10 && str_starts_with($wa, '9') ? '977'.$wa : $wa;
-                        @endphp
-                        <a href="https://wa.me/{{ $wa }}" target="_blank" rel="noopener noreferrer" class="flex size-10 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-[#25D366]/50 hover:text-[#25D366] dark:border-white/10" title="WhatsApp">
-                            <x-social-icon name="whatsapp" class="size-4.5" /><span class="sr-only">WhatsApp</span>
+                        <a href="https://wa.me/{{ $wa }}" target="_blank" rel="noopener noreferrer" class="flex h-10 items-center gap-2 rounded-lg bg-[#25D366]/10 px-3 text-sm font-medium text-[#128C7E] ring-1 ring-[#25D366]/25 transition hover:bg-[#25D366]/15 dark:text-[#25D366]" title="WhatsApp">
+                            <x-social-icon name="whatsapp" class="size-4" /><span class="max-sm:sr-only">WhatsApp</span>
                         </a>
+                        <flux:button :href="'tel:'.preg_replace('/[^\d+]/', '', $c->phone)" icon="phone" :aria-label="__('Call')" class="max-sm:px-2.5">{{ __('Call') }}</flux:button>
                     @endif
                     <flux:button icon="pencil-square" :href="route('clients.index', ['open' => $c->id])" wire:navigate>{{ __('Edit') }}</flux:button>
                     <flux:dropdown align="end">
-                        <flux:button variant="primary" icon="plus" icon:trailing="chevron-down" data-test="profile-add-menu">{{ __('Add') }}</flux:button>
+                        <flux:button variant="primary" icon="plus" icon:trailing="chevron-down" class="shadow-lg shadow-brand-500/25" data-test="profile-add-menu">{{ __('Add') }}</flux:button>
                         <flux:menu>
                             <flux:menu.item icon="check-circle" wire:click="newTask">{{ __('Task') }}</flux:menu.item>
                             <flux:menu.item icon="banknotes" wire:click="newPayment">{{ __('Payment') }}</flux:menu.item>
@@ -457,23 +482,51 @@ new #[Title('Client profile')] class extends Component {
                 </div>
             </div>
 
-            <div class="flex flex-wrap items-center gap-2">
-                <span class="{{ $badges[$c->status] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium capitalize ring-1 ring-inset">
-                    <span class="{{ $dots[$c->status] }} size-1.5 rounded-full"></span>
-                    {{ __($c->status) }}
-                </span>
-                <span class="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 dark:bg-white/10 dark:text-zinc-200">
-                    <flux:icon :icon="Client::SERVICE_TYPES[$c->service_type]['icon'] ?? 'cube'" variant="micro" class="size-3.5" />
-                    {{ __(Client::SERVICE_TYPES[$c->service_type]['label'] ?? 'Client') }}
-                </span>
-                @if ($pkg)
-                    <span class="{{ $theme['chip'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold">
-                        <flux:icon :icon="$pkg->icon" variant="micro" class="size-3.5" />
-                        {{ $pkg->name }}
-                    </span>
-                @endif
-                <span class="text-xs text-zinc-400" title="{{ ($c->contract_start ?? $c->created_at)->format('j M Y') }}">· {{ __('Client since') }} {{ ($c->contract_start ?? $c->created_at)->toNepaliMonth() }}</span>
-            </div>
+            {{-- Key details --}}
+            <dl class="mt-6 grid gap-x-6 gap-y-4 border-t border-zinc-100 pt-5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 dark:border-white/5">
+                <div class="min-w-0">
+                    <dt class="{{ $metaLabel }}">{{ __('Contact person') }}</dt>
+                    <dd class="{{ $metaValue }}"><span class="{{ $metaIcon }}"><flux:icon.user variant="micro" class="size-3.5" /></span><span class="truncate">{{ $c->contactName() }}</span></dd>
+                </div>
+                <div class="min-w-0">
+                    <dt class="{{ $metaLabel }}">{{ __('Phone') }}</dt>
+                    <dd class="{{ $metaValue }}">
+                        <span class="{{ $metaIcon }}"><flux:icon.phone variant="micro" class="size-3.5" /></span>
+                        @if ($c->phone)
+                            <a href="tel:{{ preg_replace('/[^\d+]/', '', $c->phone) }}" class="truncate tabular-nums hover:text-brand-600 dark:hover:text-brand-300">{{ $c->phone }}</a>
+                        @else
+                            <span class="font-normal text-zinc-400">{{ __('Not added') }}</span>
+                        @endif
+                    </dd>
+                </div>
+                <div class="min-w-0">
+                    <dt class="{{ $metaLabel }}">{{ __('Email') }}</dt>
+                    <dd class="{{ $metaValue }}">
+                        <span class="{{ $metaIcon }}"><flux:icon.envelope variant="micro" class="size-3.5" /></span>
+                        @if ($c->email)
+                            <a href="mailto:{{ $c->email }}" class="truncate hover:text-brand-600 dark:hover:text-brand-300" title="{{ $c->email }}">{{ $c->email }}</a>
+                        @else
+                            <span class="font-normal text-zinc-400">{{ __('Not added') }}</span>
+                        @endif
+                    </dd>
+                </div>
+                <div class="min-w-0">
+                    <dt class="{{ $metaLabel }}">{{ __('Client since') }}</dt>
+                    <dd class="{{ $metaValue }}" title="{{ $since->format('j M Y') }}"><span class="{{ $metaIcon }}"><flux:icon.calendar variant="micro" class="size-3.5" /></span><span class="truncate">{{ $since->toNepali() }}</span></dd>
+                </div>
+                <div class="min-w-0">
+                    <dt class="{{ $metaLabel }}">{{ __('Agreement') }}</dt>
+                    <dd class="{{ $metaValue }}">
+                        @if ($c->agreement_signed_at)
+                            <span class="{{ $metaIcon }} bg-emerald-50! text-emerald-600! dark:bg-emerald-500/10!"><flux:icon.document-check variant="micro" class="size-3.5" /></span>
+                            <span class="truncate">{{ __('Signed') }}@if ($c->contract_end)<span class="font-normal text-zinc-500"> · {{ __('until :date', ['date' => $c->contract_end->toNepali()]) }}</span>@endif</span>
+                        @else
+                            <span class="{{ $metaIcon }} bg-amber-50! text-amber-600! dark:bg-amber-500/10!"><flux:icon.document variant="micro" class="size-3.5" /></span>
+                            <button type="button" wire:click="editAgreement" class="truncate text-amber-700 hover:underline dark:text-amber-400">{{ __('Not signed yet') }}</button>
+                        @endif
+                    </dd>
+                </div>
+            </dl>
         </div>
     </header>
 
