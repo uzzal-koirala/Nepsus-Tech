@@ -235,7 +235,11 @@ class ClientProfileTest extends TestCase
         Livewire::test('pages::client-profile', ['client' => $client])
             ->call('setTab', 'tasks')
             // One box per type of work (in the type order), finished work only in History.
-            ->assertSeeInOrder(['Reel', 'Next reel', 'Design', 'Late banner', 'History', 'Finished post'])
+            ->assertSeeInOrder(['Reel', 'Next reel', 'Design', 'Late banner'])
+            ->assertDontSee('Finished post')
+            ->call('setTab', 'history')
+            ->assertSee(['Back to tasks', 'Finished post'])
+            ->call('setTab', 'tasks')
             ->call('newTask', 'todo', 'reel')
             ->assertSet('taskType', 'reel');
     }
@@ -353,10 +357,11 @@ class ClientProfileTest extends TestCase
         $this->assertCount(0, $other->fresh()->assignees);
 
         // One post done: it stays in the Post box, crossed out at the bottom.
-        $page->call('toggleTask', $one->id)->assertSeeInOrder(['Post', 'Post two', 'Post one', 'History']);
+        $page->call('toggleTask', $one->id)->assertSeeInOrder(['Post', 'Post two', 'Post one']);
 
-        // All posts done: the Post box moves to History.
-        $page->call('completeBox', 'post')->assertSeeInOrder(['A reel', 'History', 'Post one']);
+        // All posts done: the Post box leaves the board and shows on the History page.
+        $page->call('completeBox', 'post')->assertSee('A reel')->assertDontSee('Post one')
+            ->call('setTab', 'history')->assertSee(['Post one', 'Post two'])->assertDontSee('A reel');
         $this->assertNotNull($two->fresh()->completed_at);
         $this->assertNull($other->fresh()->completed_at);
     }
