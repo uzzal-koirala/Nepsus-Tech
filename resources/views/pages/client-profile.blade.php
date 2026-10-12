@@ -697,16 +697,19 @@ new #[Title('Client profile')] class extends Component {
             <svg class="absolute inset-x-0 bottom-0 h-10 w-full text-white/10" viewBox="0 0 1200 40" preserveAspectRatio="none" aria-hidden="true"><path fill="currentColor" d="M0 40V22C200 0 400 0 600 18s400 22 600 0v22Z" /></svg>
 
             @if ($countdown)
-                <div class="absolute top-1/2 right-6 hidden w-72 -translate-y-1/2 rounded-2xl bg-white/15 p-4 text-white shadow-lg ring-1 ring-white/30 backdrop-blur-md sm:block" data-test="profile-countdown">
-                    <div class="flex items-center gap-2 text-[0.6875rem] font-semibold tracking-wider text-white/80 uppercase">
-                        <flux:icon :icon="$countdown['icon']" variant="micro" class="size-3.5" />{{ $countdown['label'] }}
+                <div class="absolute top-1/2 right-6 hidden w-72 -translate-y-1/2 rounded-2xl bg-white p-4 text-zinc-900 shadow-[0_18px_40px_-18px_rgb(15_23_42/0.5)] ring-1 ring-black/5 sm:block dark:bg-zinc-900 dark:text-white dark:ring-white/10" data-test="profile-countdown">
+                    <div class="flex items-center gap-2">
+                        <span @class(['flex size-7 items-center justify-center rounded-lg', 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' => $countdown['alert'], 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300' => ! $countdown['alert']])>
+                            <flux:icon :icon="$countdown['icon']" variant="micro" class="size-4" />
+                        </span>
+                        <span class="text-xs font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">{{ $countdown['label'] }}</span>
                         @if ($countdown['alert'])
-                            <span class="ms-auto rounded-full bg-sun px-1.5 py-px text-[0.625rem] font-bold tracking-normal text-zinc-900 normal-case">{{ __('Soon') }}</span>
+                            <span class="ms-auto rounded-full bg-amber-100 px-2 py-0.5 text-[0.6875rem] font-semibold text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">{{ __('Soon') }}</span>
                         @endif
                     </div>
-                    <p class="mt-1.5 text-2xl leading-none font-semibold tracking-tight">{{ $countdown['value'] }}</p>
-                    <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-white/25"><div @class(['h-full rounded-full transition-[width] duration-700', 'bg-sun' => $countdown['alert'], 'bg-white' => ! $countdown['alert']]) style="width: {{ $countdown['pct'] }}%"></div></div>
-                    <p class="mt-2 truncate text-xs text-white/85">{{ $countdown['sub'] }}</p>
+                    <p @class(['mt-2.5 text-2xl leading-none font-bold tracking-tight', 'text-amber-600 dark:text-amber-400' => $countdown['alert'], 'text-zinc-900 dark:text-white' => ! $countdown['alert']])>{{ $countdown['value'] }}</p>
+                    <div class="mt-3 h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div @class(['h-full rounded-full transition-[width] duration-700', 'bg-amber-400' => $countdown['alert'], 'bg-brand-500' => ! $countdown['alert']]) style="width: {{ $countdown['pct'] }}%"></div></div>
+                    <p class="mt-2 truncate text-xs font-medium text-zinc-600 dark:text-zinc-300">{{ $countdown['sub'] }}</p>
                 </div>
             @endif
         </div>
