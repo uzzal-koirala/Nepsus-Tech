@@ -7,8 +7,9 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Storage;
 
-#[Fillable(['amount', 'type', 'due_date', 'paid_at', 'method', 'reference', 'note'])]
+#[Fillable(['amount', 'type', 'due_date', 'paid_at', 'method', 'reference', 'note', 'proof_path'])]
 class Payment extends Model
 {
     /** @use HasFactory<PaymentFactory> */
@@ -35,6 +36,16 @@ class Payment extends Model
             'due_date' => 'date',
             'paid_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::deleted(fn (Payment $payment) => $payment->proof_path && Storage::disk('local')->delete($payment->proof_path));
+    }
+
+    public function proofIsImage(): bool
+    {
+        return (bool) preg_match('/\.(png|jpe?g|webp|gif)$/i', (string) $this->proof_path);
     }
 
     /** The payment type as shown: built-in keys map to their label, anything else is the text that was typed. */

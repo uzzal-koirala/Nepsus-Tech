@@ -50,6 +50,7 @@ new #[Title('Client profile')] class extends Component {
     public string $payReference = '';
     public string $payType = '';
     public string $payNote = '';
+    public $payProof;
 
     public string $contractStart = '';
     public string $contractEnd = '';
@@ -385,7 +386,7 @@ new #[Title('Client profile')] class extends Component {
 
     public function newPayment(): void
     {
-        $this->reset('payAmount', 'payDue', 'payMethod', 'payReference', 'payNote');
+        $this->reset('payAmount', 'payDue', 'payMethod', 'payReference', 'payNote', 'payProof');
         $this->payType = __(Payment::TYPES[$this->client->isRecurring() ? 'monthly' : ($this->payments->isEmpty() ? 'advance' : 'partial')]['label']);
         $this->payAmount = $this->client->price === null ? '' : rtrim(rtrim((string) $this->client->price, '0'), '.');
         $this->payDue = today()->toDateString();
@@ -402,7 +403,8 @@ new #[Title('Client profile')] class extends Component {
             'payReference' => ['nullable', 'string', 'max:255'],
             'payType' => ['required', 'string', 'max:60'],
             'payNote' => ['nullable', 'string', 'max:255'],
-        ], attributes: ['payDue' => __('payment date'), 'payMethod' => __('received in')]);
+            'payProof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:8192'],
+        ], attributes: ['payDue' => __('payment date'), 'payMethod' => __('received in'), 'payProof' => __('payment proof')]);
 
         $this->client->payments()->create([
             'amount' => $data['payAmount'],
@@ -412,10 +414,22 @@ new #[Title('Client profile')] class extends Component {
             'reference' => $data['payReference'] ?: null,
             'note' => $data['payNote'] ?: null,
             'paid_at' => Date::parse($data['payDue'] ?: today())->setTimeFrom(now()),
+            'proof_path' => $this->payProof?->store('payment-proofs/'.$this->client->id, 'local'),
         ]);
+        $this->reset('payProof');
 
         Flux::modal('payment-form')->close();
         Flux::toast(variant: 'success', text: __('Payment recorded.'));
+    }
+
+    public function updatedPayProof(): void
+    {
+        try {
+            $this->validateOnly('payProof', ['payProof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:8192']], attributes: ['payProof' => __('payment proof')]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->reset('payProof');
+            throw $e;
+        }
     }
 
     public function togglePaid(int $id): void
@@ -1466,6 +1480,11 @@ new #[Title('Client profile')] class extends Component {
                                         @if ($payment->note)
                                             <span class="truncate text-xs text-zinc-500">· {{ $payment->note }}</span>
                                         @endif
+                                        @if ($payment->proof_path)
+                                            <a href="{{ route('payments.proof', $payment) }}" target="_blank" class="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200/70 ring-inset transition hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20" title="{{ __('View payment proof') }}">
+                                                <flux:icon :icon="$payment->proofIsImage() ? 'photo' : 'paper-clip'" variant="micro" class="size-3.5" />{{ __('Proof') }}
+                                            </a>
+                                        @endif
                                     </div>
                                 </div>
 
@@ -2027,6 +2046,37 @@ new #[Title('Client profile')] class extends Component {
                             <input id="pay-note" wire:model="payNote" type="text" maxlength="255" placeholder="{{ __('Anything to remember') }}" class="{{ $field }}" />
                         </div>
                     </div>
+                </div>
+
+                {{-- Proof of payment --}}
+                <div>
+                    <span class="{{ $label }}">{{ __('Payment proof') }} <span class="font-normal text-zinc-400">{{ __('optional') }}</span></span>
+                    @if ($payProof)
+                        <div class="flex items-center gap-3 rounded-xl bg-emerald-50/60 p-2.5 ring-1 ring-emerald-200/70 dark:bg-emerald-500/10 dark:ring-emerald-500/20">
+                            @if (str_starts_with((string) $payProof->getMimeType(), 'image/'))
+                                <img src="{{ $payProof->temporaryUrl() }}" alt="" class="size-14 shrink-0 rounded-lg object-cover ring-1 ring-black/5">
+                            @else
+                                <span class="flex size-14 shrink-0 items-center justify-center rounded-lg bg-white text-rose-500 ring-1 ring-black/5 dark:bg-white/10"><flux:icon.document-text class="size-6" /></span>
+                            @endif
+                            <div class="min-w-0 flex-1">
+                                <p class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $payProof->getClientOriginalName() }}</p>
+                                <p class="text-xs text-emerald-700 dark:text-emerald-300">{{ __('Ready to attach') }}</p>
+                            </div>
+                            <button type="button" wire:click="$set('payProof', null)" class="rounded-lg p-1.5 text-zinc-400 transition hover:bg-white hover:text-rose-500 dark:hover:bg-white/10" aria-label="{{ __('Remove file') }}"><flux:icon.x-mark variant="mini" class="size-4" /></button>
+                        </div>
+                    @else
+                        <label x-data="{ over: false }" @dragover.prevent="over = true" @dragleave.prevent="over = false" @drop.prevent="over = false; $refs.proof.files = $event.dataTransfer.files; $refs.proof.dispatchEvent(new Event('change'))"
+                            class="flex cursor-pointer items-center gap-4 rounded-xl border-2 border-dashed px-4 py-3.5 transition" :class="over ? 'border-emerald-400 bg-emerald-50/60 dark:bg-emerald-500/10' : 'border-zinc-200 hover:border-emerald-300 hover:bg-emerald-50/30 dark:border-white/10 dark:hover:bg-white/[0.03]'">
+                            <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.camera variant="mini" class="size-5" /></span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ __('Add a photo or screenshot of the payment') }}</span>
+                                <span class="block text-xs text-zinc-500">{{ __('Drop it here or click to choose · JPG, PNG, WebP or PDF, up to 8 MB') }}</span>
+                            </span>
+                            <input x-ref="proof" type="file" wire:model="payProof" accept=".jpg,.jpeg,.png,.webp,.pdf,image/*" class="sr-only" data-test="payment-proof-input">
+                        </label>
+                    @endif
+                    <div wire:loading wire:target="payProof" class="mt-1.5 text-xs text-zinc-500">{{ __('Uploading…') }}</div>
+                    <flux:error name="payProof" />
                 </div>
             </div>
 

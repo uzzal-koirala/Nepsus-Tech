@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Document;
+use App\Models\Payment;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
@@ -16,6 +17,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('documents/{document}', fn (Document $document) => Storage::disk('local')->download($document->path, $document->name))
         ->name('documents.download');
+
+    // Proof of payment is private: shown only to signed-in users.
+    Route::get('payments/{payment}/proof', fn (Payment $payment) => $payment->proof_path
+        ? Storage::disk('local')->response($payment->proof_path)
+        : abort(404))->name('payments.proof');
 });
 
 require __DIR__.'/settings.php';

@@ -367,4 +367,34 @@ class ClientProfileTest extends TestCase
         $this->assertNotNull($two->fresh()->completed_at);
         $this->assertNull($other->fresh()->completed_at);
     }
+
+    public function test_a_payment_can_carry_a_private_proof_photo(): void
+    {
+        Storage::fake('local');
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $client = Client::factory()->create();
+
+        Livewire::test('pages::client-profile', ['client' => $client])
+            ->call('newPayment')
+            ->set('payProof', UploadedFile::fake()->create('virus.exe', 10))
+            ->assertHasErrors(['payProof'])
+            ->assertSet('payProof', null)
+            ->set('payAmount', '15000')
+            ->set('payMethod', 'eSewa')
+            ->set('payProof', UploadedFile::fake()->image('esewa-receipt.png'))
+            ->call('savePayment')
+            ->assertHasNoErrors();
+
+        $payment = $client->payments()->sole();
+        Storage::disk('local')->assertExists($payment->proof_path);
+        $this->assertTrue($payment->proofIsImage());
+
+        $this->get(route('payments.proof', $payment))->assertOk();
+        auth()->logout();
+        $this->get(route('payments.proof', $payment))->assertRedirect(route('login'));
+
+        $payment->delete();
+        Storage::disk('local')->assertMissing($payment->proof_path);
+    }
 }
