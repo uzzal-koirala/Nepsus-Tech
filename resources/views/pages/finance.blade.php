@@ -360,12 +360,6 @@ new #[Title('Finance')] class extends Component {
                                         </span>
                                         <div class="min-w-0">
                                             <p class="truncate font-semibold text-zinc-900 dark:text-white">{{ $e['title'] }}</p>
-                                            <p class="flex items-center gap-1.5 truncate text-xs text-zinc-500">
-                                                {{ $sourceLabels[$e['source']] }}
-                                                @if ($e['proof'])
-                                                    <span class="inline-flex items-center gap-0.5 text-emerald-700 dark:text-emerald-300"><flux:icon.paper-clip variant="micro" class="size-3" />{{ __('Receipt') }}</span>
-                                                @endif
-                                            </p>
                                         </div>
                                     </div>
                                 </td>
