@@ -107,36 +107,6 @@ new #[Title('Finance')] class extends Component {
         return $m === 1 ? sprintf('%d-12', $y - 1) : sprintf('%d-%02d', $y, $m - 1);
     }
 
-    /** The six months ending with the shown one, oldest first. */
-    #[Computed]
-    public function trend(): array
-    {
-        [$y, $m] = array_map('intval', explode('-', $this->period));
-
-        return collect(NepaliDate::recentPeriods(6, NepaliDate::toAd($y, $m, 1)))
-            ->reverse()
-            ->map(fn ($p) => ['period' => $p] + $this->totals($p))
-            ->values()
-            ->all();
-    }
-
-    /** Where the money went this month, biggest first. */
-    #[Computed]
-    public function breakdown(): array
-    {
-        [$from, $to] = $this->range($this->period);
-
-        $rows = Transaction::where('kind', 'expense')->whereBetween('date', [$from->toDateString(), $to->toDateString()])
-            ->selectRaw('category, sum(amount) as total')->groupBy('category')->pluck('total', 'category')
-            ->mapWithKeys(fn ($total, $cat) => [Transaction::EXPENSE_CATEGORIES[$cat]['label'] ?? 'Other expense' => ['total' => (float) $total, 'icon' => Transaction::EXPENSE_CATEGORIES[$cat]['icon'] ?? 'tag']]);
-
-        if ($this->summary['salaries'] > 0) {
-            $rows['Salaries'] = ['total' => $this->summary['salaries'], 'icon' => 'user-group'];
-        }
-
-        return $rows->sortByDesc('total')->all();
-    }
-
     /** Every money movement of the month: client payments, other income, expenses and salaries. */
     #[Computed]
     public function entries()
@@ -230,20 +200,13 @@ new #[Title('Finance')] class extends Component {
 @php
     $money = fn ($v) => Client::money(round($v));
     $sum = $this->summary;
-    $trend = $this->trend;
-    $breakdown = $this->breakdown;
     $entries = $this->entries;
     $label = NepaliDate::periodLabel($period);
     $isNow = $period === NepaliDate::period(today());
     $panel = 'rounded-xl bg-white ring-1 ring-zinc-200/70 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:ring-white/10';
     $iconTile = 'flex size-9 shrink-0 items-center justify-center rounded-lg';
     $change = fn (float $now, float $before) => $before > 0 ? (int) round(($now - $before) / $before * 100) : null;
-    $maxBar = max(1, collect($trend)->max(fn ($t) => max($t['income'], $t['spent'])));
-    $spentTotal = max(1, collect($breakdown)->sum('total'));
     $methodIcons = ['Bank' => 'building-library', 'eSewa' => 'device-phone-mobile', 'Khalti' => 'wallet', 'Cash' => 'banknotes', 'Cheque' => 'document-text', 'Other' => 'ellipsis-horizontal-circle'];
-    // Chart colours: brand blue (income) and amber (spending), validated for colour-blind separation.
-    $incomeColor = 'bg-[#3151FE]';
-    $spentColor = 'bg-[#D97706]';
 @endphp
 
 <div class="flex w-full flex-col gap-6">
@@ -320,91 +283,6 @@ new #[Title('Finance')] class extends Component {
             <p class="mt-auto text-xs text-zinc-500">{{ __('Unpaid client payments, all months') }}</p>
         </a>
     </section>
-
-    <div class="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-        {{-- Trend --}}
-        <section class="{{ $panel }} overflow-hidden" x-data="{ table: false }">
-            <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-                <div>
-                    <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Money in and out') }}</h2>
-                    <p class="text-xs text-zinc-500">{{ __('Last 6 months') }}</p>
-                </div>
-                <div class="flex items-center gap-4 text-xs text-zinc-600 dark:text-zinc-300">
-                    <span class="inline-flex items-center gap-1.5"><span class="{{ $incomeColor }} size-2.5 rounded-sm"></span>{{ __('Money in') }}</span>
-                    <span class="inline-flex items-center gap-1.5"><span class="{{ $spentColor }} size-2.5 rounded-sm"></span>{{ __('Money out') }}</span>
-                    <button type="button" @click="table = ! table" class="rounded-md px-2 py-1 font-medium text-zinc-500 ring-1 ring-zinc-200 hover:text-zinc-800 dark:ring-white/10" x-text="table ? @js(__('Chart')) : @js(__('Table'))"></button>
-                </div>
-            </div>
-
-            <div x-show="! table" class="flex h-64 items-end gap-3 border-t border-zinc-100 px-5 pt-8 pb-4 sm:gap-5 dark:border-white/5">
-                @foreach ($trend as $t)
-                    @php
-                        [, $mo] = explode('-', $t['period']);
-                        $current = $t['period'] === $period;
-                    @endphp
-                    <div class="group relative flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2">
-                        {{-- Hover tooltip --}}
-                        <div class="pointer-events-none absolute -top-6 left-1/2 z-10 hidden w-44 -translate-x-1/2 rounded-lg bg-zinc-900 px-3 py-2 text-xs text-white shadow-lg group-hover:block dark:bg-white dark:text-zinc-900">
-                            <p class="font-semibold">{{ NepaliDate::periodLabel($t['period']) }}</p>
-                            <p class="mt-1 flex justify-between gap-2"><span class="opacity-75">{{ __('In') }}</span><span class="tabular-nums">{{ $money($t['income']) }}</span></p>
-                            <p class="flex justify-between gap-2"><span class="opacity-75">{{ __('Out') }}</span><span class="tabular-nums">{{ $money($t['spent']) }}</span></p>
-                            <p class="mt-1 flex justify-between gap-2 border-t border-white/20 pt-1 dark:border-zinc-200"><span class="opacity-75">{{ __('Net') }}</span><span class="font-semibold tabular-nums">{{ $money($t['income'] - $t['spent']) }}</span></p>
-                        </div>
-                        <div class="flex h-full w-full items-end justify-center gap-0.5">
-                            <div class="{{ $incomeColor }} w-full max-w-7 rounded-t-[4px] transition-[height] duration-700 group-hover:opacity-90" style="height: {{ max(1, round($t['income'] / $maxBar * 100)) }}%"></div>
-                            <div class="{{ $spentColor }} w-full max-w-7 rounded-t-[4px] transition-[height] duration-700 group-hover:opacity-90" style="height: {{ max(1, round($t['spent'] / $maxBar * 100)) }}%"></div>
-                        </div>
-                        <button type="button" wire:click="$set('period', '{{ $t['period'] }}')" @class(['text-[0.6875rem] whitespace-nowrap', 'font-semibold text-brand-600 dark:text-brand-300' => $current, 'text-zinc-500 hover:text-zinc-800' => ! $current])>{{ mb_substr(NepaliDate::MONTHS[(int) $mo - 1], 0, 3) }}</button>
-                    </div>
-                @endforeach
-            </div>
-
-            <div x-show="table" x-cloak class="overflow-x-auto border-t border-zinc-100 dark:border-white/5">
-                <table class="w-full text-sm">
-                    <thead><tr class="text-xs text-zinc-500"><th class="px-5 py-2 text-start font-medium">{{ __('Month') }}</th><th class="px-5 py-2 text-end font-medium">{{ __('Money in') }}</th><th class="px-5 py-2 text-end font-medium">{{ __('Money out') }}</th><th class="px-5 py-2 text-end font-medium">{{ __('Net') }}</th></tr></thead>
-                    <tbody class="divide-y divide-zinc-100 dark:divide-white/5">
-                        @foreach (array_reverse($trend) as $t)
-                            <tr>
-                                <td class="px-5 py-2.5 font-medium text-zinc-800 dark:text-zinc-100">{{ NepaliDate::periodLabel($t['period']) }}</td>
-                                <td class="px-5 py-2.5 text-end tabular-nums">{{ $money($t['income']) }}</td>
-                                <td class="px-5 py-2.5 text-end tabular-nums">{{ $money($t['spent']) }}</td>
-                                <td @class(['px-5 py-2.5 text-end font-semibold tabular-nums', 'text-emerald-700 dark:text-emerald-300' => $t['income'] >= $t['spent'], 'text-rose-700 dark:text-rose-300' => $t['income'] < $t['spent']])>{{ $money($t['income'] - $t['spent']) }}</td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        {{-- Where it went --}}
-        <section class="{{ $panel }} overflow-hidden">
-            <div class="px-5 py-4">
-                <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Where the money went') }}</h2>
-                <p class="text-xs text-zinc-500">{{ $label }} · {{ $money($sum['spent']) }}</p>
-            </div>
-            @if ($breakdown === [])
-                <div class="flex flex-col items-center gap-2 border-t border-zinc-100 px-5 py-10 text-center dark:border-white/5">
-                    <p class="text-sm text-zinc-500">{{ __('No spending recorded this month.') }}</p>
-                    <flux:button size="sm" icon="plus" wire:click="newEntry('expense')">{{ __('Add expense') }}</flux:button>
-                </div>
-            @else
-                <ul class="flex flex-col gap-3.5 border-t border-zinc-100 px-5 py-4 dark:border-white/5">
-                    @foreach ($breakdown as $name => $row)
-                        @php $pct = (int) round($row['total'] / $spentTotal * 100); @endphp
-                        <li wire:key="cat-{{ \Illuminate\Support\Str::slug($name) }}">
-                            <div class="flex items-center gap-2.5 text-sm">
-                                <span class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"><flux:icon :icon="$row['icon']" variant="micro" class="size-3.5" /></span>
-                                <span class="min-w-0 flex-1 truncate font-medium text-zinc-800 dark:text-zinc-100">{{ __($name) }}</span>
-                                <span class="text-zinc-500 tabular-nums">{{ $pct }}%</span>
-                                <span class="w-28 text-end font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $money($row['total']) }}</span>
-                            </div>
-                            <div class="ms-9.5 mt-1.5 h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div class="{{ $spentColor }} h-full rounded-full" style="width: {{ max(2, $pct) }}%"></div></div>
-                        </li>
-                    @endforeach
-                </ul>
-            @endif
-        </section>
-    </div>
 
     {{-- Transactions --}}
     @php
