@@ -20,9 +20,6 @@ new #[Title('Employees')] class extends Component {
     #[Url(except: 'all')]
     public string $status = 'all';
 
-    #[Url(except: '')]
-    public string $department = '';
-
     #[Url(except: 'grid')]
     public string $view = 'grid';
 
@@ -48,7 +45,7 @@ new #[Title('Employees')] class extends Component {
 
     public function updated($property): void
     {
-        if (in_array($property, ['search', 'department'])) {
+        if (in_array($property, ['search'])) {
             $this->resetPage();
         }
     }
@@ -59,15 +56,9 @@ new #[Title('Employees')] class extends Component {
         $this->resetPage();
     }
 
-    public function setDepartment(string $department): void
-    {
-        $this->department = $this->department === $department ? '' : $department;
-        $this->resetPage();
-    }
-
     public function clearFilters(): void
     {
-        $this->reset('search', 'status', 'department');
+        $this->reset('search', 'status');
         $this->resetPage();
     }
 
@@ -83,7 +74,6 @@ new #[Title('Employees')] class extends Component {
         return Employee::query()
             ->withSalaryPaid($this->period)
             ->when($this->status !== 'all', fn ($q) => $q->where('status', $this->status))
-            ->when($this->department !== '', fn ($q) => $q->where('department', $this->department))
             ->when($this->search !== '', fn ($q) => $q->where(fn ($q) => $q
                 ->where('name', 'like', "%{$this->search}%")
                 ->orWhere('designation', 'like', "%{$this->search}%")
@@ -115,21 +105,6 @@ new #[Title('Employees')] class extends Component {
             'percent' => $total > 0 ? (int) round($paid / $total * 100) : 0,
             'unpaidPeople' => $onPayroll->filter(fn ($e) => (float) $e->paid_in_period < (float) $e->salary)->count(),
         ];
-    }
-
-    #[Computed]
-    public function departments(): array
-    {
-        $rows = Employee::where('status', '!=', 'inactive')
-            ->selectRaw('department, count(*) as people, coalesce(sum(salary), 0) as payroll')
-            ->groupBy('department')
-            ->get()
-            ->keyBy('department');
-
-        return collect(Employee::DEPARTMENTS)->map(fn ($meta, $key) => [
-            'people' => (int) ($rows[$key]->people ?? 0),
-            'payroll' => (float) ($rows[$key]->payroll ?? 0),
-        ])->all();
     }
 
     // Add / edit
@@ -274,13 +249,13 @@ new #[Title('Employees')] class extends Component {
     $money = fn ($v) => \App\Models\Client::money($v);
     $tabs = ['all' => __('Everyone')] + collect(Employee::STATUSES)->map(fn ($l) => __($l))->all();
     $depts = [
-        'design' => ['avatar' => 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200', 'chip' => 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300', 'tile' => 'bg-rose-50 ring-rose-200 dark:bg-rose-500/10 dark:ring-rose-500/30'],
-        'development' => ['avatar' => 'bg-brand-100 text-brand-700 dark:bg-brand-500/25 dark:text-brand-100', 'chip' => 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200', 'tile' => 'bg-brand-50 ring-brand-200 dark:bg-brand-500/10 dark:ring-brand-500/30'],
-        'marketing' => ['avatar' => 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200', 'chip' => 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300', 'tile' => 'bg-amber-50 ring-amber-200 dark:bg-amber-500/10 dark:ring-amber-500/30'],
-        'content' => ['avatar' => 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200', 'chip' => 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300', 'tile' => 'bg-emerald-50 ring-emerald-200 dark:bg-emerald-500/10 dark:ring-emerald-500/30'],
-        'sales' => ['avatar' => 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200', 'chip' => 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300', 'tile' => 'bg-sky-50 ring-sky-200 dark:bg-sky-500/10 dark:ring-sky-500/30'],
-        'management' => ['avatar' => 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200', 'chip' => 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300', 'tile' => 'bg-violet-50 ring-violet-200 dark:bg-violet-500/10 dark:ring-violet-500/30'],
-        'hr' => ['avatar' => 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-200', 'chip' => 'bg-teal-50 text-teal-700 dark:bg-teal-500/10 dark:text-teal-300', 'tile' => 'bg-teal-50 ring-teal-200 dark:bg-teal-500/10 dark:ring-teal-500/30'],
+        'design' => ['avatar' => 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200', 'chip' => 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'],
+        'development' => ['avatar' => 'bg-brand-100 text-brand-700 dark:bg-brand-500/25 dark:text-brand-100', 'chip' => 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'],
+        'marketing' => ['avatar' => 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200', 'chip' => 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300'],
+        'content' => ['avatar' => 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200', 'chip' => 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'],
+        'sales' => ['avatar' => 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200', 'chip' => 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300'],
+        'management' => ['avatar' => 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200', 'chip' => 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300'],
+        'hr' => ['avatar' => 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-200', 'chip' => 'bg-teal-50 text-teal-700 dark:bg-teal-500/10 dark:text-teal-300'],
     ];
     $statusDot = ['active' => 'bg-emerald-500', 'on_leave' => 'bg-amber-400', 'inactive' => 'bg-zinc-300'];
     $statusText = ['active' => 'text-emerald-700 dark:text-emerald-300', 'on_leave' => 'text-amber-700 dark:text-amber-300', 'inactive' => 'text-zinc-500'];
@@ -342,42 +317,6 @@ new #[Title('Employees')] class extends Component {
         </div>
     </section>
 
-    {{-- Departments --}}
-    <section class="flex flex-col gap-3">
-        <div class="flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Departments') }}</h2>
-            @if ($department !== '')
-                <button type="button" wire:click="setDepartment('{{ $department }}')" class="text-xs font-medium text-brand-600 hover:underline dark:text-brand-300">{{ __('Show all departments') }}</button>
-            @endif
-        </div>
-        <div class="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-1">
-            @foreach (Employee::DEPARTMENTS as $key => $meta)
-                @php
-                    $info = $this->departments[$key];
-                    $selected = $department === $key;
-                @endphp
-                <button type="button" wire:click="setDepartment('{{ $key }}')" @class([
-                    'flex min-w-44 shrink-0 snap-start flex-col gap-3 rounded-xl p-4 text-start ring-1 transition duration-200 hover:-translate-y-0.5',
-                    $depts[$key]['tile'] => $selected,
-                    'bg-white ring-zinc-200/70 hover:ring-zinc-300 dark:bg-zinc-950 dark:ring-white/10' => ! $selected,
-                ]) aria-pressed="{{ $selected ? 'true' : 'false' }}">
-                    <div class="flex items-center justify-between">
-                        <span class="{{ $depts[$key]['avatar'] }} flex size-8 items-center justify-center rounded-lg">
-                            <flux:icon :icon="$meta['icon']" variant="micro" class="size-4" />
-                        </span>
-                        @if ($selected)
-                            <flux:icon.check-circle variant="mini" class="size-4 text-zinc-700 dark:text-white" />
-                        @endif
-                    </div>
-                    <div>
-                        <p class="text-sm font-medium text-zinc-900 dark:text-white">{{ __($meta['label']) }}</p>
-                        <p class="text-xs text-zinc-500">{{ trans_choice(':count person|:count people', $info['people']) }} · {{ $money($info['payroll']) }}{{ __('/mo') }}</p>
-                    </div>
-                </button>
-            @endforeach
-        </div>
-    </section>
-
     {{-- Toolbar --}}
     <div class="flex flex-col gap-3 rounded-2xl bg-white p-2 ring-1 ring-zinc-200/70 lg:flex-row lg:items-center lg:justify-between dark:bg-zinc-950 dark:ring-white/5">
         <nav class="flex gap-1 overflow-x-auto" aria-label="{{ __('Filter by status') }}">
@@ -413,10 +352,10 @@ new #[Title('Employees')] class extends Component {
     @if ($this->employees->isEmpty())
         <div class="{{ $panel }} flex flex-col items-center gap-4 px-6 py-16 text-center">
             <span class="flex size-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-500 dark:bg-brand-500/15"><flux:icon.identification class="size-7" /></span>
-            @if ($search !== '' || $status !== 'all' || $department !== '')
+            @if ($search !== '' || $status !== 'all')
                 <div>
                     <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Nobody matches these filters') }}</h2>
-                    <p class="mt-1 text-sm text-zinc-500">{{ __('Try another search, status or department.') }}</p>
+                    <p class="mt-1 text-sm text-zinc-500">{{ __('Try another search or status.') }}</p>
                 </div>
                 <flux:button size="sm" wire:click="clearFilters">{{ __('Clear filters') }}</flux:button>
             @else

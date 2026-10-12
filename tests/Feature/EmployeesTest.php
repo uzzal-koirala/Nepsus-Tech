@@ -44,8 +44,7 @@ class EmployeesTest extends TestCase
         $this->assertSame('marketing', $sita->department);
         $this->assertSame('9779812345678', $sita->whatsappNumber());
 
-        $page->set('department', 'design')->assertSee('Bina Rai')->assertDontSee('Kiran Shrestha')
-            ->set('department', '')->call('setStatus', 'on_leave')->assertSee('Bina Rai')->assertDontSee('Sita Gurung');
+        $page->call('setStatus', 'on_leave')->assertSee('Bina Rai')->assertDontSee('Sita Gurung');
 
         $page->call('edit', $sita->id)->assertSet('dept', 'marketing')->set('employeeStatus', 'inactive')->call('save');
         $this->assertSame('inactive', $sita->fresh()->status);
