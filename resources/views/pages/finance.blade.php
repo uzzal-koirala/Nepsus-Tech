@@ -335,14 +335,13 @@ new #[Title('Finance')] class extends Component {
             </div>
         @else
             <div class="overflow-x-auto border-t border-zinc-100 dark:border-white/5">
-                <table class="w-full min-w-[58rem] text-sm">
+                <table class="w-full min-w-[50rem] text-sm">
                     <thead class="bg-zinc-50/80 dark:bg-white/[0.02]">
                         <tr>
-                            <th class="{{ $th }} ps-5">{{ __('Date') }}</th>
-                            <th class="{{ $th }}">{{ __('Description') }}</th>
+                            <th class="{{ $th }} ps-5">{{ __('Title') }}</th>
+                            <th class="{{ $th }}">{{ __('Date') }}</th>
                             <th class="{{ $th }}">{{ __('Category') }}</th>
                             <th class="{{ $th }}">{{ __('Method') }}</th>
-                            <th class="{{ $th }}">{{ __('Reference / note') }}</th>
                             <th class="{{ $th }} pe-5 text-end">{{ __('Amount') }}</th>
                         </tr>
                     </thead>
@@ -352,40 +351,48 @@ new #[Title('Finance')] class extends Component {
                                 $in = $e['kind'] === 'income';
                                 $bs = NepaliDate::fromAd($e['date']);
                             @endphp
-                            <tr wire:key="entry-{{ $e['key'] }}" @click="open = '{{ $e['key'] }}'" class="cursor-pointer transition hover:bg-brand-50/40 dark:hover:bg-white/[0.03]" tabindex="0" @keydown.enter="open = '{{ $e['key'] }}'">
-                                <td class="px-3 py-3 ps-5 whitespace-nowrap" title="{{ $e['date']->format('l, j M Y') }}">
-                                    <p class="font-semibold text-zinc-900 dark:text-white">{{ $bs ? $bs[2].' '.NepaliDate::MONTHS[$bs[1] - 1] : '' }}</p>
-                                    <p class="text-xs text-zinc-500">{{ $e['date']->format('D, j M Y') }}</p>
-                                </td>
-                                <td class="max-w-64 px-3 py-3">
-                                    <div class="flex items-center gap-2.5">
-                                        <span @class(['flex size-8 shrink-0 items-center justify-center rounded-lg', 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300' => $in, 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' => ! $in])>
+                            <tr wire:key="entry-{{ $e['key'] }}" @click="open = '{{ $e['key'] }}'" class="cursor-pointer transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]" tabindex="0" @keydown.enter="open = '{{ $e['key'] }}'">
+                                {{-- Title --}}
+                                <td class="max-w-80 px-3 py-3.5 ps-5">
+                                    <div class="flex items-center gap-3">
+                                        <span @class(['flex size-9 shrink-0 items-center justify-center rounded-xl', 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300' => $in, 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300' => ! $in])>
                                             <flux:icon :icon="$in ? 'arrow-down-left' : 'arrow-up-right'" variant="micro" class="size-4" />
                                         </span>
                                         <div class="min-w-0">
-                                            <p class="truncate font-medium text-zinc-900 dark:text-white">{{ $e['title'] }}</p>
-                                            <p class="text-xs text-zinc-500">{{ $sourceLabels[$e['source']] }}</p>
+                                            <p class="truncate font-semibold text-zinc-900 dark:text-white">{{ $e['title'] }}</p>
+                                            <p class="flex items-center gap-1.5 truncate text-xs text-zinc-500">
+                                                {{ $sourceLabels[$e['source']] }}
+                                                @if ($e['proof'])
+                                                    <span class="inline-flex items-center gap-0.5 text-emerald-700 dark:text-emerald-300"><flux:icon.paper-clip variant="micro" class="size-3" />{{ __('Receipt') }}</span>
+                                                @endif
+                                            </p>
                                         </div>
                                     </div>
                                 </td>
-                                <td class="px-3 py-3">
-                                    <span class="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs font-medium whitespace-nowrap text-zinc-700 dark:bg-white/10 dark:text-zinc-200"><flux:icon :icon="$e['icon']" variant="micro" class="size-3.5" />{{ $e['category'] }}</span>
+                                {{-- Date --}}
+                                <td class="px-3 py-3.5 whitespace-nowrap" title="{{ $e['date']->format('l, j M Y') }}">
+                                    <p class="font-medium text-zinc-900 dark:text-white">{{ $bs ? $bs[2].' '.NepaliDate::MONTHS[$bs[1] - 1].' '.$bs[0] : '' }}</p>
+                                    <p class="text-xs text-zinc-500">{{ $e['date']->format('D, j M Y') }}</p>
                                 </td>
-                                <td class="px-3 py-3 whitespace-nowrap text-zinc-600 dark:text-zinc-300">
+                                {{-- Category --}}
+                                <td class="px-3 py-3.5">
+                                    <span class="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium whitespace-nowrap text-zinc-700 dark:bg-white/10 dark:text-zinc-200"><flux:icon :icon="$e['icon']" variant="micro" class="size-3.5" />{{ $e['category'] }}</span>
+                                </td>
+                                {{-- Method --}}
+                                <td class="px-3 py-3.5 whitespace-nowrap text-zinc-700 dark:text-zinc-300">
                                     @if ($e['method'])
                                         <span class="inline-flex items-center gap-1.5"><flux:icon :icon="$methodIcons[$e['method']] ?? 'credit-card'" variant="micro" class="size-4 text-zinc-400" />{{ __($e['method']) }}</span>
                                     @else
                                         <span class="text-zinc-300 dark:text-zinc-600">—</span>
                                     @endif
                                 </td>
-                                <td class="max-w-48 px-3 py-3">
-                                    <p class="truncate text-xs text-zinc-600 dark:text-zinc-300">{{ collect([$e['reference'], $e['note']])->filter()->unique()->implode(' · ') ?: '—' }}</p>
-                                    @if ($e['proof'])
-                                        <span class="mt-0.5 inline-flex items-center gap-1 text-[0.6875rem] font-medium text-emerald-700 dark:text-emerald-300"><flux:icon.paper-clip variant="micro" class="size-3" />{{ __('Receipt') }}</span>
-                                    @endif
-                                </td>
-                                <td class="px-3 py-3 pe-5 text-end whitespace-nowrap">
-                                    <span @class(['inline-flex items-center rounded-lg px-2.5 py-1 text-sm font-semibold tabular-nums', 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200' => $in, 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-200' => ! $in])>{{ $in ? '+' : '−' }} {{ $money($e['amount']) }}</span>
+                                {{-- Amount --}}
+                                <td class="px-3 py-3.5 pe-5 text-end whitespace-nowrap">
+                                    <span @class([
+                                        'inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-sm font-bold tabular-nums ring-1 ring-inset',
+                                        'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20' => $in,
+                                        'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20' => ! $in,
+                                    ])>{{ $in ? '+' : '−' }} {{ $money($e['amount']) }}</span>
                                 </td>
                             </tr>
                         @endforeach
@@ -399,7 +406,7 @@ new #[Title('Finance')] class extends Component {
             <div x-show="open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4 backdrop-blur-sm" x-transition.opacity @click.self="open = null">
                 <template x-if="open && rows[open]">
                     <div class="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5 dark:bg-zinc-900 dark:ring-white/10" role="dialog" aria-modal="true">
-                        <div class="relative px-6 pt-6 pb-5 text-white" :class="rows[open].kind === 'income' ? 'bg-linear-to-br from-brand-500 to-brand-700' : 'bg-linear-to-br from-amber-500 to-orange-600'">
+                        <div class="relative px-6 pt-6 pb-5 text-white" :class="rows[open].kind === 'income' ? 'bg-linear-to-br from-emerald-500 to-emerald-700' : 'bg-linear-to-br from-rose-500 to-rose-700'">
                             <button type="button" @click="open = null" class="absolute top-4 right-4 flex size-8 items-center justify-center rounded-lg text-white/80 hover:bg-white/15 hover:text-white" aria-label="{{ __('Close') }}"><flux:icon.x-mark variant="mini" class="size-5" /></button>
                             <p class="text-xs font-semibold tracking-wider text-white/75 uppercase" x-text="rows[open].kind === 'income' ? @js(__('Money in')) : @js(__('Money out'))"></p>
                             <p class="mt-1 text-3xl font-bold tracking-tight tabular-nums"><span x-text="rows[open].kind === 'income' ? '+ ' : '− '"></span><span x-text="rows[open].amount"></span></p>
