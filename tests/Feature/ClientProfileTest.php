@@ -230,9 +230,49 @@ class ClientProfileTest extends TestCase
 
         Livewire::test('pages::client-profile', ['client' => $client])
             ->call('setTab', 'tasks')
-            ->assertSeeInOrder(['Late', 'Late banner', 'This week', 'Next reel', 'Done', 'Finished post'])
+            ->assertSeeInOrder(['To do', 'Late banner', 'Next reel', 'Done', 'Finished post'])
             ->set('workKind', 'reel')
             ->assertSee('Next reel')
             ->assertDontSee('Finished post');
+    }
+
+    public function test_tasks_can_be_edited_moved_and_prioritised(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $client = Client::factory()->create();
+
+        $page = Livewire::test('pages::client-profile', ['client' => $client])
+            ->call('newTask', 'in_progress')
+            ->assertSet('taskStatus', 'in_progress')
+            ->set('taskTitle', 'Employee details page')
+            ->set('taskDescription', 'Create a page with employee info')
+            ->set('taskStart', '2026-10-01')
+            ->set('taskDue', '2026-09-01')
+            ->call('addTask')
+            ->assertHasErrors(['taskDue'])
+            ->set('taskDue', '2026-10-20')
+            ->set('taskPriority', 'high')
+            ->call('addTask')
+            ->assertHasNoErrors();
+
+        $task = $client->tasks()->sole();
+        $this->assertSame(['in_progress', 'high', 'Create a page with employee info'], [$task->status, $task->priority, $task->description]);
+        $this->assertSame('2026-10-01', $task->start_date->toDateString());
+
+        $page->call('editTask', $task->id)
+            ->assertSet('taskTitle', 'Employee details page')
+            ->set('taskTitle', 'Employee details')
+            ->call('addTask')
+            ->assertHasNoErrors();
+        $this->assertSame('Employee details', $task->fresh()->title);
+        $this->assertCount(1, $client->tasks()->get());
+
+        $page->call('setTaskStatus', $task->id, 'done');
+        $this->assertNotNull($task->fresh()->completed_at);
+        $page->call('setTaskStatus', $task->id, 'review');
+        $this->assertSame('review', $task->fresh()->stage());
+
+        $page->call('setTaskPriority', $task->id, 'urgent');
+        $this->assertSame('urgent', $task->fresh()->priority);
     }
 }

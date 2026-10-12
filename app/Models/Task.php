@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['title', 'type', 'due_date', 'completed_at'])]
+#[Fillable(['title', 'description', 'type', 'status', 'priority', 'start_date', 'due_date', 'completed_at'])]
 class Task extends Model
 {
     /** @use HasFactory<TaskFactory> */
@@ -26,10 +26,26 @@ class Task extends Model
         'task' => ['label' => 'Task', 'icon' => 'check-circle'],
     ];
 
+    /** Workflow stages, in board order. */
+    public const STATUSES = [
+        'todo' => ['label' => 'To do', 'icon' => 'stop-circle'],
+        'in_progress' => ['label' => 'In progress', 'icon' => 'arrow-path'],
+        'review' => ['label' => 'In review', 'icon' => 'eye'],
+        'done' => ['label' => 'Done', 'icon' => 'check-circle'],
+    ];
+
+    public const PRIORITIES = [
+        'low' => 'Low',
+        'medium' => 'Medium',
+        'high' => 'High',
+        'urgent' => 'Urgent',
+    ];
+
     protected function casts(): array
     {
         return [
             'due_date' => 'date',
+            'start_date' => 'date',
             'completed_at' => 'datetime',
         ];
     }
@@ -37,6 +53,16 @@ class Task extends Model
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
+    }
+
+    /** The stage shown in lists: completed work is always done. */
+    public function stage(): string
+    {
+        if ($this->completed_at) {
+            return 'done';
+        }
+
+        return array_key_exists($this->status, self::STATUSES) && $this->status !== 'done' ? $this->status : 'todo';
     }
 
     public function isOverdue(): bool
