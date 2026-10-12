@@ -913,138 +913,83 @@ new #[Title('Client profile')] class extends Component {
                 @php
                     $agenda = collect($cal['weeks'])->flatten(1)->filter()
                         ->filter(fn ($d) => $d['tasks']->isNotEmpty() || $d['payments']->isNotEmpty());
-                    $accent = [
-                        'post' => 'bg-sky-500', 'reel' => 'bg-fuchsia-500', 'story' => 'bg-amber-400', 'video' => 'bg-rose-500',
-                        'shoot' => 'bg-orange-500', 'design' => 'bg-emerald-500', 'meeting' => 'bg-violet-500', 'task' => 'bg-zinc-400',
-                    ];
-                    $tile = [
-                        'post' => 'bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300', 'reel' => 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-500/10 dark:text-fuchsia-300',
-                        'story' => 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300', 'video' => 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300',
-                        'shoot' => 'bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-300', 'design' => 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300',
-                        'meeting' => 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300', 'task' => 'bg-zinc-100 text-zinc-500 dark:bg-white/5 dark:text-zinc-300',
-                    ];
                     $openItems = $monthTasks->whereNull('completed_at')->count();
                 @endphp
                 <section class="{{ $panel }} overflow-hidden" x-data="{ show: 'all' }">
-                    {{-- Head --}}
-                    <div class="relative overflow-hidden border-b border-zinc-100 bg-linear-to-br from-brand-50/80 via-white to-white px-5 pt-5 pb-4 dark:border-white/5 dark:from-brand-500/10 dark:via-zinc-950 dark:to-zinc-950">
-                        <div class="flex items-start justify-between gap-3">
-                            <div class="flex items-center gap-3">
-                                <span class="flex size-10 items-center justify-center rounded-xl bg-white text-brand-600 shadow-sm ring-1 ring-brand-100 dark:bg-white/5 dark:text-brand-300 dark:ring-white/10"><flux:icon.queue-list variant="mini" class="size-5" /></span>
-                                <div>
-                                    <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Scheduled work') }}</h2>
-                                    <p class="text-xs text-zinc-500">{{ $cal['label'] }}</p>
-                                </div>
-                            </div>
-                            <flux:button size="sm" variant="primary" icon="plus" wire:click="newTask">{{ __('Add') }}</flux:button>
+                    <div class="flex items-center justify-between gap-3 px-5 pt-4 pb-3">
+                        <div>
+                            <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Scheduled work') }}</h2>
+                            <p class="text-xs text-zinc-500">{{ $cal['label'] }} · {{ $monthDone }}/{{ $monthTasks->count() }} {{ __('done') }}</p>
                         </div>
+                        <flux:button size="sm" icon="plus" wire:click="newTask">{{ __('Add') }}</flux:button>
+                    </div>
 
-                        <div class="mt-4 flex items-center gap-3">
-                            <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-brand-100/70 dark:bg-white/10"><div class="h-full rounded-full bg-brand-500 transition-[width] duration-700" style="width: {{ $monthPct }}%"></div></div>
-                            <span class="text-xs font-medium text-zinc-600 tabular-nums dark:text-zinc-300">{{ $monthDone }}/{{ $monthTasks->count() }} {{ __('done') }}</span>
-                        </div>
-
-                        <div class="mt-4 grid grid-cols-3 gap-1 rounded-lg bg-zinc-100/80 p-1 text-xs font-medium dark:bg-white/5">
-                            @foreach (['all' => [__('All'), $monthTasks->count()], 'open' => [__('To do'), $openItems], 'done' => [__('Done'), $monthDone]] as $key => [$label, $count])
-                                <button type="button" @click="show = '{{ $key }}'" class="flex items-center justify-center gap-1.5 rounded-md py-1.5 transition" :class="show === '{{ $key }}' ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-white' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-white'">
-                                    {{ $label }} <span class="rounded bg-zinc-200/70 px-1 text-[0.625rem] tabular-nums dark:bg-white/10">{{ $count }}</span>
-                                </button>
-                            @endforeach
-                        </div>
+                    <div class="flex gap-4 border-b border-zinc-100 px-5 text-sm dark:border-white/5">
+                        @foreach (['all' => [__('All'), $monthTasks->count()], 'open' => [__('To do'), $openItems], 'done' => [__('Done'), $monthDone]] as $key => [$label, $count])
+                            <button type="button" @click="show = '{{ $key }}'" class="-mb-px border-b-2 pb-2.5 font-medium transition" :class="show === '{{ $key }}' ? 'border-brand-500 text-zinc-900 dark:text-white' : 'border-transparent text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'">
+                                {{ $label }} <span class="ms-0.5 text-xs text-zinc-400 tabular-nums">{{ $count }}</span>
+                            </button>
+                        @endforeach
                     </div>
 
                     @if ($agenda->isEmpty())
-                        <div class="flex flex-col items-center gap-3 px-5 py-12 text-center">
-                            <span class="flex size-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-500 dark:bg-brand-500/15"><flux:icon.calendar-days class="size-6" /></span>
-                            <div>
-                                <p class="text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ __('Nothing scheduled') }}</p>
-                                <p class="mt-0.5 text-xs text-zinc-500">{{ __('Click a day on the calendar to plan work.') }}</p>
-                            </div>
+                        <div class="px-5 py-10 text-center">
+                            <p class="text-sm font-medium text-zinc-700 dark:text-zinc-200">{{ __('Nothing scheduled') }}</p>
+                            <p class="mt-0.5 text-xs text-zinc-500">{{ __('Click a day on the calendar to plan work.') }}</p>
                         </div>
                     @else
-                        <ol class="max-h-[36rem] overflow-y-auto px-5 py-4">
+                        <div class="max-h-[36rem] overflow-y-auto pb-2">
                             @foreach ($agenda as $d)
                                 @php
                                     $dKey = $d['ad']->toDateString();
                                     $dToday = $dKey === $todayKey;
-                                    $dPast = $d['ad']->lt(today());
                                     $dOpen = $d['tasks']->whereNull('completed_at')->count() + $d['payments']->whereNull('paid_at')->count();
                                     $dDone = $d['tasks']->whereNotNull('completed_at')->count() + $d['payments']->whereNotNull('paid_at')->count();
                                 @endphp
-                                <li wire:key="agenda-{{ $dKey }}" class="group/day relative flex gap-3.5 pb-5 last:pb-0" x-show="show === 'all' || (show === 'open' && {{ $dOpen }} > 0) || (show === 'done' && {{ $dDone }} > 0)">
-                                    {{-- Timeline line --}}
-                                    <span class="absolute top-12 bottom-0 left-[1.375rem] w-px bg-zinc-200 group-last/day:hidden dark:bg-white/10"></span>
+                                <div wire:key="agenda-{{ $dKey }}" x-show="show === 'all' || (show === 'open' && {{ $dOpen }} > 0) || (show === 'done' && {{ $dDone }} > 0)">
+                                    <p class="flex items-center gap-2 px-5 pt-4 pb-1.5 text-xs font-medium text-zinc-500" title="{{ $d['ad']->format('j M Y') }}">
+                                        <span @class(['font-semibold', 'text-brand-600 dark:text-brand-300' => $dToday, 'text-zinc-800 dark:text-zinc-100' => ! $dToday])>{{ $d['day'] }} {{ NepaliDate::MONTHS[$this->calMonth - 1] }}</span>
+                                        <span class="text-zinc-400">{{ $d['ad']->format('l') }}</span>
+                                        @if ($dToday)
+                                            <span class="rounded bg-brand-50 px-1.5 py-px text-[0.625rem] font-semibold text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">{{ __('Today') }}</span>
+                                        @endif
+                                    </p>
 
-                                    <div @class([
-                                        'relative flex size-11 shrink-0 flex-col items-center justify-center rounded-xl leading-none',
-                                        'bg-brand-500 text-white shadow-lg shadow-brand-500/30' => $dToday,
-                                        'bg-white text-zinc-400 ring-1 ring-zinc-200 dark:bg-zinc-950 dark:ring-white/10' => ! $dToday && $dPast,
-                                        'bg-white text-zinc-900 ring-1 ring-zinc-300 dark:bg-zinc-950 dark:text-white dark:ring-white/20' => ! $dToday && ! $dPast,
-                                    ]) title="{{ $d['ad']->format('l, j M Y') }}">
-                                        <span class="text-[0.9375rem] font-semibold tabular-nums">{{ $d['day'] }}</span>
-                                        <span @class(['mt-0.5 text-[0.5625rem] font-semibold tracking-wide uppercase', 'text-white/80' => $dToday, 'text-zinc-400' => ! $dToday])>{{ $d['ad']->format('D') }}</span>
-                                    </div>
+                                    @foreach ($d['payments'] as $p)
+                                        @php $ps = $p->status(); @endphp
+                                        <div wire:key="agenda-pay-{{ $p->id }}" x-show="show === 'all' || (show === 'open') === {{ $p->paid_at ? 'false' : 'true' }}" class="flex items-center gap-3 px-5 py-2 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
+                                            <button type="button" @if (! $p->paid_at) wire:click="togglePaid({{ $p->id }})" title="{{ __('Mark as received') }}" @endif @class([
+                                                'flex size-[1.125rem] shrink-0 items-center justify-center rounded-full border transition',
+                                                'border-emerald-500 bg-emerald-500 text-white' => $p->paid_at,
+                                                'border-zinc-300 text-transparent hover:border-emerald-500 hover:text-emerald-500 dark:border-zinc-600' => ! $p->paid_at,
+                                            ])><flux:icon.check variant="micro" class="size-3" /></button>
+                                            <span class="min-w-0 flex-1 truncate text-sm text-zinc-800 dark:text-zinc-100">{{ __(Payment::TYPES[$p->type]['label'] ?? 'Payment') }}</span>
+                                            <span @class(['shrink-0 text-xs font-medium tabular-nums', 'text-emerald-600 dark:text-emerald-400' => $ps === 'paid', 'text-rose-600 dark:text-rose-400' => $ps === 'overdue', 'text-zinc-500' => $ps === 'pending'])>{{ Client::money($p->amount) }}</span>
+                                        </div>
+                                    @endforeach
 
-                                    <div class="flex min-w-0 flex-1 flex-col gap-2">
-                                        <p class="pt-0.5 text-[0.6875rem] font-medium text-zinc-400">
-                                            @if ($dToday)
-                                                <span class="font-semibold text-brand-600 dark:text-brand-300">{{ __('Today') }}</span>
+                                    @foreach ($d['tasks'] as $t)
+                                        <div wire:key="agenda-task-{{ $t->id }}" x-show="show === 'all' || (show === 'done') === {{ $t->completed_at ? 'true' : 'false' }}" class="group flex items-center gap-3 px-5 py-2 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
+                                            <button type="button" wire:click="toggleTask({{ $t->id }})" @class([
+                                                'flex size-[1.125rem] shrink-0 items-center justify-center rounded-full border transition',
+                                                'border-emerald-500 bg-emerald-500 text-white' => $t->completed_at,
+                                                'border-zinc-300 text-transparent hover:border-brand-500 hover:text-brand-500 dark:border-zinc-600' => ! $t->completed_at,
+                                            ]) aria-label="{{ $t->completed_at ? __('Mark as not done') : __('Mark as done') }}"><flux:icon.check variant="micro" class="size-3" /></button>
+                                            <span class="{{ $workTones[$t->type]['dot'] ?? 'bg-zinc-400' }} size-2 shrink-0 rounded-full"></span>
+                                            <span @class(['min-w-0 flex-1 truncate text-sm', 'text-zinc-400 line-through' => $t->completed_at, 'text-zinc-800 dark:text-zinc-100' => ! $t->completed_at])>{{ $t->title }}</span>
+                                            @if ($t->isOverdue())
+                                                <span class="shrink-0 text-xs font-medium text-rose-600 dark:text-rose-400">{{ __('Late') }}</span>
                                             @else
-                                                {{ $d['ad']->format('j M') }}
+                                                <span class="shrink-0 text-xs text-zinc-400 group-hover:hidden">{{ __(Task::TYPES[$t->type]['label'] ?? 'Task') }}</span>
                                             @endif
-                                        </p>
-
-                                        @foreach ($d['payments'] as $p)
-                                            @php $ps = $p->status(); @endphp
-                                            <div wire:key="agenda-pay-{{ $p->id }}" x-show="show === 'all' || (show === 'open') === {{ $p->paid_at ? 'false' : 'true' }}" class="relative flex items-center gap-3 overflow-hidden rounded-xl bg-white py-2.5 ps-3.5 pe-2.5 shadow-[0_1px_2px_rgb(15_23_42/0.05)] ring-1 ring-zinc-200/80 dark:bg-white/[0.03] dark:ring-white/10">
-                                                <span class="absolute inset-y-0 left-0 w-1 {{ ['paid' => 'bg-emerald-500', 'overdue' => 'bg-rose-500', 'pending' => 'bg-zinc-300'][$ps] }}"></span>
-                                                <span class="flex size-8 shrink-0 items-center justify-center rounded-lg {{ ['paid' => 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10', 'overdue' => 'bg-rose-50 text-rose-600 dark:bg-rose-500/10', 'pending' => 'bg-zinc-100 text-zinc-500 dark:bg-white/5'][$ps] }}"><flux:icon.banknotes variant="micro" class="size-4" /></span>
-                                                <div class="min-w-0 flex-1">
-                                                    <p class="truncate text-sm font-semibold text-zinc-900 tabular-nums dark:text-white">{{ Client::money($p->amount) }}</p>
-                                                    <p class="truncate text-[0.6875rem] text-zinc-500">{{ __(Payment::TYPES[$p->type]['label'] ?? 'Payment') }} · {{ ['paid' => __('Received'), 'overdue' => __('Overdue'), 'pending' => __('Due')][$ps] }}</p>
-                                                </div>
-                                                @if (! $p->paid_at)
-                                                    <button type="button" wire:click="togglePaid({{ $p->id }})" class="flex h-7 shrink-0 items-center gap-1 rounded-lg bg-emerald-50 px-2 text-[0.6875rem] font-semibold text-emerald-700 transition hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300" title="{{ __('Mark as received') }}"><flux:icon.check variant="micro" class="size-3.5" />{{ __('Paid') }}</button>
-                                                @endif
-                                            </div>
-                                        @endforeach
-
-                                        @foreach ($d['tasks'] as $t)
-                                            @php $tt = Task::TYPES[$t->type] ?? Task::TYPES['task']; @endphp
-                                            <div wire:key="agenda-task-{{ $t->id }}" x-show="show === 'all' || (show === 'done') === {{ $t->completed_at ? 'true' : 'false' }}" @class([
-                                                'group relative flex items-center gap-3 overflow-hidden rounded-xl py-2.5 ps-3.5 pe-2.5 ring-1 transition',
-                                                'bg-zinc-50/80 ring-zinc-200/60 dark:bg-white/[0.02] dark:ring-white/5' => $t->completed_at,
-                                                'bg-white shadow-[0_1px_2px_rgb(15_23_42/0.05)] ring-zinc-200/80 hover:-translate-y-px hover:shadow-[0_8px_20px_-12px_rgb(15_23_42/0.35)] dark:bg-white/[0.03] dark:ring-white/10' => ! $t->completed_at,
-                                            ])>
-                                                <span @class(['absolute inset-y-0 left-0 w-1', $accent[$t->type] ?? 'bg-zinc-400', 'opacity-40' => $t->completed_at])></span>
-                                                <span @class(['flex size-8 shrink-0 items-center justify-center rounded-lg', $tile[$t->type] ?? $tile['task'], 'opacity-50' => $t->completed_at])><flux:icon :icon="$tt['icon']" variant="micro" class="size-4" /></span>
-                                                <div class="min-w-0 flex-1">
-                                                    <p @class(['truncate text-sm', 'text-zinc-400 line-through' => $t->completed_at, 'font-semibold text-zinc-900 dark:text-white' => ! $t->completed_at])>{{ $t->title }}</p>
-                                                    <p class="flex items-center gap-1 truncate text-[0.6875rem] text-zinc-500">
-                                                        {{ __($tt['label']) }}
-                                                        @if ($t->completed_at)
-                                                            · <span class="text-emerald-600 dark:text-emerald-400">{{ __('Done') }}</span>
-                                                        @elseif ($t->isOverdue())
-                                                            · <span class="font-medium text-rose-600 dark:text-rose-400">{{ __('Late') }}</span>
-                                                        @endif
-                                                    </p>
-                                                </div>
-                                                <button type="button" wire:click="deleteTask({{ $t->id }})" wire:confirm="{{ __('Delete this work?') }}" class="shrink-0 rounded-md p-1 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 focus:opacity-100 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete') }}">
-                                                    <flux:icon.trash variant="micro" class="size-3.5" />
-                                                </button>
-                                                <button type="button" wire:click="toggleTask({{ $t->id }})" @class([
-                                                    'flex size-7 shrink-0 items-center justify-center rounded-full ring-1 transition',
-                                                    'bg-emerald-500 text-white ring-emerald-500' => $t->completed_at,
-                                                    'text-zinc-300 ring-zinc-300 hover:bg-emerald-50 hover:text-emerald-600 hover:ring-emerald-500 dark:ring-zinc-600 dark:hover:bg-emerald-500/10' => ! $t->completed_at,
-                                                ]) aria-label="{{ $t->completed_at ? __('Mark as not done') : __('Mark as done') }}">
-                                                    <flux:icon.check variant="micro" class="size-4" />
-                                                </button>
-                                            </div>
-                                        @endforeach
-                                    </div>
-                                </li>
+                                            <button type="button" wire:click="deleteTask({{ $t->id }})" wire:confirm="{{ __('Delete this work?') }}" class="hidden shrink-0 text-zinc-400 group-hover:block hover:text-rose-500" aria-label="{{ __('Delete') }}">
+                                                <flux:icon.trash variant="micro" class="size-4" />
+                                            </button>
+                                        </div>
+                                    @endforeach
+                                </div>
                             @endforeach
-                        </ol>
+                        </div>
                     @endif
                 </section>
             </div>
