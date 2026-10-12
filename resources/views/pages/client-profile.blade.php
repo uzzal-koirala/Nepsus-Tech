@@ -343,6 +343,26 @@ new #[Title('Client profile')] class extends Component {
         $task->update(['status' => $status, 'completed_at' => $status === 'done' ? ($task->completed_at ?? now()) : null]);
     }
 
+    /** Adds one employee to every open task of a work type. */
+    public function assignBox(string $type, int $employeeId): void
+    {
+        $employee = Employee::findOrFail($employeeId);
+        $tasks = $this->client->tasks()->where('type', $type)->whereNull('completed_at')->get();
+
+        foreach ($tasks as $task) {
+            $task->assignees()->syncWithoutDetaching([$employee->id]);
+        }
+
+        unset($this->tasks);
+        Flux::toast(variant: 'success', text: trans_choice(':name assigned to :count task.|:name assigned to :count tasks.', $tasks->count(), ['name' => $employee->name]));
+    }
+
+    public function completeBox(string $type): void
+    {
+        $this->client->tasks()->where('type', $type)->whereNull('completed_at')->update(['status' => 'done', 'completed_at' => now()]);
+        unset($this->tasks);
+    }
+
     public function setTaskPriority(int $id, string $priority): void
     {
         abort_unless(array_key_exists($priority, Task::PRIORITIES), 422);
@@ -1211,12 +1231,6 @@ new #[Title('Client profile')] class extends Component {
                             <div class="h-2 w-40 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div class="h-full rounded-full bg-linear-to-r from-brand-400 to-brand-600 transition-[width] duration-700" style="width: {{ $donePct }}%"></div></div>
                             <span class="text-sm font-semibold text-zinc-800 tabular-nums dark:text-zinc-100">{{ $donePct }}%</span>
                         </div>
-                        <flux:modal.trigger name="task-history">
-                            <flux:button icon="clock" data-test="task-history-button">
-                                {{ __('History') }}
-                                <span class="ms-0.5 rounded-full bg-emerald-50 px-1.5 text-xs font-semibold text-emerald-700 tabular-nums dark:bg-emerald-500/15 dark:text-emerald-300">{{ $doneCount }}</span>
-                            </flux:button>
-                        </flux:modal.trigger>
                         <flux:button variant="primary" icon="plus" wire:click="newTask" class="shadow-md shadow-brand-500/20" data-test="add-task-button">{{ __('Add task') }}</flux:button>
                     </div>
                 </div>
@@ -1224,125 +1238,114 @@ new #[Title('Client profile')] class extends Component {
 
             {{-- Board: one box per type of work --}}
             @php
-                $openWork = $allTasks->reject(fn ($t) => $t->stage() === 'done')->groupBy('type');
-                $boxes = collect(array_keys($types))->merge($openWork->keys())->unique()->filter(fn ($k) => isset($openWork[$k]))->values();
+                // A box stays on the board while it has open work; work finished this month stays in it, crossed out.
+                // When everything in a box is done, the box moves to History.
+                $monthStart = NepaliDate::monthRange(today())[0];
+                $openTypes = $allTasks->reject(fn ($t) => $t->stage() === 'done')->pluck('type')->unique();
+                $boardTasks = $allTasks->filter(fn ($t) => $openTypes->contains($t->type) && ($t->stage() !== 'done' || $t->completed_at->gte($monthStart)));
+                $historyTasks = $allTasks->filter(fn ($t) => $t->stage() === 'done')->diffKeys($boardTasks);
+                $order = array_flip(array_keys($types));
+                $sortTypes = fn ($groups) => $groups->sortBy(fn ($g, $k) => $order[$k] ?? PHP_INT_MAX);
+                $boxes = $sortTypes($boardTasks->groupBy('type'));
+                $historyBoxes = $sortTypes($historyTasks->groupBy('type'));
             @endphp
+
             @if ($boxes->isEmpty())
                 <section class="{{ $panel }} flex flex-col items-center gap-3 px-6 py-14 text-center">
                     <span class="flex size-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-500 dark:bg-brand-500/15"><flux:icon.clipboard-document-check class="size-6" /></span>
                     <p class="font-semibold text-zinc-900 dark:text-white">{{ $allTasks->isEmpty() ? __('No work planned yet') : __('All work is done') }}</p>
-                    <p class="text-sm text-zinc-500">{{ $allTasks->isEmpty() ? __('Add posts, reels, videos or tasks for this client.') : __('Finished work is in History.') }}</p>
+                    <p class="text-sm text-zinc-500">{{ $allTasks->isEmpty() ? __('Add posts, reels, videos or tasks for this client.') : __('Finished work is in History below.') }}</p>
                     <flux:button variant="primary" size="sm" icon="plus" wire:click="newTask">{{ __('Add task') }}</flux:button>
                 </section>
             @endif
+
             <div class="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
-                @foreach ($boxes as $kind)
+                @foreach ($boxes as $kind => $items)
                     @php
                         $kt = $typeOf($kind);
                         $ktone = $toneOf($kind);
-                        $rows = $openWork[$kind]->sortBy(fn ($t) => [array_search($t->stage(), array_keys(Task::STATUSES)), $t->due_date?->timestamp ?? PHP_INT_MAX, $t->id])->values();
-                        $lateHere = $rows->filter->isOverdue()->count();
+                        $rows = $items->sortBy(fn ($t) => [array_search($t->stage(), array_keys(Task::STATUSES)), $t->due_date?->timestamp ?? PHP_INT_MAX, $t->id])->values();
+                        $openHere = $rows->reject(fn ($t) => $t->stage() === 'done');
+                        $doneHere = $rows->count() - $openHere->count();
+                        $lateHere = $openHere->filter->isOverdue()->count();
                     @endphp
-                    <section wire:key="box-{{ $kind }}" class="{{ $panel }} flex flex-col overflow-hidden">
+                    <section wire:key="box-{{ $kind }}" class="{{ $panel }} flex flex-col overflow-hidden" x-data="{ open: true }">
                         <div class="{{ $ktone['chip'] }} flex items-center gap-2.5 px-4 py-3">
-                            <span class="{{ $ktone['dot'] }} flex size-8 items-center justify-center rounded-lg text-white shadow-sm"><flux:icon :icon="$kt['icon']" variant="micro" class="size-4" /></span>
-                            <div class="min-w-0">
-                                <h3 class="truncate text-sm font-semibold">{{ $kt['label'] }}</h3>
-                                <p class="text-[0.6875rem] opacity-80">{{ trans_choice(':count open|:count open', $rows->count()) }}@if ($lateHere) · {{ trans_choice(':count late|:count late', $lateHere) }}@endif</p>
-                            </div>
-                            <button type="button" wire:click="newTask('todo', '{{ $kind }}')" class="ms-auto flex size-8 items-center justify-center rounded-lg bg-white/70 transition hover:bg-white dark:bg-white/10 dark:hover:bg-white/20" aria-label="{{ __('Add :type', ['type' => $kt['label']]) }}"><flux:icon.plus variant="micro" class="size-4" /></button>
+                            <button type="button" @click="open = ! open" class="flex min-w-0 flex-1 items-center gap-2.5 text-start" :aria-expanded="open">
+                                <span class="{{ $ktone['dot'] }} flex size-8 shrink-0 items-center justify-center rounded-lg text-white shadow-sm"><flux:icon :icon="$kt['icon']" variant="micro" class="size-4" /></span>
+                                <span class="min-w-0">
+                                    <span class="block truncate text-sm font-semibold">{{ $kt['label'] }}</span>
+                                    <span class="block text-[0.6875rem] opacity-80">{{ $doneHere }}/{{ $rows->count() }} {{ __('done') }}@if ($lateHere) · {{ trans_choice(':count late|:count late', $lateHere) }}@endif</span>
+                                </span>
+                                <flux:icon.chevron-down variant="micro" class="ms-auto size-4 shrink-0 opacity-60 transition" ::class="open ? '' : '-rotate-90'" />
+                            </button>
+                            <button type="button" wire:click="newTask('todo', '{{ $kind }}')" class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/70 transition hover:bg-white dark:bg-white/10 dark:hover:bg-white/20" aria-label="{{ __('Add :type', ['type' => $kt['label']]) }}" title="{{ __('Add :type', ['type' => $kt['label']]) }}"><flux:icon.plus variant="micro" class="size-4" /></button>
+                            <flux:dropdown align="end">
+                                <button type="button" class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/70 transition hover:bg-white dark:bg-white/10 dark:hover:bg-white/20" aria-label="{{ __(':type settings', ['type' => $kt['label']]) }}" title="{{ __('Settings') }}" data-test="box-settings-{{ $kind }}"><flux:icon.cog-6-tooth variant="micro" class="size-4" /></button>
+                                <flux:menu>
+                                    <flux:menu.submenu :heading="__('Assign all to')" icon="user-plus">
+                                        @forelse ($this->team as $member)
+                                            <flux:menu.item wire:click="assignBox('{{ $kind }}', {{ $member->id }})">{{ $member->name }}</flux:menu.item>
+                                        @empty
+                                            <flux:menu.item disabled>{{ __('No employees yet') }}</flux:menu.item>
+                                        @endforelse
+                                    </flux:menu.submenu>
+                                    <flux:menu.item icon="plus" wire:click="newTask('todo', '{{ $kind }}')">{{ __('Add :type', ['type' => $kt['label']]) }}</flux:menu.item>
+                                    <flux:menu.separator />
+                                    <flux:menu.item icon="check-circle" wire:click="completeBox('{{ $kind }}')" wire:confirm="{{ __('Mark all :type work as done?', ['type' => $kt['label']]) }}">{{ __('Mark all as done') }}</flux:menu.item>
+                                </flux:menu>
+                            </flux:dropdown>
                         </div>
 
-                        <ul class="divide-y divide-zinc-100 dark:divide-white/5">
-                            @foreach ($rows as $t)
-                                @php
-                                    $stage = $t->stage();
-                                    $late = $t->isOverdue();
-                                    $dates = $range($t);
-                                    $people = $t->assignees;
-                                @endphp
-                                <li wire:key="task-row-{{ $t->id }}" wire:click="openTask({{ $t->id }})" class="group flex cursor-pointer items-center gap-3 px-4 py-3 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]" role="button" tabindex="0" @keydown.enter="$wire.openTask({{ $t->id }})">
-                                    <button type="button" wire:click.stop="toggleTask({{ $t->id }})" class="flex size-5 shrink-0 items-center justify-center rounded-full border-[1.5px] border-zinc-300 text-transparent transition hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-500 dark:border-zinc-600 dark:hover:bg-emerald-500/10" title="{{ __('Mark as done') }}" aria-label="{{ __('Mark as done') }}"><flux:icon.check variant="micro" class="size-3" /></button>
-
-                                    <div class="min-w-0 flex-1">
-                                        <p class="flex items-center gap-1.5">
-                                            <span class="truncate text-sm font-medium text-zinc-900 transition group-hover:text-brand-600 dark:text-white">{{ $t->title }}</span>
-                                            @if (in_array($t->priority, ['high', 'urgent']))
-                                                <flux:icon.flag variant="micro" @class(['size-3.5 shrink-0', 'text-orange-500' => $t->priority === 'high', 'text-rose-500' => $t->priority === 'urgent']) title="{{ __(Task::PRIORITIES[$t->priority]) }}" />
-                                            @endif
-                                        </p>
-                                        <p class="mt-0.5 flex items-center gap-2 text-xs text-zinc-500">
-                                            <span class="inline-flex items-center gap-1"><span class="{{ $statusTones[$stage]['dot'] }} size-1.5 rounded-full"></span>{{ __(Task::STATUSES[$stage]['label']) }}</span>
-                                            @if ($dates)
-                                                <span @class(['inline-flex items-center gap-1', 'font-medium text-rose-600 dark:text-rose-400' => $late])>
-                                                    <flux:icon :icon="$late ? 'exclamation-circle' : 'calendar'" variant="micro" class="size-3" />{{ $dates }}
-                                                </span>
-                                            @endif
-                                        </p>
-                                    </div>
-
-                                    @if ($people->isNotEmpty())
-                                        <div class="flex shrink-0 -space-x-1.5">
-                                            @foreach ($people->take(2) as $person)
-                                                <x-employee-avatar :employee="$person" class="size-7 text-[0.625rem] ring-2 ring-white dark:ring-zinc-950" />
-                                            @endforeach
-                                            @if ($people->count() > 2)
-                                                <span class="flex size-7 items-center justify-center rounded-full bg-zinc-100 text-[0.625rem] font-semibold text-zinc-600 ring-2 ring-white dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-950">+{{ $people->count() - 2 }}</span>
-                                            @endif
-                                        </div>
-                                    @endif
-                                    <flux:icon.chevron-right variant="micro" class="size-4 shrink-0 text-zinc-300 transition group-hover:translate-x-0.5 group-hover:text-zinc-500" />
-                                </li>
-                            @endforeach
-                        </ul>
+                        <div x-show="open" x-collapse>
+                            <ul class="divide-y divide-zinc-100 dark:divide-white/5">
+                                @foreach ($rows as $t)
+                                    @include('partials.type-task-row', ['t' => $t, 'prefix' => 'box'])
+                                @endforeach
+                            </ul>
+                        </div>
                     </section>
                 @endforeach
             </div>
-        </div>
 
-        {{-- History: completed work --}}
-        @php
-            $history = ($byStage['done'] ?? collect())->sortByDesc('completed_at')->values();
-        @endphp
-        <flux:modal name="task-history" class="w-full max-w-2xl p-0!">
-            <div class="flex flex-col">
-                <div class="flex items-center gap-3 border-b border-zinc-100 px-6 py-5 dark:border-white/5">
-                    <span class="flex size-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.check-badge variant="mini" class="size-5" /></span>
-                    <div>
-                        <flux:heading size="lg">{{ __('Completed work') }}</flux:heading>
-                        <p class="text-sm text-zinc-500">{{ trans_choice(':count task finished|:count tasks finished', $history->count()) }}</p>
-                    </div>
-                </div>
-                @if ($history->isEmpty())
-                    <p class="px-6 py-12 text-center text-sm text-zinc-500">{{ __('Nothing finished yet.') }}</p>
-                @else
-                    <ul class="max-h-[60vh] divide-y divide-zinc-100 overflow-y-auto dark:divide-white/5">
-                        @foreach ($history as $t)
-                            @php $tt = $typeOf($t->type); @endphp
-                            <li wire:key="history-{{ $t->id }}" class="group flex items-center gap-3 px-6 py-3 transition hover:bg-zinc-50 dark:hover:bg-white/[0.02]">
-                                <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"><flux:icon.check variant="micro" class="size-3" /></span>
-                                <div class="min-w-0 flex-1">
-                                    <p class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $t->title }}</p>
-                                    <p class="flex items-center gap-1.5 text-xs text-zinc-500">
-                                        <span class="{{ $toneOf($t->type)['dot'] }} size-1.5 rounded-full"></span>{{ $tt['label'] }}
-                                        · {{ __('Done :date', ['date' => $t->completed_at->toNepali()]) }}
-                                    </p>
-                                </div>
-                                @if ($t->assignees->isNotEmpty())
-                                    <div class="flex shrink-0 -space-x-1.5">
-                                        @foreach ($t->assignees->take(3) as $person)
-                                            <x-employee-avatar :employee="$person" class="size-7 text-[0.625rem] ring-2 ring-white dark:ring-zinc-900" />
-                                        @endforeach
+            {{-- History --}}
+            <section id="history" class="{{ $panel }} overflow-hidden" x-data="{ open: false }">
+                <button type="button" @click="open = ! open" class="flex w-full items-center gap-3 px-5 py-4 text-start transition hover:bg-zinc-50/70 dark:hover:bg-white/[0.02]" :aria-expanded="open" data-test="history-toggle">
+                    <span class="flex size-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.clock variant="mini" class="size-4.5" /></span>
+                    <span class="min-w-0 flex-1">
+                        <span class="block font-semibold text-zinc-900 dark:text-white">{{ __('History') }}</span>
+                        <span class="block text-xs text-zinc-500">{{ trans_choice(':count finished task|:count finished tasks', $historyTasks->count()) }}@if ($historyBoxes->isNotEmpty()) · {{ $historyBoxes->keys()->map(fn ($k) => $typeOf($k)['label'])->implode(', ') }}@endif</span>
+                    </span>
+                    <flux:icon.chevron-down variant="mini" class="size-5 text-zinc-400 transition" ::class="open ? 'rotate-180' : ''" />
+                </button>
+                <div x-show="open" x-collapse>
+                    @if ($historyBoxes->isEmpty())
+                        <p class="border-t border-zinc-100 px-5 py-8 text-center text-sm text-zinc-500 dark:border-white/5">{{ __('Finished boxes move here once all their work is done.') }}</p>
+                    @else
+                        <div class="grid items-start gap-4 border-t border-zinc-100 bg-zinc-50/50 p-4 md:grid-cols-2 xl:grid-cols-3 dark:border-white/5 dark:bg-white/[0.01]">
+                            @foreach ($historyBoxes as $kind => $items)
+                                @php $kt = $typeOf($kind); @endphp
+                                <div wire:key="history-box-{{ $kind }}" class="overflow-hidden rounded-xl bg-white ring-1 ring-zinc-200/70 dark:bg-zinc-950 dark:ring-white/10" x-data="{ open: false }">
+                                    <button type="button" @click="open = ! open" class="flex w-full items-center gap-2.5 px-4 py-3 text-start" :aria-expanded="open">
+                                        <span class="flex size-7 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-white/5"><flux:icon :icon="$kt['icon']" variant="micro" class="size-3.5" /></span>
+                                        <span class="flex-1 text-sm font-semibold text-zinc-700 dark:text-zinc-200">{{ $kt['label'] }}</span>
+                                        <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 tabular-nums dark:bg-emerald-500/10 dark:text-emerald-300">{{ $items->count() }} {{ __('done') }}</span>
+                                        <flux:icon.chevron-down variant="micro" class="size-4 text-zinc-400 transition" ::class="open ? 'rotate-180' : ''" />
+                                    </button>
+                                    <div x-show="open" x-collapse>
+                                        <ul class="divide-y divide-zinc-100 border-t border-zinc-100 dark:divide-white/5 dark:border-white/5">
+                                            @foreach ($items->sortByDesc('completed_at') as $t)
+                                                @include('partials.type-task-row', ['t' => $t, 'prefix' => 'history'])
+                                            @endforeach
+                                        </ul>
                                     </div>
-                                @endif
-                                <button type="button" wire:click="toggleTask({{ $t->id }})" class="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-zinc-500 ring-1 ring-zinc-200 transition hover:bg-white hover:text-brand-600 dark:ring-white/10 dark:hover:bg-white/5">{{ __('Reopen') }}</button>
-                                <button type="button" wire:click="deleteTask({{ $t->id }})" wire:confirm="{{ __('Delete this task?') }}" class="shrink-0 rounded-md p-1 text-zinc-300 transition hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete') }}"><flux:icon.trash variant="micro" class="size-4" /></button>
-                            </li>
-                        @endforeach
-                    </ul>
-                @endif
-            </div>
-        </flux:modal>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
+                </div>
+            </section>
+        </div>
     @elseif ($tab === 'payments')
         <section class="grid gap-3 sm:grid-cols-3">
             @foreach ([

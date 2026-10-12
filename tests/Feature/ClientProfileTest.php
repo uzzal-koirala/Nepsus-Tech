@@ -235,7 +235,7 @@ class ClientProfileTest extends TestCase
         Livewire::test('pages::client-profile', ['client' => $client])
             ->call('setTab', 'tasks')
             // One box per type of work (in the type order), finished work only in History.
-            ->assertSeeInOrder(['Reel', 'Next reel', 'Design', 'Late banner', 'Completed work', 'Finished post'])
+            ->assertSeeInOrder(['Reel', 'Next reel', 'Design', 'Late banner', 'History', 'Finished post'])
             ->call('newTask', 'todo', 'reel')
             ->assertSet('taskType', 'reel');
     }
@@ -334,5 +334,30 @@ class ClientProfileTest extends TestCase
 
         $page->call('deleteTask', $task->id)->assertSet('viewTaskId', null);
         $this->assertModelMissing($task);
+    }
+
+    public function test_a_box_can_be_assigned_and_finished_and_then_moves_to_history(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $client = Client::factory()->create();
+        $bina = Employee::factory()->create(['name' => 'Bina Rai', 'status' => 'active']);
+        $one = $client->tasks()->create(['title' => 'Post one', 'type' => 'post']);
+        $two = $client->tasks()->create(['title' => 'Post two', 'type' => 'post']);
+        $other = $client->tasks()->create(['title' => 'A reel', 'type' => 'reel']);
+
+        $page = Livewire::test('pages::client-profile', ['client' => $client])
+            ->call('setTab', 'tasks')
+            ->call('assignBox', 'post', $bina->id);
+        $this->assertSame([$bina->id], $one->fresh()->assignees->pluck('id')->all());
+        $this->assertSame([$bina->id], $two->fresh()->assignees->pluck('id')->all());
+        $this->assertCount(0, $other->fresh()->assignees);
+
+        // One post done: it stays in the Post box, crossed out at the bottom.
+        $page->call('toggleTask', $one->id)->assertSeeInOrder(['Post', 'Post two', 'Post one', 'History']);
+
+        // All posts done: the Post box moves to History.
+        $page->call('completeBox', 'post')->assertSeeInOrder(['A reel', 'History', 'Post one']);
+        $this->assertNotNull($two->fresh()->completed_at);
+        $this->assertNull($other->fresh()->completed_at);
     }
 }
