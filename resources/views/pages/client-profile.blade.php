@@ -37,14 +37,8 @@ new #[Title('Client profile')] class extends Component {
     public string $payMethod = '';
     public string $payReference = '';
     public bool $payPaid = false;
-
-    public string $planType = 'half_advance';
-    public string $planAmount = '';
-    public string $planStart = '';
-    public string $planMonths = '';
-    public string $planEnd = '';
-    public string $planInstallments = '3';
-    public bool $planAdvancePaid = false;
+    public string $payType = 'advance';
+    public string $payNote = '';
 
     public string $contractStart = '';
     public string $contractEnd = '';
@@ -238,75 +232,10 @@ new #[Title('Client profile')] class extends Component {
 
     // Payment plan
 
-    public function openPlan(): void
-    {
-        $this->planType = $this->client->payment_plan ?? 'half_advance';
-        $this->planAmount = (string) ($this->client->totalValue() ?? '');
-        $this->planStart = (string) ($this->client->contract_start ?? today())->toDateString();
-        $this->planMonths = (string) ($this->client->agreementMonths() ?? 1);
-        $this->planEnd = (string) $this->client->contract_end?->toDateString();
-        $this->planInstallments = (string) ($this->client->installments ?? 3);
-        $this->planAdvancePaid = false;
-        $this->resetErrorBag();
-
-        Flux::modal('payment-plan')->show();
-    }
-
-    /** Payments the plan will add, recalculated as the fields change. */
-    #[Computed]
-    public function planPreview(): array
-    {
-        $amount = (float) $this->planAmount;
-
-        if ($amount <= 0 || ! $this->planStart || ! array_key_exists($this->planType, Client::PAYMENT_PLANS)) {
-            return [];
-        }
-
-        try {
-            $start = Date::parse($this->planStart);
-            $end = $this->client->service_type === 'social_media'
-                ? ((int) $this->planMonths > 0 ? NepaliDate::periodEndAfter($start, (int) $this->planMonths) : null)
-                : ($this->planEnd ? Date::parse($this->planEnd) : null);
-        } catch (\Throwable) {
-            return [];
-        }
-
-        return Client::paymentSchedule($amount, $this->planType, $start, $end, max(2, min(36, (int) $this->planInstallments)));
-    }
-
-    public function savePlan(): void
-    {
-        $this->validate([
-            'planType' => ['required', Rule::in(array_keys(Client::PAYMENT_PLANS))],
-            'planAmount' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
-            'planStart' => ['required', 'date'],
-            'planMonths' => ['nullable', 'integer', 'min:1', 'max:120'],
-            'planEnd' => ['nullable', 'date', 'after_or_equal:planStart'],
-            'planInstallments' => ['exclude_unless:planType,installments', 'required', 'integer', 'min:2', 'max:36'],
-            'planAdvancePaid' => ['boolean'],
-        ]);
-
-        foreach ($this->planPreview as $i => $row) {
-            $this->client->payments()->create([
-                'amount' => $row['amount'],
-                'due_date' => $row['due'],
-                'note' => $row['label'],
-                'paid_at' => $i === 0 && $this->planAdvancePaid && $this->planType !== 'after_work' ? now() : null,
-            ]);
-        }
-
-        $this->client->update([
-            'payment_plan' => $this->planType,
-            'installments' => $this->planType === 'installments' ? (int) $this->planInstallments : null,
-        ]);
-
-        Flux::modal('payment-plan')->close();
-        Flux::toast(variant: 'success', text: trans_choice(':count payment added to the schedule.|:count payments added to the schedule.', count($this->planPreview)));
-    }
-
     public function newPayment(): void
     {
-        $this->reset('payAmount', 'payDue', 'payMethod', 'payReference', 'payPaid');
+        $this->reset('payAmount', 'payDue', 'payMethod', 'payReference', 'payPaid', 'payNote');
+        $this->payType = $this->client->isRecurring() ? 'monthly' : ($this->payments->isEmpty() ? 'advance' : 'partial');
         $this->payAmount = $this->client->price === null ? '' : rtrim(rtrim((string) $this->client->price, '0'), '.');
         $this->payDue = today()->toDateString();
         $this->resetErrorBag();
@@ -321,14 +250,18 @@ new #[Title('Client profile')] class extends Component {
             'payMethod' => ['nullable', Rule::in(Payment::METHODS)],
             'payReference' => ['nullable', 'string', 'max:255'],
             'payPaid' => ['boolean'],
-        ]);
+            'payType' => ['required', Rule::in(array_keys(Payment::TYPES))],
+            'payNote' => ['nullable', 'string', 'max:255'],
+        ], attributes: ['payDue' => $this->payPaid ? __('received date') : __('due date')]);
 
         $this->client->payments()->create([
             'amount' => $data['payAmount'],
+            'type' => $data['payType'],
             'due_date' => $data['payDue'] ?: null,
-            'method' => $data['payMethod'] ?: null,
+            'method' => $data['payPaid'] ? ($data['payMethod'] ?: null) : null,
             'reference' => $data['payReference'] ?: null,
-            'paid_at' => $data['payPaid'] ? now() : null,
+            'note' => $data['payNote'] ?: null,
+            'paid_at' => $data['payPaid'] ? Date::parse($data['payDue'] ?: today())->setTimeFrom(now()) : null,
         ]);
 
         Flux::modal('payment-form')->close();
@@ -575,7 +508,6 @@ new #[Title('Client profile')] class extends Component {
                         <flux:menu>
                             <flux:menu.item icon="check-circle" wire:click="newTask">{{ __('Task') }}</flux:menu.item>
                             <flux:menu.item icon="banknotes" wire:click="newPayment">{{ __('Payment') }}</flux:menu.item>
-                            <flux:menu.item icon="calendar-days" wire:click="openPlan">{{ __('Payment plan') }}</flux:menu.item>
                             <flux:menu.separator />
                             <flux:menu.item icon="arrow-up-tray" wire:click="newDocument">{{ __('Document') }}</flux:menu.item>
                             <flux:menu.item icon="document-check" wire:click="editAgreement">{{ __('Agreement') }}</flux:menu.item>
@@ -690,7 +622,7 @@ new #[Title('Client profile')] class extends Component {
                     <span class="min-w-0 flex-1 truncate text-zinc-600 dark:text-zinc-300" title="{{ $np->due_date->format('j M Y') }}">{{ __('Next') }} <span class="font-semibold text-zinc-800 dark:text-zinc-100">{{ $np->due_date->toNepali(withYear: false) }}</span></span>
                     <span class="{{ $deadlineTone($npDays) }} shrink-0 font-medium tabular-nums">{{ Client::money($np->amount) }}</span>
                 @elseif ($this->payments->isEmpty())
-                    <button type="button" wire:click="openPlan" class="inline-flex items-center gap-1.5 font-medium text-brand-600 hover:underline dark:text-brand-300"><flux:icon.plus variant="micro" class="size-3.5" />{{ __('Set up a payment plan') }}</button>
+                    <button type="button" wire:click="newPayment" class="inline-flex items-center gap-1.5 font-medium text-brand-600 hover:underline dark:text-brand-300"><flux:icon.plus variant="micro" class="size-3.5" />{{ __('Record a payment') }}</button>
                 @else
                     <flux:icon.check-circle variant="micro" class="size-3.5 text-emerald-500" />
                     <span class="font-medium text-emerald-700 dark:text-emerald-400">{{ __('Everything received') }}</span>
@@ -977,82 +909,89 @@ new #[Title('Client profile')] class extends Component {
                     @endif
                 </section>
 
-                {{-- Next payment --}}
-                <section class="{{ $panel }} p-5">
-                    <div class="flex items-center justify-between">
-                        <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Next payment') }}</h2>
-                        <flux:button size="xs" variant="ghost" wire:click="setTab('payments')">{{ __('All payments') }}</flux:button>
+                {{-- Month agenda --}}
+                @php
+                    $agenda = collect($cal['weeks'])->flatten(1)->filter()
+                        ->filter(fn ($d) => $d['tasks']->isNotEmpty() || $d['payments']->isNotEmpty());
+                @endphp
+                <section class="{{ $panel }} overflow-hidden">
+                    <div class="flex items-center justify-between gap-3 border-b border-zinc-100 px-5 py-4 dark:border-white/5">
+                        <div>
+                            <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Scheduled work') }}</h2>
+                            <p class="text-xs text-zinc-500">{{ $cal['label'] }} · {{ trans_choice(':count item|:count items', $monthTasks->count()) }}</p>
+                        </div>
+                        <flux:button size="sm" icon="plus" wire:click="newTask">{{ __('Add') }}</flux:button>
                     </div>
-                    @if ($np = $this->nextPayment)
-                        @php $npDays = $np->dueInDays(); @endphp
-                        <div class="mt-4 flex items-center gap-3">
-                            <span @class([
-                                'flex size-12 shrink-0 flex-col items-center justify-center rounded-xl leading-none',
-                                'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300' => $npDays !== null && $npDays < 0,
-                                'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' => $npDays !== null && $npDays >= 0 && $npDays <= Payment::REMIND_DAYS,
-                                'bg-zinc-100 text-zinc-700 dark:bg-white/5 dark:text-zinc-200' => $npDays === null || $npDays > Payment::REMIND_DAYS,
-                            ])>
-                                @if ($np->due_date)
-                                    @php [, $npm, $npd] = NepaliDate::fromAd($np->due_date); @endphp
-                                    <span class="text-lg font-semibold tabular-nums">{{ $npd }}</span>
-                                    <span class="mt-0.5 text-[0.625rem] font-medium uppercase">{{ mb_substr(NepaliDate::MONTHS[$npm - 1], 0, 3) }}</span>
-                                @else
-                                    <flux:icon.banknotes variant="mini" class="size-5" />
-                                @endif
-                            </span>
-                            <div class="min-w-0 flex-1">
-                                <p class="text-lg leading-tight font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ Client::money($np->amount) }}</p>
-                                <p @class(['truncate text-xs', 'font-medium text-rose-600 dark:text-rose-400' => $npDays !== null && $npDays < 0, 'text-zinc-500' => $npDays === null || $npDays >= 0])>
-                                    @if ($np->due_date)
-                                        {{ $npDays < 0 ? trans_choice('Overdue by :count day|Overdue by :count days', abs($npDays)) : ($npDays === 0 ? __('Due today') : trans_choice('Due tomorrow|Due in :count days', $npDays)) }}
-                                    @else
-                                        {{ __('No due date') }}
-                                    @endif
-                                    {{ $np->note ? ' · '.$np->note : '' }}
-                                </p>
-                            </div>
-                        </div>
-                        <flux:button variant="primary" icon="check" class="mt-4 w-full" wire:click="togglePaid({{ $np->id }})">{{ __('Mark as received') }}</flux:button>
-                    @else
-                        <div class="mt-4 flex items-center gap-3 text-sm text-zinc-500">
-                            <span class="{{ $iconTile }} bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.check-badge variant="mini" class="size-4.5" /></span>
-                            {{ $this->payments->isEmpty() ? __('No payments scheduled yet.') : __('All payments are received.') }}
-                        </div>
-                        <flux:button icon="calendar-days" class="mt-4 w-full" wire:click="openPlan">{{ __('Set up a payment plan') }}</flux:button>
-                    @endif
-                </section>
 
-                {{-- Agreement --}}
-                <section class="{{ $panel }} p-5">
-                    <div class="flex items-center justify-between">
-                        <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Agreement') }}</h2>
-                        <flux:button size="xs" variant="ghost" icon="pencil-square" wire:click="editAgreement" data-test="add-agreement-button">{{ $hasAgreement ? __('Edit') : __('Add') }}</flux:button>
-                    </div>
-                    @if (! $hasAgreement)
-                        <p class="mt-3 text-sm text-zinc-500">{{ __('Add the contract period and upload the signed copy.') }}</p>
-                    @else
-                        <div class="mt-4 flex items-center gap-3">
-                            <div class="min-w-0 flex-1 rounded-lg bg-zinc-50 px-3 py-2 dark:bg-white/[0.03]">
-                                <p class="text-[0.6875rem] text-zinc-500">{{ __('Starts') }}</p>
-                                <p class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $c->contract_start?->toNepali() ?: '-' }}</p>
-                            </div>
-                            <flux:icon.arrow-right variant="micro" class="size-4 shrink-0 text-zinc-300" />
-                            <div class="min-w-0 flex-1 rounded-lg bg-zinc-50 px-3 py-2 dark:bg-white/[0.03]">
-                                <p class="text-[0.6875rem] text-zinc-500">{{ __('Ends') }}</p>
-                                <p class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $c->contract_end?->toNepali() ?: '-' }}</p>
+                    @if ($agenda->isEmpty())
+                        <div class="flex flex-col items-center gap-3 px-5 py-10 text-center">
+                            <span class="flex size-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-500 dark:bg-brand-500/15"><flux:icon.calendar-days class="size-6" /></span>
+                            <div>
+                                <p class="text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ __('Nothing scheduled') }}</p>
+                                <p class="mt-0.5 text-xs text-zinc-500">{{ __('Click a day on the calendar to plan work.') }}</p>
                             </div>
                         </div>
-                        @if ($contractPct !== null)
-                            <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div class="h-full rounded-full bg-brand-500" style="width: {{ $contractPct }}%"></div></div>
-                            <p class="mt-1.5 text-xs text-zinc-500">{{ __(':pct% of the agreement period has passed', ['pct' => $contractPct]) }}</p>
-                        @endif
-                        @if ($agreementDocs->isNotEmpty())
-                            <div class="-mx-5 mt-4 -mb-5 border-t border-zinc-100 dark:border-white/5">
-                                @foreach ($agreementDocs as $doc)
-                                    @include('partials.document-row', ['doc' => $doc, 'fileSize' => $fileSize])
-                                @endforeach
-                            </div>
-                        @endif
+                    @else
+                        <ol class="max-h-[34rem] divide-y divide-zinc-100 overflow-y-auto dark:divide-white/5">
+                            @foreach ($agenda as $d)
+                                @php
+                                    $dKey = $d['ad']->toDateString();
+                                    $dToday = $dKey === $todayKey;
+                                    $dPast = $d['ad']->lt(today());
+                                @endphp
+                                <li wire:key="agenda-{{ $dKey }}" class="flex gap-3 px-5 py-3.5">
+                                    <div @class([
+                                        'flex w-11 shrink-0 flex-col items-center justify-center self-start rounded-xl py-1.5 leading-none',
+                                        'bg-brand-500 text-white shadow-md shadow-brand-500/30' => $dToday,
+                                        'bg-zinc-50 text-zinc-400 dark:bg-white/[0.03]' => ! $dToday && $dPast,
+                                        'bg-zinc-100 text-zinc-800 dark:bg-white/5 dark:text-zinc-100' => ! $dToday && ! $dPast,
+                                    ]) title="{{ $d['ad']->format('l, j M Y') }}">
+                                        <span class="text-base font-semibold tabular-nums">{{ $d['day'] }}</span>
+                                        <span @class(['mt-1 text-[0.625rem] font-medium uppercase', 'text-white/80' => $dToday, 'text-zinc-400' => ! $dToday])>{{ $d['ad']->format('D') }}</span>
+                                    </div>
+                                    <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+                                        @foreach ($d['payments'] as $p)
+                                            @php $ps = $p->status(); @endphp
+                                            <div wire:key="agenda-pay-{{ $p->id }}" class="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 ring-1 ring-inset {{ ['paid' => 'bg-emerald-50/70 ring-emerald-200/70 dark:bg-emerald-500/10 dark:ring-emerald-500/20', 'overdue' => 'bg-rose-50/70 ring-rose-200/70 dark:bg-rose-500/10 dark:ring-rose-500/20', 'pending' => 'bg-zinc-50 ring-zinc-200/70 dark:bg-white/[0.03] dark:ring-white/10'][$ps] }}">
+                                                <flux:icon.banknotes variant="micro" class="size-4 shrink-0 {{ ['paid' => 'text-emerald-600', 'overdue' => 'text-rose-600', 'pending' => 'text-zinc-500'][$ps] }}" />
+                                                <span class="min-w-0 flex-1 truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ __(Payment::TYPES[$p->type]['label'] ?? 'Payment') }}</span>
+                                                <span class="shrink-0 text-xs font-semibold text-zinc-700 tabular-nums dark:text-zinc-200">{{ Client::money($p->amount) }}</span>
+                                                @if (! $p->paid_at)
+                                                    <button type="button" wire:click="togglePaid({{ $p->id }})" class="shrink-0 rounded-md p-0.5 text-zinc-400 hover:bg-white hover:text-emerald-600 dark:hover:bg-white/10" title="{{ __('Mark as received') }}"><flux:icon.check variant="micro" class="size-4" /></button>
+                                                @endif
+                                            </div>
+                                        @endforeach
+                                        @foreach ($d['tasks'] as $t)
+                                            @php
+                                                $tone = $workTones[$t->type] ?? $workTones['task'];
+                                                $tt = Task::TYPES[$t->type] ?? Task::TYPES['task'];
+                                            @endphp
+                                            <div wire:key="agenda-task-{{ $t->id }}" class="group flex items-center gap-2.5 rounded-lg px-1 py-1 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
+                                                <button type="button" wire:click="toggleTask({{ $t->id }})" @class([
+                                                    'flex size-5 shrink-0 items-center justify-center rounded-md ring-1 transition',
+                                                    'bg-emerald-500 text-white ring-emerald-500' => $t->completed_at,
+                                                    'text-transparent ring-zinc-300 hover:text-brand-300 hover:ring-brand-500 dark:ring-zinc-600' => ! $t->completed_at,
+                                                ]) aria-label="{{ $t->completed_at ? __('Mark as not done') : __('Mark as done') }}">
+                                                    <flux:icon.check variant="micro" class="size-3.5" />
+                                                </button>
+                                                <div class="min-w-0 flex-1">
+                                                    <p @class(['truncate text-sm', 'text-zinc-400 line-through' => $t->completed_at, 'font-medium text-zinc-800 dark:text-zinc-100' => ! $t->completed_at])>{{ $t->title }}</p>
+                                                    <p class="flex items-center gap-1.5 text-[0.6875rem] text-zinc-500">
+                                                        <span class="{{ $tone['dot'] }} size-1.5 rounded-full"></span>{{ __($tt['label']) }}
+                                                        @if ($t->isOverdue())
+                                                            <span class="font-medium text-rose-600 dark:text-rose-400">· {{ __('Late') }}</span>
+                                                        @endif
+                                                    </p>
+                                                </div>
+                                                <button type="button" wire:click="deleteTask({{ $t->id }})" wire:confirm="{{ __('Delete this work?') }}" class="shrink-0 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:text-rose-500 focus:opacity-100" aria-label="{{ __('Delete') }}">
+                                                    <flux:icon.trash variant="micro" class="size-4" />
+                                                </button>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </li>
+                            @endforeach
+                        </ol>
                     @endif
                 </section>
             </div>
@@ -1099,7 +1038,6 @@ new #[Title('Client profile')] class extends Component {
                         <span class="rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-500 tabular-nums dark:bg-white/5">{{ $this->payments->count() }}</span>
                     </div>
                     <div class="flex items-center gap-2">
-                        <flux:button size="sm" variant="ghost" icon="calendar-days" wire:click="openPlan" data-test="payment-plan-button">{{ __('Payment plan') }}</flux:button>
                         <flux:button size="sm" icon="plus" wire:click="newPayment" data-test="record-payment-button">{{ __('Record payment') }}</flux:button>
                     </div>
                 </div>
@@ -1108,10 +1046,7 @@ new #[Title('Client profile')] class extends Component {
                     <div class="flex flex-col items-center gap-3 px-5 py-12 text-center">
                         <span class="{{ $iconTile }} bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10"><flux:icon.banknotes variant="mini" class="size-4.5" /></span>
                         <p class="text-sm text-zinc-500">{{ __('No payments recorded yet.') }}</p>
-                        <div class="flex flex-wrap justify-center gap-2">
-                            <flux:button size="sm" variant="primary" icon="calendar-days" wire:click="openPlan">{{ __('Set up a payment plan') }}</flux:button>
-                            <flux:button size="sm" icon="plus" wire:click="newPayment">{{ __('Record a payment') }}</flux:button>
-                        </div>
+                        <flux:button size="sm" variant="primary" icon="plus" wire:click="newPayment">{{ __('Record the first payment') }}</flux:button>
                     </div>
                 @else
                     <div class="overflow-x-auto">
@@ -1119,7 +1054,7 @@ new #[Title('Client profile')] class extends Component {
                             <thead>
                                 <tr class="text-xs text-zinc-500">
                                     <th class="px-5 py-2.5 text-start font-medium">{{ __('Due date') }}</th>
-                                    <th class="px-5 py-2.5 text-start font-medium">{{ __('Reference') }}</th>
+                                    <th class="px-5 py-2.5 text-start font-medium">{{ __('Type') }}</th>
                                     <th class="px-5 py-2.5 text-start font-medium">{{ __('Method') }}</th>
                                     <th class="px-5 py-2.5 text-end font-medium">{{ __('Amount') }}</th>
                                     <th class="px-5 py-2.5 text-start font-medium">{{ __('Status') }}</th>
@@ -1133,7 +1068,12 @@ new #[Title('Client profile')] class extends Component {
                                     @endphp
                                     <tr wire:key="payment-{{ $payment->id }}" class="transition hover:bg-zinc-50/70 dark:hover:bg-white/[0.02]">
                                         <td class="px-5 py-3 text-zinc-700 dark:text-zinc-200" title="{{ $payment->due_date?->format('j M Y') }}">{{ $payment->due_date?->toNepali() ?: '-' }}</td>
-                                        <td class="px-5 py-3 text-zinc-500 tabular-nums">{{ $payment->reference ?? '-' }}</td>
+                                        <td class="px-5 py-3">
+                                            <p class="inline-flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-100"><flux:icon :icon="Payment::TYPES[$payment->type]['icon'] ?? 'banknotes'" variant="micro" class="size-3.5 text-zinc-400" />{{ __(Payment::TYPES[$payment->type]['label'] ?? 'Payment') }}</p>
+                                            @if ($payment->reference || $payment->note)
+                                                <p class="max-w-56 truncate text-xs text-zinc-500">{{ collect([$payment->reference, $payment->note])->filter()->implode(' · ') }}</p>
+                                            @endif
+                                        </td>
                                         <td class="px-5 py-3 text-zinc-500">{{ $payment->method ?? '-' }}</td>
                                         <td class="px-5 py-3 text-end font-semibold text-zinc-900 tabular-nums dark:text-white">{{ Client::money($payment->amount) }}</td>
                                         <td class="px-5 py-3 whitespace-nowrap">
@@ -1301,141 +1241,123 @@ new #[Title('Client profile')] class extends Component {
         </form>
     </flux:modal>
 
-    {{-- Payment plan --}}
-    <flux:modal name="payment-plan" class="w-full max-w-xl">
-        <form wire:submit="savePlan" class="flex flex-col gap-5">
-            <div>
-                <flux:heading size="lg">{{ __('Payment plan') }}</flux:heading>
-                <flux:text class="mt-1">{{ __('Choose how :name pays. The payments are added to the list below.', ['name' => $c->name]) }}</flux:text>
-            </div>
-
-            <div class="grid grid-cols-2 gap-2">
-                @foreach (Client::PAYMENT_PLANS as $key => $plan)
-                    <button
-                        type="button"
-                        wire:click="$set('planType', '{{ $key }}')"
-                        @class([
-                            'relative flex items-start gap-3 rounded-xl p-3 text-start ring-1 transition duration-200',
-                            'bg-brand-50/70 ring-2 ring-brand-500 dark:bg-brand-500/10' => $planType === $key,
-                            'bg-white ring-zinc-200 hover:ring-zinc-300 dark:bg-white/[0.03] dark:ring-white/10' => $planType !== $key,
-                        ])
-                    >
-                        <span @class(['flex size-8 shrink-0 items-center justify-center rounded-lg', 'bg-brand-500 text-white' => $planType === $key, 'bg-zinc-100 text-zinc-500 dark:bg-white/5' => $planType !== $key])>
-                            <flux:icon :icon="$plan['icon']" variant="mini" class="size-4" />
-                        </span>
-                        <span class="min-w-0">
-                            <span class="block text-sm font-semibold text-zinc-900 dark:text-white">{{ __($plan['label']) }}</span>
-                            <span class="block text-xs text-zinc-500">{{ __($plan['hint']) }}</span>
-                        </span>
-                    </button>
-                @endforeach
-            </div>
-
-            <div class="grid gap-4 sm:grid-cols-2">
-                <flux:field class="sm:col-span-2">
-                    <flux:label>{{ __('Total amount') }}</flux:label>
-                    <flux:input.group>
-                        <flux:input.group.prefix>{{ config('app.currency') }}</flux:input.group.prefix>
-                        <flux:input wire:model.live.debounce.400ms="planAmount" type="number" min="0" step="1" inputmode="decimal" />
-                    </flux:input.group>
-                    <flux:error name="planAmount" />
-                </flux:field>
-                <x-nepali-date wire:model.live="planStart" :label="__('Start date')" />
-                @if (in_array($planType, ['half_advance', 'after_work']) && $c->service_type !== 'social_media')
-                    <x-nepali-date wire:model.live="planEnd" :label="__('End date')" />
-                @elseif (in_array($planType, ['half_advance', 'after_work']))
-                    <flux:field>
-                        <flux:label>{{ __('Duration') }}</flux:label>
-                        <flux:input.group>
-                            <flux:input wire:model.live.debounce.400ms="planMonths" type="number" min="1" max="120" step="1" inputmode="numeric" placeholder="3" />
-                            <flux:input.group.suffix>{{ __('month(s)') }}</flux:input.group.suffix>
-                        </flux:input.group>
-                        <flux:error name="planMonths" />
-                    </flux:field>
-                    @if ($planStart && (int) $planMonths > 0)
-                        <div class="flex items-center gap-2.5 rounded-lg bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800 ring-1 ring-emerald-100 sm:col-span-2 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20">
-                            <flux:icon.document-check variant="micro" class="size-4 shrink-0" />
-                            <span>
-                                <span class="font-semibold">{{ Date::parse($planStart)->toNepali() }}</span>
-                                <span class="opacity-60">→</span>
-                                <span class="font-semibold">{{ NepaliDate::periodEndAfter(Date::parse($planStart), (int) $planMonths)->toNepali() }}</span>
-                                <span class="opacity-75">· {{ trans_choice(':count month|:count months', (int) $planMonths) }}</span>
-                            </span>
-                        </div>
-                    @endif
-                @endif
-                @if ($planType === 'installments')
-                    <flux:field>
-                        <flux:label>{{ __('Number of installments') }}</flux:label>
-                        <flux:input.group>
-                            <flux:input wire:model.live.debounce.400ms="planInstallments" type="number" min="2" max="36" step="1" />
-                            <flux:input.group.suffix>{{ __('monthly') }}</flux:input.group.suffix>
-                        </flux:input.group>
-                        <flux:error name="planInstallments" />
-                    </flux:field>
-                @endif
-            </div>
-
-            @if ($planType !== 'after_work')
-                <flux:checkbox wire:model.live="planAdvancePaid" :label="__('Advance / first payment already received')" />
-            @endif
-
-            @if ($this->planPreview)
-                <div class="overflow-hidden rounded-xl ring-1 ring-zinc-200/80 dark:ring-white/10">
-                    @foreach ($this->planPreview as $i => $row)
-                        @php
-                            $received = $i === 0 && $planAdvancePaid && $planType !== 'after_work';
-                        @endphp
-                        <div class="flex items-center gap-3 border-b border-zinc-100 px-3 py-2 text-sm last:border-0 dark:border-white/5">
-                            <span @class(['flex size-6 shrink-0 items-center justify-center rounded-full text-[0.6875rem] font-semibold', 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' => $received, 'bg-zinc-100 text-zinc-500 dark:bg-white/5' => ! $received])>{{ $i + 1 }}</span>
-                            <span class="min-w-0 flex-1">
-                                <span class="block truncate text-zinc-800 dark:text-zinc-100">{{ $row['label'] }}</span>
-                                <span class="block text-xs text-zinc-400" title="{{ $row['due']->format('j M Y') }}">{{ $row['due']->toNepali() }}</span>
-                            </span>
-                            @if ($received)
-                                <span class="text-xs font-medium text-emerald-600 dark:text-emerald-400">{{ __('Received') }}</span>
-                            @endif
-                            <span class="font-semibold text-zinc-900 tabular-nums dark:text-white">{{ Client::money($row['amount']) }}</span>
-                        </div>
-                    @endforeach
-                </div>
-            @else
-                <p class="text-xs text-zinc-400">{{ __('Enter the amount and start date to see the payments.') }}</p>
-            @endif
-
-            @if ($this->payments->isNotEmpty())
-                <p class="-mt-2 text-xs text-amber-700 dark:text-amber-400">{{ trans_choice('This client already has :count payment. These will be added on top.|This client already has :count payments. These will be added on top.', $this->payments->count()) }}</p>
-            @endif
-
-            <div class="flex justify-end gap-2">
-                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
-                <flux:button type="submit" variant="primary" icon="check" data-test="save-plan-button">{{ __('Add payments') }}</flux:button>
-            </div>
-        </form>
-    </flux:modal>
-
     {{-- Record payment --}}
-    <flux:modal name="payment-form" class="w-full max-w-md">
-        <form wire:submit="savePayment" class="flex flex-col gap-5">
-            <div>
-                <flux:heading size="lg">{{ __('Record payment') }}</flux:heading>
-                <flux:text class="mt-1">{{ __('Add an invoice or a payment for :name.', ['name' => $c->name]) }}</flux:text>
+    @php
+        $methodIcons = ['Bank transfer' => 'building-library', 'Cash' => 'banknotes', 'eSewa' => 'device-phone-mobile', 'Khalti' => 'wallet', 'Cheque' => 'document-text', 'Card' => 'credit-card'];
+        $outstanding = max(0, $stats['billed'] - $stats['received']);
+        $quick = array_filter([
+            __('Full price') => $c->totalValue(),
+            __('Half') => $c->totalValue() ? round($c->totalValue() / 2) : null,
+            __('Outstanding') => $outstanding ?: null,
+        ]);
+    @endphp
+    <flux:modal name="payment-form" class="w-full max-w-xl overflow-visible p-0!" :closable="false">
+        <form wire:submit="savePayment" class="flex flex-col" x-data="{ typeOpen: false, types: @js(collect(Payment::TYPES)->map(fn ($t) => ['label' => __($t['label']), 'hint' => __($t['hint'])])) }">
+            {{-- Head --}}
+            <div class="flex items-start gap-4 border-b border-zinc-100 px-6 py-5 dark:border-white/5">
+                <span class="flex size-11 shrink-0 items-center justify-center rounded-xl bg-linear-to-br from-emerald-400 to-emerald-600 text-white shadow-md shadow-emerald-500/30"><flux:icon.banknotes variant="mini" class="size-5" /></span>
+                <div class="min-w-0 flex-1">
+                    <flux:heading size="lg">{{ __('Record payment') }}</flux:heading>
+                    <p class="truncate text-sm text-zinc-500">{{ $c->displayName() }}</p>
+                </div>
+                @if ($outstanding > 0)
+                    <div class="shrink-0 rounded-lg bg-amber-50 px-3 py-1.5 text-end ring-1 ring-amber-200/70 dark:bg-amber-500/10 dark:ring-amber-500/20">
+                        <p class="text-[0.6875rem] text-amber-700 dark:text-amber-300">{{ __('Outstanding') }}</p>
+                        <p class="text-sm font-semibold text-amber-800 tabular-nums dark:text-amber-200">{{ Client::money($outstanding) }}</p>
+                    </div>
+                @endif
             </div>
-            <div class="grid gap-4 sm:grid-cols-2">
-                <flux:input wire:model="payAmount" type="number" min="0" step="0.01" :label="__('Amount (:currency)', ['currency' => config('app.currency')])" required class="sm:col-span-2" />
-                <x-nepali-date wire:model="payDue" :label="__('Due date')" class="sm:col-span-2" />
-                <flux:select wire:model="payMethod" :label="__('Method')">
-                    <flux:select.option value="">{{ __('Not set') }}</flux:select.option>
-                    @foreach (Payment::METHODS as $method)
-                        <flux:select.option :value="$method">{{ $method }}</flux:select.option>
-                    @endforeach
-                </flux:select>
-                <flux:input wire:model="payReference" :label="__('Reference')" :placeholder="__('e.g. INV-1042')" />
-                <flux:checkbox wire:model="payPaid" :label="__('Already received')" class="sm:col-span-2" />
+
+            <div class="flex flex-col gap-5 px-6 py-5">
+                {{-- Type --}}
+                <div class="relative" @click.outside="typeOpen = false" @keydown.escape.stop="typeOpen = false">
+                    <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Payment type') }}</span>
+                    <button type="button" @click="typeOpen = ! typeOpen" class="mt-2 flex w-full items-center gap-3 rounded-xl bg-white px-3 py-2.5 text-start ring-1 ring-zinc-200 transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 focus:outline-none dark:bg-white/5 dark:ring-white/10" :aria-expanded="typeOpen" aria-haspopup="listbox" data-test="payment-type-button">
+                        <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+                            @foreach (Payment::TYPES as $key => $t)
+                                <flux:icon :icon="$t['icon']" variant="mini" class="size-4.5" x-show="$wire.payType === '{{ $key }}'" />
+                            @endforeach
+                        </span>
+                        <span class="min-w-0 flex-1">
+                            <span class="block text-sm font-semibold text-zinc-900 dark:text-white" x-text="types[$wire.payType]?.label"></span>
+                            <span class="block truncate text-xs text-zinc-500" x-text="types[$wire.payType]?.hint"></span>
+                        </span>
+                        <flux:icon.chevron-up-down variant="mini" class="size-4 text-zinc-400" />
+                    </button>
+                    <div x-show="typeOpen" x-transition.origin.top x-cloak class="absolute inset-x-0 top-full z-20 mt-1.5 max-h-80 overflow-y-auto rounded-xl bg-white p-1.5 shadow-[0_20px_50px_-12px_rgb(15_23_42/0.35)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10" role="listbox">
+                        @foreach (Payment::TYPES as $key => $t)
+                            <button type="button" role="option" @click="$wire.payType = '{{ $key }}'; typeOpen = false" :aria-selected="$wire.payType === '{{ $key }}'" class="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-start transition hover:bg-zinc-50 dark:hover:bg-white/5" :class="$wire.payType === '{{ $key }}' && 'bg-brand-50/70 dark:bg-brand-500/10'">
+                                <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-white/5" :class="$wire.payType === '{{ $key }}' && 'bg-brand-500! text-white!'"><flux:icon :icon="$t['icon']" variant="micro" class="size-4" /></span>
+                                <span class="min-w-0 flex-1">
+                                    <span class="block text-sm font-medium text-zinc-900 dark:text-white">{{ __($t['label']) }}</span>
+                                    <span class="block truncate text-xs text-zinc-500">{{ __($t['hint']) }}</span>
+                                </span>
+                                <flux:icon.check variant="mini" class="size-4 text-brand-600" x-show="$wire.payType === '{{ $key }}'" />
+                            </button>
+                        @endforeach
+                    </div>
+                    <flux:error name="payType" />
+                </div>
+
+                {{-- Amount --}}
+                <div>
+                    <div class="flex items-center justify-between">
+                        <label for="pay-amount" class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Amount') }}</label>
+                        <div class="flex gap-1">
+                            @foreach ($quick as $label => $value)
+                                <button type="button" @click="$wire.payAmount = '{{ (int) $value }}'" class="rounded-md bg-zinc-100 px-2 py-0.5 text-[0.6875rem] font-medium text-zinc-600 transition hover:bg-brand-50 hover:text-brand-700 dark:bg-white/5 dark:text-zinc-300">{{ $label }}</button>
+                            @endforeach
+                        </div>
+                    </div>
+                    <div class="mt-2 flex items-center rounded-xl bg-white ring-1 ring-zinc-200 focus-within:ring-2 focus-within:ring-brand-500 dark:bg-white/5 dark:ring-white/10">
+                        <span class="ps-4 text-sm font-semibold text-zinc-400">{{ config('app.currency') }}</span>
+                        <input id="pay-amount" wire:model="payAmount" type="number" min="0" step="0.01" inputmode="decimal" required placeholder="0" class="w-full border-0 bg-transparent px-3 py-3 text-2xl font-semibold tracking-tight text-zinc-900 tabular-nums placeholder:text-zinc-300 focus:ring-0 focus:outline-none dark:text-white" />
+                    </div>
+                    <flux:error name="payAmount" />
+                </div>
+
+                {{-- Status --}}
+                <div class="grid grid-cols-2 gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-white/5">
+                    <button type="button" @click="$wire.payPaid = true" class="flex items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium transition" :class="$wire.payPaid ? 'bg-white text-emerald-700 shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-800 dark:text-emerald-300 dark:ring-white/10' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-white'" data-test="pay-received">
+                        <flux:icon.check-circle variant="mini" class="size-4" />{{ __('Received') }}
+                    </button>
+                    <button type="button" @click="$wire.payPaid = false" class="flex items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium transition" :class="! $wire.payPaid ? 'bg-white text-amber-700 shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-800 dark:text-amber-300 dark:ring-white/10' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-white'">
+                        <flux:icon.clock variant="mini" class="size-4" />{{ __('Due later') }}
+                    </button>
+                </div>
+
+                {{-- Date --}}
+                <div>
+                    <p class="mb-2 text-sm font-medium text-zinc-800 dark:text-white" x-text="$wire.payPaid ? @js(__('Payment date')) : @js(__('Due date'))"></p>
+                    <x-nepali-date wire:model="payDue" />
+                </div>
+
+                {{-- Method --}}
+                <div x-show="$wire.payPaid" x-transition>
+                    <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Payment method') }}</span>
+                    <div class="mt-2 grid grid-cols-3 gap-2">
+                        @foreach (Payment::METHODS as $method)
+                            <button type="button" @click="$wire.payMethod = $wire.payMethod === @js($method) ? '' : @js($method)" class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ring-1 transition" :class="$wire.payMethod === @js($method) ? 'bg-brand-50 text-brand-700 ring-2 ring-brand-500 dark:bg-brand-500/10 dark:text-brand-200' : 'text-zinc-600 ring-zinc-200 hover:bg-zinc-50 dark:text-zinc-300 dark:ring-white/10 dark:hover:bg-white/5'">
+                                <flux:icon :icon="$methodIcons[$method] ?? 'banknotes'" variant="micro" class="size-4 shrink-0" />
+                                <span class="truncate">{{ $method }}</span>
+                            </button>
+                        @endforeach
+                    </div>
+                </div>
+
+                {{-- Reference and note --}}
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <flux:input wire:model="payReference" :label="__('Reference')" :placeholder="__('e.g. INV-1042 or txn ID')" />
+                    <flux:input wire:model="payNote" :label="__('Note')" :placeholder="__('e.g. Dashain package')" />
+                </div>
             </div>
-            <div class="flex justify-end gap-2">
-                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
-                <flux:button type="submit" variant="primary" data-test="save-payment-button">{{ __('Save payment') }}</flux:button>
+
+            <div class="flex items-center justify-between gap-3 rounded-b-xl border-t border-zinc-100 bg-zinc-50/70 px-6 py-4 dark:border-white/5 dark:bg-white/[0.02]">
+                <p class="hidden text-xs text-zinc-500 sm:block" x-text="$wire.payPaid ? @js(__('Counts as received right away.')) : @js(__('Shows as due with a reminder.'))"></p>
+                <div class="ms-auto flex gap-2">
+                    <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
+                    <flux:button type="submit" variant="primary" icon="check" data-test="save-payment-button">{{ __('Save payment') }}</flux:button>
+                </div>
             </div>
         </form>
     </flux:modal>

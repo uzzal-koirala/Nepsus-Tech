@@ -8,13 +8,24 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['amount', 'due_date', 'paid_at', 'method', 'reference', 'note'])]
+#[Fillable(['amount', 'type', 'due_date', 'paid_at', 'method', 'reference', 'note'])]
 class Payment extends Model
 {
     /** @use HasFactory<PaymentFactory> */
     use HasFactory;
 
     public const METHODS = ['Bank transfer', 'Cash', 'eSewa', 'Khalti', 'Cheque', 'Card'];
+
+    /** What a payment is for. */
+    public const TYPES = [
+        'advance' => ['label' => 'Advance payment', 'hint' => 'Paid before the work starts', 'icon' => 'forward'],
+        'partial' => ['label' => 'Partial payment', 'hint' => 'Part of the amount due', 'icon' => 'chart-pie'],
+        'installment' => ['label' => 'Installment', 'hint' => 'One of several planned parts', 'icon' => 'calendar-days'],
+        'monthly' => ['label' => 'Monthly fee', 'hint' => 'Regular package payment', 'icon' => 'arrow-path'],
+        'full' => ['label' => 'Full payment', 'hint' => 'The whole amount at once', 'icon' => 'check-badge'],
+        'final' => ['label' => 'Final payment', 'hint' => 'The last part, work complete', 'icon' => 'flag'],
+        'other' => ['label' => 'Other', 'hint' => 'Anything else', 'icon' => 'ellipsis-horizontal-circle'],
+    ];
 
     protected function casts(): array
     {
