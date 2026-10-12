@@ -1225,24 +1225,20 @@ new #[Title('Client profile')] class extends Component {
                 @php
                     $rows = ($byStage[$stage] ?? collect())->sortBy(fn ($t) => [$t->due_date?->timestamp ?? PHP_INT_MAX, $t->id])->values();
                 @endphp
-                <section wire:key="stage-{{ $stage }}" x-data="{ open: {{ $stage === 'done' && $rows->count() > 8 ? 'false' : 'true' }} }">
-                    <div class="mb-3 flex items-center gap-2">
-                        <button type="button" @click="open = ! open" class="flex size-6 items-center justify-center rounded-md text-zinc-400 transition hover:bg-white hover:text-zinc-700 dark:hover:bg-white/10" :aria-expanded="open" aria-label="{{ __('Show or hide :status', ['status' => __($st['label'])]) }}">
-                            <flux:icon.chevron-down variant="micro" class="size-4 transition" ::class="open ? '' : '-rotate-90'" />
+                <section wire:key="stage-{{ $stage }}" x-data="{ open: {{ $stage === 'done' && $rows->count() > 4 ? 'false' : 'true' }} }">
+                    <div class="mb-3 flex items-center gap-2.5">
+                        <button type="button" @click="open = ! open" class="group/head flex items-center gap-2.5" :aria-expanded="open">
+                            <span class="{{ $statusTones[$stage]['dot'] }} size-2.5 rounded-full"></span>
+                            <h3 class="text-sm font-semibold text-zinc-900 dark:text-white">{{ __($st['label']) }}</h3>
+                            <span class="rounded-full bg-zinc-200/70 px-2 py-0.5 text-xs font-medium text-zinc-600 tabular-nums dark:bg-white/10 dark:text-zinc-300">{{ $rows->count() }}</span>
+                            <flux:icon.chevron-down variant="micro" class="size-4 text-zinc-400 transition group-hover/head:text-zinc-700" ::class="open ? '' : '-rotate-90'" />
                         </button>
-                        <span class="{{ $statusTones[$stage]['pill'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-semibold">
-                            <flux:icon :icon="$st['icon']" variant="micro" class="size-3.5" />{{ __($st['label']) }}
-                        </span>
-                        <span class="text-xs font-medium text-zinc-400 tabular-nums">{{ $rows->count() }}</span>
-                        <span class="h-px flex-1 bg-zinc-200/80 dark:bg-white/10"></span>
-                        <button type="button" wire:click="newTask('{{ $stage }}')" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-zinc-500 transition hover:bg-white hover:text-brand-600 dark:hover:bg-white/10"><flux:icon.plus variant="micro" class="size-3.5" />{{ __('Add') }}</button>
+                        <button type="button" wire:click="newTask('{{ $stage }}')" class="ms-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-zinc-500 transition hover:bg-white hover:text-brand-600 dark:hover:bg-white/10"><flux:icon.plus variant="micro" class="size-3.5" />{{ __('Add task') }}</button>
                     </div>
 
                     <div x-show="open" x-collapse>
                         @if ($rows->isEmpty())
-                            <button type="button" wire:click="newTask('{{ $stage }}')" class="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-zinc-200 py-6 text-sm text-zinc-400 transition hover:border-brand-300 hover:text-brand-600 dark:border-white/10">
-                                <flux:icon.plus variant="micro" class="size-4" />{{ __('Add a task to :status', ['status' => __($st['label'])]) }}
-                            </button>
+                            <p class="rounded-xl border border-dashed border-zinc-300/80 px-4 py-5 text-center text-sm text-zinc-400 dark:border-white/10">{{ __('No tasks here') }}</p>
                         @else
                             <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                                 @foreach ($rows as $t)
@@ -1255,66 +1251,67 @@ new #[Title('Client profile')] class extends Component {
                                         $people = $t->assignees;
                                     @endphp
                                     <article wire:key="task-card-{{ $t->id }}" @class([
-                                        'group flex flex-col overflow-hidden rounded-2xl bg-white ring-1 transition duration-200 dark:bg-zinc-950',
-                                        'shadow-[0_1px_2px_rgb(15_23_42/0.05)] ring-zinc-200/70 hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-22px_rgb(15_23_42/0.45)] dark:ring-white/10' => ! $done,
-                                        'opacity-70 ring-zinc-200/60 hover:opacity-100 dark:ring-white/5' => $done,
+                                        'group flex flex-col rounded-xl bg-white p-4 ring-1 transition duration-200 dark:bg-zinc-950',
+                                        'ring-zinc-200/80 hover:shadow-[0_12px_30px_-18px_rgb(15_23_42/0.4)] hover:ring-zinc-300 dark:ring-white/10' => ! $done,
+                                        'ring-zinc-200/50 dark:ring-white/5' => $done,
                                     ])>
-                                        {{-- Type band --}}
-                                        <div class="{{ $tone['chip'] }} flex items-center gap-2 px-4 py-2.5">
-                                            <span class="{{ $tone['dot'] }} flex size-6 items-center justify-center rounded-md text-white shadow-sm"><flux:icon :icon="$tt['icon']" variant="micro" class="size-3.5" /></span>
-                                            <span class="text-xs font-semibold">{{ $tt['label'] }}</span>
-                                            <flux:dropdown class="ms-auto">
-                                                <button type="button" class="{{ $priorityTones[$t->priority] ?? $priorityTones['medium'] }} inline-flex items-center gap-1 rounded-md bg-white/80 px-1.5 py-0.5 text-[0.6875rem] font-medium ring-1 ring-inset" title="{{ __('Priority') }}">
-                                                    <flux:icon.flag variant="micro" class="size-3" />{{ __(Task::PRIORITIES[$t->priority] ?? 'Medium') }}
-                                                </button>
-                                                <flux:menu>
-                                                    @foreach (Task::PRIORITIES as $pk => $pl)
-                                                        <flux:menu.item icon="flag" wire:click="setTaskPriority({{ $t->id }}, '{{ $pk }}')">{{ __($pl) }}</flux:menu.item>
-                                                    @endforeach
-                                                </flux:menu>
-                                            </flux:dropdown>
-                                            <flux:dropdown align="end">
-                                                <button type="button" class="flex size-6 items-center justify-center rounded-md opacity-70 transition hover:bg-white/70 hover:opacity-100" aria-label="{{ __('Task actions') }}"><flux:icon.ellipsis-horizontal variant="micro" class="size-4" /></button>
+                                        {{-- Type, priority, menu --}}
+                                        <div class="flex items-center gap-2 text-xs">
+                                            <span class="{{ $tone['dot'] }} size-2 rounded-full"></span>
+                                            <span class="font-medium text-zinc-500 dark:text-zinc-400">{{ $tt['label'] }}</span>
+                                            @if (in_array($t->priority, ['high', 'urgent']) && ! $done)
+                                                <span @class(['inline-flex items-center gap-1 font-medium', 'text-orange-600 dark:text-orange-400' => $t->priority === 'high', 'text-rose-600 dark:text-rose-400' => $t->priority === 'urgent'])>
+                                                    <flux:icon.flag variant="micro" class="size-3" />{{ __(Task::PRIORITIES[$t->priority]) }}
+                                                </span>
+                                            @endif
+                                            <flux:dropdown align="end" class="ms-auto">
+                                                <button type="button" class="-my-1 flex size-7 items-center justify-center rounded-md text-zinc-400 opacity-0 transition group-hover:opacity-100 hover:bg-zinc-100 hover:text-zinc-700 focus:opacity-100 dark:hover:bg-white/10" aria-label="{{ __('Task actions') }}"><flux:icon.ellipsis-horizontal variant="micro" class="size-4" /></button>
                                                 <flux:menu>
                                                     <flux:menu.item icon="pencil-square" wire:click="editTask({{ $t->id }})">{{ __('Edit') }}</flux:menu.item>
-                                                    <flux:menu.separator />
-                                                    @foreach (Task::STATUSES as $sk => $sv)
-                                                        @continue($sk === $stage)
-                                                        <flux:menu.item :icon="$sv['icon']" wire:click="setTaskStatus({{ $t->id }}, '{{ $sk }}')">{{ __('Move to :status', ['status' => __($sv['label'])]) }}</flux:menu.item>
-                                                    @endforeach
+                                                    <flux:menu.submenu :heading="__('Move to')">
+                                                        @foreach (Task::STATUSES as $sk => $sv)
+                                                            @continue($sk === $stage)
+                                                            <flux:menu.item :icon="$sv['icon']" wire:click="setTaskStatus({{ $t->id }}, '{{ $sk }}')">{{ __($sv['label']) }}</flux:menu.item>
+                                                        @endforeach
+                                                    </flux:menu.submenu>
+                                                    <flux:menu.submenu :heading="__('Priority')">
+                                                        @foreach (Task::PRIORITIES as $pk => $pl)
+                                                            <flux:menu.item icon="flag" wire:click="setTaskPriority({{ $t->id }}, '{{ $pk }}')">{{ __($pl) }}</flux:menu.item>
+                                                        @endforeach
+                                                    </flux:menu.submenu>
                                                     <flux:menu.separator />
                                                     <flux:menu.item icon="trash" variant="danger" wire:click="deleteTask({{ $t->id }})" wire:confirm="{{ __('Delete this task?') }}">{{ __('Delete') }}</flux:menu.item>
                                                 </flux:menu>
                                             </flux:dropdown>
                                         </div>
 
-                                        {{-- Body --}}
-                                        <div class="flex flex-1 flex-col gap-2 p-4">
-                                            <div class="flex items-start gap-3">
-                                                <button type="button" wire:click="editTask({{ $t->id }})" @class(['min-w-0 flex-1 text-start leading-snug', 'text-zinc-400 line-through' => $done, 'font-semibold text-zinc-900 hover:text-brand-600 dark:text-white' => ! $done])>{{ $t->title }}</button>
-                                                <button type="button" wire:click="toggleTask({{ $t->id }})" @class([
-                                                    'flex size-6 shrink-0 items-center justify-center rounded-full border-[1.5px] transition',
-                                                    'border-emerald-500 bg-emerald-500 text-white' => $done,
-                                                    'border-zinc-300 text-transparent hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-500 dark:border-zinc-600 dark:hover:bg-emerald-500/10' => ! $done,
-                                                ]) aria-label="{{ $done ? __('Mark as not done') : __('Mark as done') }}"><flux:icon.check variant="micro" class="size-3.5" /></button>
+                                        {{-- Title --}}
+                                        <div class="mt-3 flex items-start gap-3">
+                                            <button type="button" wire:click="toggleTask({{ $t->id }})" @class([
+                                                'mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border-[1.5px] transition',
+                                                'border-emerald-500 bg-emerald-500 text-white' => $done,
+                                                'border-zinc-300 text-transparent hover:border-emerald-500 hover:text-emerald-500 dark:border-zinc-600' => ! $done,
+                                            ]) aria-label="{{ $done ? __('Mark as not done') : __('Mark as done') }}"><flux:icon.check variant="micro" class="size-3" /></button>
+                                            <div class="min-w-0 flex-1">
+                                                <button type="button" wire:click="editTask({{ $t->id }})" @class(['block text-start text-[0.9375rem] leading-snug', 'text-zinc-400 line-through' => $done, 'font-semibold text-zinc-900 hover:text-brand-600 dark:text-white' => ! $done])>{{ $t->title }}</button>
+                                                @if ($t->description && ! $done)
+                                                    <p class="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-500">{{ $t->description }}</p>
+                                                @endif
                                             </div>
-                                            @if ($t->description)
-                                                <p class="line-clamp-2 text-xs leading-relaxed text-zinc-500">{{ $t->description }}</p>
-                                            @endif
                                         </div>
 
-                                        {{-- Footer --}}
-                                        <div class="flex items-center justify-between gap-2 border-t border-zinc-100 px-4 py-3 dark:border-white/5">
+                                        {{-- Date and people --}}
+                                        <div class="mt-auto flex items-center justify-between gap-2 pt-4">
                                             @if ($dates)
-                                                <span @class(['inline-flex min-w-0 items-center gap-1.5 text-xs', 'rounded-md bg-rose-50 px-1.5 py-0.5 font-medium text-rose-600 dark:bg-rose-500/10 dark:text-rose-300' => $late, 'text-zinc-500' => ! $late]) title="{{ $t->due_date?->format('j M Y') }}">
-                                                    <flux:icon.calendar variant="micro" class="size-3.5 shrink-0 opacity-70" /><span class="truncate">{{ $dates }}</span>
+                                                <span @class(['inline-flex min-w-0 items-center gap-1.5 text-xs', 'font-medium text-rose-600 dark:text-rose-400' => $late, 'text-zinc-500' => ! $late]) title="{{ $t->due_date?->format('j M Y') }}">
+                                                    <flux:icon :icon="$late ? 'exclamation-circle' : 'calendar'" variant="micro" class="size-3.5 shrink-0" /><span class="truncate">{{ $dates }}</span>
                                                 </span>
                                             @else
                                                 <span class="text-xs text-zinc-400">{{ __('No date') }}</span>
                                             @endif
 
                                             @if ($people->isNotEmpty())
-                                                <div class="flex shrink-0 items-center -space-x-1.5">
+                                                <div class="flex shrink-0 -space-x-1.5">
                                                     @foreach ($people->take(3) as $person)
                                                         <x-employee-avatar :employee="$person" class="size-7 text-[0.625rem] ring-2 ring-white dark:ring-zinc-950" />
                                                     @endforeach
@@ -1322,8 +1319,6 @@ new #[Title('Client profile')] class extends Component {
                                                         <span class="flex size-7 items-center justify-center rounded-full bg-zinc-100 text-[0.625rem] font-semibold text-zinc-600 ring-2 ring-white dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-950">+{{ $people->count() - 3 }}</span>
                                                     @endif
                                                 </div>
-                                            @else
-                                                <button type="button" wire:click="editTask({{ $t->id }})" class="flex size-7 shrink-0 items-center justify-center rounded-full border border-dashed border-zinc-300 text-zinc-400 transition hover:border-brand-400 hover:text-brand-600 dark:border-white/20" title="{{ __('Assign someone') }}"><flux:icon.user-plus variant="micro" class="size-3.5" /></button>
                                             @endif
                                         </div>
                                     </article>
