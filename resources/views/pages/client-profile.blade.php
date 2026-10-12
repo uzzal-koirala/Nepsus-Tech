@@ -480,117 +480,127 @@ new #[Title('Client profile')] class extends Component {
     {{-- Summary --}}
     @php
         $due = max(0, $stats['billed'] - $stats['received']);
-        $periodEnd = $c->periodEnd();
-        // ponytail: period length taken as billing_months x 30 days for the ring; exact BS month lengths not needed for a visual.
-        $periodDays = $periodEnd ? (int) today()->diffInDays($periodEnd) : null;
-        $periodPct = $periodEnd ? (int) max(0, min(100, round(100 - $periodDays / max(1, $c->billing_months * 30) * 100))) : null;
-        $deadline = ! $c->isRecurring() ? $c->contract_end : null;
-        $deadlineDays = $deadline ? (int) today()->diffInDays($deadline, false) : null;
-        $since = $c->contract_start ?? $c->created_at;
-        $sinceMonths = (int) $since->diffInMonths(today());
+        $np = $this->nextPayment;
+        $openCount = $stats['tasksTotal'] - $stats['tasksDone'];
+        $deadlineTone = fn (int $days) => match (true) {
+            $days < 0 => 'text-rose-600 dark:text-rose-400',
+            $days <= 3 => 'text-amber-600 dark:text-amber-400',
+            default => 'text-zinc-500',
+        };
+        $daysText = fn (int $days) => match (true) {
+            $days < 0 => trans_choice(':count day late|:count days late', abs($days)),
+            $days === 0 => __('Today'),
+            default => trans_choice('in :count day|in :count days', $days),
+        };
+
+        // Nearest dated things still to come (or late): open tasks, unpaid payments, renewal or project deadline.
+        $deadlines = collect();
+        foreach ($this->tasks->whereNull('completed_at')->whereNotNull('due_date') as $t) {
+            $deadlines->push(['icon' => 'check-circle', 'label' => $t->title, 'date' => $t->due_date]);
+        }
+        foreach ($this->payments->whereNull('paid_at')->whereNotNull('due_date') as $p) {
+            $deadlines->push(['icon' => 'banknotes', 'label' => __('Payment :amount', ['amount' => Client::money($p->amount)]), 'date' => $p->due_date]);
+        }
+        if ($periodEnd = $c->periodEnd()) {
+            $deadlines->push(['icon' => 'arrow-path', 'label' => __('Billing period ends'), 'date' => $periodEnd]);
+        } elseif (! $c->isRecurring() && $c->contract_end && ! $c->contract_end->isBefore(today()->subMonth())) {
+            $deadlines->push(['icon' => 'flag', 'label' => __('Project deadline'), 'date' => $c->contract_end]);
+        }
+        $deadlines = $deadlines->sortBy(fn ($d) => $d['date']->timestamp)->take(3)->values();
     @endphp
     <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {{-- Package / price --}}
+        {{-- Package: name, price and billing together --}}
         <div class="{{ $theme['card'] ?? 'from-brand-50 ring-brand-200/80 dark:from-brand-500/[0.09] dark:ring-brand-500/25' }} relative flex flex-col gap-4 overflow-hidden rounded-xl bg-white bg-linear-to-br to-white to-70% p-5 ring-1 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:to-zinc-950">
             <flux:icon :icon="$pkg->icon ?? (Client::SERVICE_TYPES[$c->service_type]['icon'] ?? 'cube')" class="absolute -right-5 -bottom-6 size-28 opacity-[0.07]" />
             <div class="relative flex items-center gap-3">
-                <span class="{{ $theme['cover'] ?? 'from-brand-400 via-brand-500 to-brand-700 text-white' }} flex size-10 shrink-0 items-center justify-center rounded-xl bg-linear-to-br shadow-md shadow-zinc-900/10">
-                    <flux:icon :icon="$pkg->icon ?? (Client::SERVICE_TYPES[$c->service_type]['icon'] ?? 'cube')" variant="mini" class="size-5" />
+                <span class="{{ $theme['cover'] ?? 'from-brand-400 via-brand-500 to-brand-700 text-white' }} flex size-9 shrink-0 items-center justify-center rounded-lg bg-linear-to-br shadow-md shadow-zinc-900/10">
+                    <flux:icon :icon="$pkg->icon ?? (Client::SERVICE_TYPES[$c->service_type]['icon'] ?? 'cube')" variant="mini" class="size-4.5" />
                 </span>
-                <div class="min-w-0">
-                    <p class="text-xs text-zinc-500">{{ __(Client::SERVICE_TYPES[$c->service_type]['label'] ?? 'Client') }}</p>
-                    <p class="truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $pkg ? __(':name package', ['name' => $pkg->name]) : ($c->isRecurring() ? __('No package') : __('Project')) }}</p>
-                </div>
+                <p class="truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $pkg ? __(':name package', ['name' => $pkg->name]) : ($c->isRecurring() ? __('No package') : __(Client::SERVICE_TYPES[$c->service_type]['label'] ?? 'Project')) }}</p>
             </div>
             @if ($c->price !== null)
                 <p class="relative flex items-baseline gap-1 tabular-nums">
                     <span class="text-sm font-medium text-zinc-400">{{ config('app.currency') }}</span>
                     <span class="text-[1.875rem] leading-none font-semibold tracking-tight text-zinc-900 dark:text-white">{{ number_format((float) $c->price) }}</span>
-                    <span class="text-sm text-zinc-400">{{ $c->billingSuffix() }}@if ($c->service_type === 'video') ×{{ max(1, (int) $c->video_count) }}@endif</span>
+                    @if ($c->service_type === 'video')
+                        <span class="text-sm text-zinc-400">{{ __('per video') }}</span>
+                    @endif
                 </p>
             @else
                 <p class="relative text-[1.625rem] leading-none font-semibold text-zinc-300 dark:text-zinc-600">{{ __('Price not set') }}</p>
             @endif
-            <p class="relative mt-auto text-xs text-zinc-500">{{ $c->billingText() }}</p>
-        </div>
-
-        {{-- Payments --}}
-        <div class="{{ $panel }} flex items-center gap-4 p-5">
-            <div class="flex min-w-0 flex-1 flex-col gap-3 self-stretch">
-                <div class="flex items-center gap-2">
-                    <p class="text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Payments') }}</p>
-                    @if ($stats['overduePayments'])
-                        <span class="rounded-md bg-rose-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">{{ trans_choice(':count overdue|:count overdue', $stats['overduePayments']) }}</span>
-                    @endif
-                </div>
-                <div>
-                    <p class="text-xs text-zinc-500">{{ __('Received') }}</p>
-                    <p class="text-2xl leading-tight font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ Client::money($stats['received']) }}</p>
-                </div>
-                <p class="mt-auto text-xs text-zinc-500">
-                    @if ($stats['billed'] == 0)
-                        <button type="button" wire:click="openPlan" class="font-medium text-brand-600 hover:underline dark:text-brand-300">{{ __('Set up a payment plan') }}</button>
-                    @elseif ($due > 0)
-                        <span @class(['font-semibold tabular-nums', 'text-rose-600 dark:text-rose-400' => $stats['overduePayments'], 'text-zinc-700 dark:text-zinc-200' => ! $stats['overduePayments']])>{{ Client::money($due) }}</span> {{ __('still due') }}
-                    @else
-                        <span class="font-medium text-emerald-600 dark:text-emerald-400">{{ __('Everything received') }}</span>
-                    @endif
-                </p>
-            </div>
-            <x-progress-ring :percent="$paidPct" :color="$stats['overduePayments'] ? 'text-rose-500' : 'text-emerald-500'" class="size-[4.5rem]" />
-        </div>
-
-        {{-- Billing period / project timeline --}}
-        <div class="{{ $panel }} flex items-center gap-4 p-5">
-            <div class="flex min-w-0 flex-1 flex-col gap-3 self-stretch">
-                <p class="text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ $c->isRecurring() ? __('Billing period') : __('Project timeline') }}</p>
-                @if ($periodEnd)
-                    <div>
-                        <p class="text-xs text-zinc-500">{{ __('Renews in') }}</p>
-                        <p class="text-2xl leading-tight font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $periodDays === 0 ? __('Today') : trans_choice(':count day|:count days', $periodDays) }}</p>
-                    </div>
-                    <p class="mt-auto text-xs text-zinc-500" title="{{ $periodEnd->format('j M Y') }}">{{ __('Period ends :date', ['date' => $periodEnd->toNepali()]) }}</p>
-                @elseif ($deadline)
-                    <div>
-                        <p class="text-xs text-zinc-500">{{ $deadlineDays < 0 ? __('Deadline passed') : __('Deadline in') }}</p>
-                        <p @class(['text-2xl leading-tight font-semibold tracking-tight tabular-nums', 'text-rose-600 dark:text-rose-400' => $deadlineDays < 0, 'text-zinc-900 dark:text-white' => $deadlineDays >= 0])>{{ $deadlineDays === 0 ? __('Today') : trans_choice(':count day|:count days', abs($deadlineDays)) }}</p>
-                    </div>
-                    <p class="mt-auto text-xs text-zinc-500" title="{{ $deadline->format('j M Y') }}">{{ __('Due :date', ['date' => $deadline->toNepali()]) }}</p>
-                @else
-                    <p class="text-2xl leading-tight font-semibold text-zinc-300 dark:text-zinc-600">{{ __('No dates') }}</p>
-                    <button type="button" wire:click="editAgreement" class="mt-auto text-start text-xs font-medium text-brand-600 hover:underline dark:text-brand-300">{{ __('Add start and end dates') }}</button>
-                @endif
-            </div>
-            @if ($periodEnd)
-                <x-progress-ring :percent="$periodPct" :color="$periodDays <= 3 ? 'text-amber-500' : 'text-brand-500'" class="size-[4.5rem]">
-                    <flux:icon.arrow-path variant="mini" class="size-5 text-brand-500" />
-                </x-progress-ring>
-            @elseif ($deadline)
-                <x-progress-ring :percent="$contractPct ?? 100" :color="$deadlineDays < 0 ? 'text-rose-500' : 'text-brand-500'" class="size-[4.5rem]" />
-            @endif
-        </div>
-
-        {{-- Relationship --}}
-        <div class="{{ $panel }} relative flex flex-col gap-3 overflow-hidden p-5">
-            <div class="absolute -top-12 -right-12 size-32 rounded-full bg-sun/15"></div>
-            <div class="relative flex items-center gap-3">
-                <span class="{{ $iconTile }} bg-sun/20 text-amber-600 dark:text-amber-300"><flux:icon.heart variant="mini" class="size-4.5" /></span>
-                <p class="text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Client for') }}</p>
-            </div>
-            <p class="relative text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">
-                @if ($sinceMonths >= 12)
-                    {{ intdiv($sinceMonths, 12) }}<span class="text-base font-normal text-zinc-400">{{ __('y') }}</span>
-                    @if ($sinceMonths % 12) {{ $sinceMonths % 12 }}<span class="text-base font-normal text-zinc-400">{{ __('m') }}</span>@endif
-                @elseif ($sinceMonths > 0)
-                    {{ trans_choice(':count month|:count months', $sinceMonths) }}
-                @else
-                    {{ __('New client') }}
-                @endif
+            <p class="relative mt-auto inline-flex items-center gap-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                <flux:icon :icon="$c->isRecurring() ? 'arrow-path' : 'calendar'" variant="micro" class="size-3.5 text-zinc-400" />{{ $c->billingText() }}
             </p>
-            <div class="relative mt-auto flex items-center justify-between gap-2 text-xs">
-                <span class="text-zinc-500" title="{{ $since->format('j M Y') }}">{{ __('Since :date', ['date' => NepaliDate::monthYear($since)]) }}</span>
-                <span class="font-medium text-zinc-700 dark:text-zinc-200">{{ trans_choice(':count payment received|:count payments received', $this->payments->whereNotNull('paid_at')->count()) }}</span>
+        </div>
+
+        {{-- Payment overview --}}
+        <div class="{{ $panel }} flex flex-col gap-4 p-5">
+            <div class="flex items-center gap-3">
+                <span @class([$iconTile, 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300' => $stats['overduePayments'], 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300' => ! $stats['overduePayments']])><flux:icon.banknotes variant="mini" class="size-4.5" /></span>
+                <p class="flex-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Outstanding') }}</p>
+                @if ($stats['overduePayments'])
+                    <span class="rounded-md bg-rose-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">{{ trans_choice(':count overdue|:count overdue', $stats['overduePayments']) }}</span>
+                @endif
             </div>
+            <div>
+                <p @class(['text-[1.625rem] leading-none font-semibold tracking-tight tabular-nums', 'text-rose-600 dark:text-rose-400' => $stats['overduePayments'], 'text-zinc-900 dark:text-white' => ! $stats['overduePayments']])>{{ Client::money($due) }}</p>
+                <p class="mt-1.5 text-xs text-zinc-500">{{ __(':received received of :billed', ['received' => Client::money($stats['received']), 'billed' => Client::money($stats['billed'])]) }}</p>
+            </div>
+            <div class="mt-auto flex items-center gap-2 rounded-lg bg-zinc-50 px-3 py-2 text-xs ring-1 ring-zinc-100 dark:bg-white/[0.03] dark:ring-white/5">
+                @if ($np && $np->due_date)
+                    @php $npDays = $np->dueInDays(); @endphp
+                    <flux:icon.calendar variant="micro" class="size-3.5 shrink-0 text-zinc-400" />
+                    <span class="min-w-0 flex-1 truncate text-zinc-600 dark:text-zinc-300" title="{{ $np->due_date->format('j M Y') }}">{{ __('Next') }} <span class="font-semibold text-zinc-800 dark:text-zinc-100">{{ $np->due_date->toNepali(withYear: false) }}</span></span>
+                    <span class="{{ $deadlineTone($npDays) }} shrink-0 font-medium tabular-nums">{{ Client::money($np->amount) }}</span>
+                @elseif ($this->payments->isEmpty())
+                    <button type="button" wire:click="openPlan" class="inline-flex items-center gap-1.5 font-medium text-brand-600 hover:underline dark:text-brand-300"><flux:icon.plus variant="micro" class="size-3.5" />{{ __('Set up a payment plan') }}</button>
+                @else
+                    <flux:icon.check-circle variant="micro" class="size-3.5 text-emerald-500" />
+                    <span class="font-medium text-emerald-700 dark:text-emerald-400">{{ __('Everything received') }}</span>
+                @endif
+            </div>
+        </div>
+
+        {{-- Tasks --}}
+        <div class="{{ $panel }} flex flex-col gap-4 p-5">
+            <div class="flex items-center gap-3">
+                <span class="{{ $iconTile }} bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300"><flux:icon.check-circle variant="mini" class="size-4.5" /></span>
+                <p class="flex-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Tasks') }}</p>
+                <span class="text-xs font-semibold text-brand-600 tabular-nums dark:text-brand-300">{{ $taskPct }}%</span>
+            </div>
+            <div>
+                <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $stats['tasksDone'] }}<span class="text-base font-normal text-zinc-400"> / {{ $stats['tasksTotal'] }} {{ __('done') }}</span></p>
+                <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div class="h-full rounded-full bg-brand-500 transition-[width] duration-700" style="width: {{ $taskPct }}%"></div></div>
+            </div>
+            <div class="mt-auto flex items-center gap-2 text-xs">
+                @if ($stats['tasksTotal'])
+                    <button type="button" wire:click="setTab('tasks')" class="rounded-md bg-zinc-100 px-2 py-1 font-medium text-zinc-600 hover:bg-zinc-200 dark:bg-white/5 dark:text-zinc-300">{{ trans_choice(':count open|:count open', $openCount) }}</button>
+                    @if ($stats['tasksOverdue'])
+                        <span class="rounded-md bg-rose-50 px-2 py-1 font-medium text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">{{ trans_choice(':count overdue|:count overdue', $stats['tasksOverdue']) }}</span>
+                    @endif
+                @else
+                    <button type="button" wire:click="newTask" class="inline-flex items-center gap-1.5 font-medium text-brand-600 hover:underline dark:text-brand-300"><flux:icon.plus variant="micro" class="size-3.5" />{{ __('Add the first task') }}</button>
+                @endif
+            </div>
+        </div>
+
+        {{-- Upcoming deadlines --}}
+        <div class="{{ $panel }} flex flex-col gap-3 p-5">
+            <div class="flex items-center gap-3">
+                <span class="{{ $iconTile }} bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300"><flux:icon.clock variant="mini" class="size-4.5" /></span>
+                <p class="text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Upcoming deadlines') }}</p>
+            </div>
+            @forelse ($deadlines as $d)
+                @php $days = (int) today()->diffInDays($d['date'], false); @endphp
+                <div class="flex items-center gap-2.5 text-xs" title="{{ $d['date']->format('j M Y') }}">
+                    <flux:icon :icon="$d['icon']" variant="micro" class="size-3.5 shrink-0 text-zinc-400" />
+                    <span class="min-w-0 flex-1 truncate font-medium text-zinc-700 dark:text-zinc-200">{{ $d['label'] }}</span>
+                    <span class="{{ $deadlineTone($days) }} shrink-0 tabular-nums">{{ $days > 7 ? $d['date']->toNepali(withYear: false) : $daysText($days) }}</span>
+                </div>
+            @empty
+                <p class="text-xs text-zinc-500">{{ __('Nothing due. Add due dates to tasks or a payment plan to see them here.') }}</p>
+            @endforelse
         </div>
     </section>
 
