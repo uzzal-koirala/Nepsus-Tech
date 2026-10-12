@@ -46,8 +46,6 @@ class FinanceTest extends TestCase
             ->call('saveEntry')
             ->assertHasErrors(['title', 'amount'])
             ->set('title', 'Office rent')
-            ->assertSet('paymentType', 'Full payment')
-            ->set('paymentType', 'Advance')
             ->set('amount', '12000')
             ->set('date', $day->toDateString())
             ->set('method', 'Cash')
@@ -67,13 +65,12 @@ class FinanceTest extends TestCase
         $this->assertSame(18000.0, $sum['net']);
         $this->assertSame(9999.0, $sum['outstanding']);
 
-        $page->assertSee(['Mandala Paradise', 'Bina Rai', 'Office rent', 'Logo for a friend', 'Monthly fee', 'Advance'])
+        $page->assertSee(['Mandala Paradise', 'Bina Rai', 'Office rent', 'Logo for a friend', 'Income', 'Expense'])
             ->set('show', 'expense')
             ->assertSee('Office rent')
             ->assertDontSee('Logo for a friend');
 
         $rent = Transaction::firstWhere('title', 'Office rent');
-        $this->assertSame('Advance', $rent->payment_type);
         $page->call('deleteEntry', $rent->id);
         $this->assertModelMissing($rent);
     }

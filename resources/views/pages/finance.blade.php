@@ -33,7 +33,6 @@ new #[Title('Finance')] class extends Component {
     public string $amount = '';
     public string $date = '';
     public string $method = '';
-    public string $paymentType = 'Full payment';
     public string $note = '';
     public $receipt;
 
@@ -117,7 +116,7 @@ new #[Title('Finance')] class extends Component {
         $payments = Payment::with('client')->whereNotNull('paid_at')->whereBetween('paid_at', [$from, $to])->get()
             ->map(fn ($p) => [
                 'key' => 'p'.$p->id, 'kind' => 'income', 'source' => 'client', 'date' => $p->paid_at->copy()->startOfDay(),
-                'title' => $p->client?->displayName() ?? __('Client payment'), 'category' => __(Client::SERVICE_TYPES[$p->client?->service_type]['label'] ?? 'Client'), 'paymentType' => $p->typeLabel(), 'icon' => 'building-office-2',
+                'title' => $p->client?->displayName() ?? __('Client payment'), 'category' => __(Client::SERVICE_TYPES[$p->client?->service_type]['label'] ?? 'Client'), 'icon' => 'building-office-2',
                 'amount' => (float) $p->amount, 'method' => $p->method, 'reference' => $p->reference, 'note' => $p->note, 'recorded' => $p->created_at->toNepali(), 'link' => $p->client ? route('clients.show', ['client' => $p->client_id, 'tab' => 'payments']) : null,
                 'proof' => $p->proof_path ? route('payments.proof', $p) : null, 'id' => null,
             ]);
@@ -125,7 +124,7 @@ new #[Title('Finance')] class extends Component {
         $salaries = SalaryPayment::with('employee')->whereBetween('paid_on', [$from, $to])->get()
             ->map(fn ($s) => [
                 'key' => 's'.$s->id, 'kind' => 'expense', 'source' => 'salary', 'date' => $s->paid_on,
-                'title' => $s->employee?->name ?? __('Salary'), 'category' => __('Salary · :month', ['month' => NepaliDate::periodLabel($s->period)]), 'paymentType' => __('Salary'), 'icon' => 'user-group',
+                'title' => $s->employee?->name ?? __('Salary'), 'category' => __('Salary · :month', ['month' => NepaliDate::periodLabel($s->period)]), 'icon' => 'user-group',
                 'amount' => (float) $s->amount, 'method' => null, 'reference' => null, 'note' => $s->note, 'recorded' => $s->created_at->toNepali(), 'link' => $s->employee ? route('employees.show', ['employee' => $s->employee_id, 'tab' => 'salary']) : null,
                 'proof' => null, 'id' => null,
             ]);
@@ -133,7 +132,7 @@ new #[Title('Finance')] class extends Component {
         $manual = Transaction::whereBetween('date', [$from->toDateString(), $to->toDateString()])->get()
             ->map(fn ($t) => [
                 'key' => 't'.$t->id, 'kind' => $t->kind, 'source' => 'manual', 'date' => $t->date,
-                'title' => $t->title, 'category' => $t->categoryLabel(), 'paymentType' => $t->payment_type, 'icon' => Transaction::categories($t->kind)[$t->category]['icon'] ?? 'tag',
+                'title' => $t->title, 'category' => $t->categoryLabel(), 'icon' => Transaction::categories($t->kind)[$t->category]['icon'] ?? 'tag',
                 'amount' => (float) $t->amount, 'method' => $t->method, 'reference' => null, 'note' => $t->note, 'recorded' => $t->created_at->toNepali(), 'link' => null,
                 'proof' => $t->receipt_path ? route('transactions.receipt', $t) : null, 'id' => $t->id,
             ]);
@@ -146,7 +145,7 @@ new #[Title('Finance')] class extends Component {
     public function newEntry(string $kind): void
     {
         $this->resetErrorBag();
-        $this->reset('title', 'amount', 'method', 'note', 'receipt', 'paymentType');
+        $this->reset('title', 'amount', 'method', 'note', 'receipt');
         $this->kind = $kind === 'income' ? 'income' : 'expense';
         $this->category = array_key_first(Transaction::categories($this->kind));
         [$from, $to] = $this->range($this->period);
@@ -169,7 +168,6 @@ new #[Title('Finance')] class extends Component {
             'amount' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
             'date' => ['required', 'date'],
             'method' => ['nullable', Rule::in(Payment::METHODS)],
-            'paymentType' => ['required', 'string', 'max:60'],
             'note' => ['nullable', 'string', 'max:255'],
             'receipt' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:8192'],
         ]);
@@ -181,7 +179,6 @@ new #[Title('Finance')] class extends Component {
             'amount' => $data['amount'],
             'date' => $data['date'],
             'method' => $data['method'] ?: null,
-            'payment_type' => trim($data['paymentType']),
             'note' => $data['note'] ?: null,
             'receipt_path' => $this->receipt?->store('receipts', 'local'),
         ]);
@@ -293,13 +290,12 @@ new #[Title('Finance')] class extends Component {
         $sourceLabels = ['client' => __('Client payment'), 'salary' => __('Salary'), 'manual' => __('Manual entry')];
         $visible = $entries
             ->filter(fn ($e) => $show === 'all' || $e['kind'] === $show)
-            ->filter(fn ($e) => $q === '' || str_contains(mb_strtolower($e['title'].' '.$e['category'].' '.$e['paymentType'].' '.$e['note'].' '.$e['reference'].' '.$e['method']), $q));
+            ->filter(fn ($e) => $q === '' || str_contains(mb_strtolower($e['title'].' '.$e['category'].' '.$e['note'].' '.$e['reference'].' '.$e['method']), $q));
         $th = 'px-3 py-2.5 text-start text-[0.6875rem] font-semibold tracking-wide text-zinc-500 uppercase whitespace-nowrap';
         $detailData = $visible->mapWithKeys(fn ($e) => [$e['key'] => [
             'kind' => $e['kind'],
             'title' => $e['title'],
             'category' => $e['category'],
-            'paymentType' => $e['paymentType'],
             'source' => $sourceLabels[$e['source']],
             'bs' => NepaliDate::format($e['date']),
             'amount' => $money($e['amount']),
@@ -383,8 +379,8 @@ new #[Title('Finance')] class extends Component {
                                 </td>
                                 {{-- Payment type --}}
                                 <td class="px-3 py-3.5 whitespace-nowrap">
-                                    <span @class(['inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset', 'bg-emerald-50/60 text-emerald-800 ring-emerald-200/70 dark:bg-emerald-500/10 dark:text-emerald-200 dark:ring-emerald-500/20' => $in, 'bg-rose-50/60 text-rose-800 ring-rose-200/70 dark:bg-rose-500/10 dark:text-rose-200 dark:ring-rose-500/20' => ! $in])>
-                                        <flux:icon.tag variant="micro" class="size-3" />{{ $e['paymentType'] ?: '—' }}
+                                    <span @class(['inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset', 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20' => $in, 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20' => ! $in])>
+                                        <flux:icon :icon="$in ? 'arrow-down-left' : 'arrow-up-right'" variant="micro" class="size-3" />{{ $in ? __('Income') : __('Expense') }}
                                     </span>
                                 </td>
                                 {{-- Method --}}
@@ -424,7 +420,7 @@ new #[Title('Finance')] class extends Component {
                         <dl class="divide-y divide-zinc-100 px-6 text-sm dark:divide-white/5">
                             <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Date') }}</dt><dd class="font-medium text-zinc-900 dark:text-white" x-text="rows[open].bs"></dd></div>
                             <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Category') }}</dt><dd class="font-medium text-zinc-900 dark:text-white" x-text="rows[open].category"></dd></div>
-                            <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Payment type') }}</dt><dd class="font-medium text-zinc-900 dark:text-white" x-text="rows[open].paymentType || '—'"></dd></div>
+                            <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Payment type') }}</dt><dd class="font-semibold" :class="rows[open].kind === 'income' ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'" x-text="rows[open].kind === 'income' ? @js(__('Income')) : @js(__('Expense'))"></dd></div>
                             <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Source') }}</dt><dd class="font-medium text-zinc-900 dark:text-white" x-text="rows[open].source"></dd></div>
                             <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Method') }}</dt><dd class="font-medium text-zinc-900 dark:text-white" x-text="rows[open].method || '—'"></dd></div>
                             <div class="flex justify-between gap-4 py-3" x-show="rows[open].reference"><dt class="text-zinc-500">{{ __('Reference') }}</dt><dd class="font-medium text-zinc-900 tabular-nums dark:text-white" x-text="rows[open].reference"></dd></div>
@@ -497,16 +493,6 @@ new #[Title('Finance')] class extends Component {
                 </div>
 
                 <div class="grid gap-4 sm:grid-cols-2">
-                    <div class="sm:col-span-2">
-                        <label for="entry-payment-type" class="mb-1.5 block text-sm font-medium text-zinc-800 dark:text-white">{{ __('Payment type') }}</label>
-                        <input id="entry-payment-type" wire:model="paymentType" list="payment-type-options" type="text" maxlength="60" required placeholder="{{ __('e.g. Full payment, Advance') }}" class="w-full rounded-lg border-0 bg-white px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-200 focus:ring-2 focus:ring-brand-500 focus:outline-none dark:bg-white/5 dark:text-white dark:ring-white/10" />
-                        <datalist id="payment-type-options">
-                            @foreach (Transaction::PAYMENT_TYPES as $pt)
-                                <option value="{{ __($pt) }}"></option>
-                            @endforeach
-                        </datalist>
-                        <flux:error name="paymentType" />
-                    </div>
                     <flux:select wire:model="method" :label="__('Paid with / received in')">
                         <flux:select.option value="">{{ __('Not set') }}</flux:select.option>
                         @foreach (Payment::METHODS as $m)

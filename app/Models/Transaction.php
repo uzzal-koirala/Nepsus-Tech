@@ -9,7 +9,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
 /** Income or an expense entered on the Finance page. */
-#[Fillable(['kind', 'category', 'payment_type', 'title', 'amount', 'date', 'method', 'note', 'receipt_path'])]
+#[Fillable(['kind', 'category', 'title', 'amount', 'date', 'method', 'note', 'receipt_path'])]
 class Transaction extends Model
 {
     public const INCOME_CATEGORIES = [
@@ -32,9 +32,6 @@ class Transaction extends Model
         'tax' => ['label' => 'Tax & fees', 'icon' => 'building-library'],
         'other' => ['label' => 'Other expense', 'icon' => 'ellipsis-horizontal-circle'],
     ];
-
-    /** Suggestions for the payment type (any text is allowed). */
-    public const PAYMENT_TYPES = ['Full payment', 'Advance', 'Partial payment', 'Installment', 'Monthly', 'Final payment'];
 
     protected function casts(): array
     {
