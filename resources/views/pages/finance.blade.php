@@ -24,6 +24,10 @@ new #[Title('Finance')] class extends Component {
     #[Url]
     public string $to = '';
 
+    // Filter panel (applied with the Apply button)
+    public string $filterFrom = '';
+    public string $filterTo = '';
+
     #[Url(except: 'all')]
     public string $show = 'all';
 
@@ -45,6 +49,32 @@ new #[Title('Finance')] class extends Component {
         if (! $valid($this->from) || ! $valid($this->to) || $this->from > $this->to) {
             $this->setMonth(NepaliDate::period(today()));
         }
+        [$this->filterFrom, $this->filterTo] = [$this->from, $this->to];
+    }
+
+    public function openFilter(): void
+    {
+        [$this->filterFrom, $this->filterTo] = [$this->from, $this->to];
+        $this->resetErrorBag();
+    }
+
+    public function applyFilter(): void
+    {
+        $data = $this->validate([
+            'filterFrom' => ['required', 'date'],
+            'filterTo' => ['required', 'date'],
+        ], attributes: ['filterFrom' => __('from date'), 'filterTo' => __('to date')]);
+
+        [$this->from, $this->to] = [$data['filterFrom'], $data['filterTo']];
+        $this->updated('from');
+        $this->dispatch('filter-applied');
+    }
+
+    public function resetFilter(): void
+    {
+        $this->setMonth(NepaliDate::period(today()));
+        [$this->filterFrom, $this->filterTo] = [$this->from, $this->to];
+        $this->dispatch('filter-applied');
     }
 
     /** Picking a date: ignore blanks and keep From on or before To. */
@@ -291,13 +321,32 @@ new #[Title('Finance')] class extends Component {
             <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ __('Money in, money out and what is left.') }}</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-            {{-- Date filter: from → to --}}
-            <div class="flex items-center gap-2 rounded-lg bg-white p-1 ring-1 ring-zinc-200 dark:bg-zinc-950 dark:ring-white/10" data-test="date-filter">
-                <span class="ps-2 text-xs font-medium text-zinc-500">{{ __('From') }}</span>
-                <x-nepali-date wire:model.live="from" class="w-60" />
-                <flux:icon.arrow-right variant="micro" class="size-4 text-zinc-400" />
-                <span class="text-xs font-medium text-zinc-500">{{ __('To') }}</span>
-                <x-nepali-date wire:model.live="to" class="w-60" />
+            {{-- Date filter --}}
+            <div class="relative" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false" @filter-applied.window="open = false">
+                <button type="button" @click="open = ! open" class="inline-flex h-10 items-center gap-2 rounded-lg bg-white px-3.5 text-sm font-medium text-zinc-700 shadow-xs ring-1 ring-zinc-200 transition hover:bg-zinc-50 dark:bg-white/5 dark:text-zinc-200 dark:ring-white/10" :class="open && 'ring-2 ring-brand-500'" :aria-expanded="open" data-test="date-filter">
+                    <flux:icon.funnel variant="micro" class="size-4 text-zinc-500" />
+                    {{ __('Filter') }}
+                    <span class="rounded-md bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-200">{{ $label }}</span>
+                    <flux:icon.chevron-down variant="micro" class="size-4 text-zinc-400 transition" ::class="open && 'rotate-180'" />
+                </button>
+
+                <div x-show="open" x-transition.origin.top.right x-cloak class="absolute right-0 z-40 mt-2 w-[22rem] rounded-xl bg-white p-4 shadow-[0_20px_50px_-12px_rgb(15_23_42/0.35)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10">
+                    <p class="text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Filter by date') }}</p>
+                    <p class="text-xs text-zinc-500">{{ __('Show transactions between two dates.') }}</p>
+                    <form wire:submit="applyFilter" class="mt-4 flex flex-col gap-3">
+                        <x-nepali-date wire:model="filterFrom" :label="__('From')" />
+                        <x-nepali-date wire:model="filterTo" :label="__('To')" />
+                        <flux:error name="filterFrom" />
+                        <flux:error name="filterTo" />
+                        <div class="mt-1 flex items-center justify-between gap-2">
+                            <button type="button" wire:click="resetFilter" class="text-sm font-medium text-zinc-500 hover:text-brand-600">{{ __('This month') }}</button>
+                            <div class="flex gap-2">
+                                <flux:button size="sm" variant="ghost" @click="open = false">{{ __('Cancel') }}</flux:button>
+                                <flux:button size="sm" type="submit" variant="primary" icon="funnel" data-test="apply-filter">{{ __('Apply') }}</flux:button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
             </div>
 
             {{-- Export --}}
@@ -392,15 +441,39 @@ new #[Title('Finance')] class extends Component {
                 <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Transactions') }}</h2>
                 <p class="text-xs text-zinc-500">{{ $label }} · {{ trans_choice(':count entry|:count entries', $entries->count()) }} · {{ __('click a row for details') }}</p>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-                <div class="flex gap-1 rounded-xl bg-zinc-100 p-1 text-xs font-medium dark:bg-white/5">
-                    @foreach (['all' => [__('All'), $entries->count()], 'income' => [__('Money in'), $entries->where('kind', 'income')->count()], 'expense' => [__('Money out'), $entries->where('kind', 'expense')->count()]] as $key => [$flabel, $fcount])
-                        <button type="button" wire:click="$set('show', '{{ $key }}')" @class(['flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition', 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-white' => $show === $key, 'text-zinc-500 hover:text-zinc-800 dark:hover:text-white' => $show !== $key])>
-                            {{ $flabel }} <span @class(['tabular-nums', 'text-brand-600 dark:text-brand-300' => $show === $key, 'text-zinc-400' => $show !== $key])>{{ $fcount }}</span>
+            <div class="flex flex-wrap items-center gap-3">
+                {{-- In / out filter --}}
+                @php
+                    $tabsDef = [
+                        'all' => ['label' => __('All'), 'count' => $entries->count(), 'icon' => 'squares-2x2', 'on' => 'bg-zinc-900 text-white shadow-md shadow-zinc-900/20 dark:bg-white dark:text-zinc-900', 'badge' => 'bg-white/20 dark:bg-zinc-900/10'],
+                        'income' => ['label' => __('Money in'), 'count' => $entries->where('kind', 'income')->count(), 'icon' => 'arrow-down-left', 'on' => 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30', 'badge' => 'bg-white/25'],
+                        'expense' => ['label' => __('Money out'), 'count' => $entries->where('kind', 'expense')->count(), 'icon' => 'arrow-up-right', 'on' => 'bg-rose-500 text-white shadow-md shadow-rose-500/30', 'badge' => 'bg-white/25'],
+                    ];
+                @endphp
+                <div class="flex gap-1 rounded-xl bg-zinc-100/80 p-1 ring-1 ring-zinc-200/60 dark:bg-white/5 dark:ring-white/10" role="tablist">
+                    @foreach ($tabsDef as $key => $t)
+                        <button type="button" wire:click="$set('show', '{{ $key }}')" role="tab" aria-selected="{{ $show === $key ? 'true' : 'false' }}" @class([
+                            'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition',
+                            $t['on'] => $show === $key,
+                            'text-zinc-600 hover:bg-white hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white' => $show !== $key,
+                        ])>
+                            <flux:icon :icon="$t['icon']" variant="micro" class="size-4" />
+                            {{ $t['label'] }}
+                            <span @class(['min-w-5 rounded-full px-1.5 text-center text-xs font-semibold tabular-nums', $t['badge'] => $show === $key, 'bg-zinc-200/80 text-zinc-600 dark:bg-white/10 dark:text-zinc-300' => $show !== $key])>{{ $t['count'] }}</span>
                         </button>
                     @endforeach
                 </div>
-                <flux:input wire:model.live.debounce.300ms="search" icon="magnifying-glass" :placeholder="__('Search name, category, reference')" clearable size="sm" class="w-64" />
+
+                {{-- Search --}}
+                <label class="group relative flex h-10 w-72 items-center rounded-xl bg-zinc-50 ring-1 ring-zinc-200/80 transition focus-within:bg-white focus-within:ring-2 focus-within:ring-brand-500 dark:bg-white/5 dark:ring-white/10">
+                    <flux:icon.magnifying-glass variant="mini" class="pointer-events-none absolute start-3 size-4.5 text-zinc-400 transition group-focus-within:text-brand-500" />
+                    <input wire:model.live.debounce.300ms="search" type="search" @keydown.window="if ($event.key === '/' && ! ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) { $event.preventDefault(); $el.focus() }" placeholder="{{ __('Search transactions') }}" class="h-full w-full rounded-xl border-0 bg-transparent ps-10 pe-9 text-sm text-zinc-900 placeholder:text-zinc-400 focus:ring-0 focus:outline-none dark:text-white [&::-webkit-search-cancel-button]:hidden" aria-label="{{ __('Search transactions') }}" />
+                    @if ($search !== '')
+                        <button type="button" wire:click="$set('search', '')" class="absolute end-2 flex size-6 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-200/70 hover:text-zinc-700 dark:hover:bg-white/10" aria-label="{{ __('Clear search') }}"><flux:icon.x-mark variant="micro" class="size-4" /></button>
+                    @else
+                        <kbd class="pointer-events-none absolute end-2.5 hidden rounded border border-zinc-200 bg-white px-1.5 text-[0.625rem] font-medium text-zinc-400 sm:block dark:border-white/10 dark:bg-white/5">/</kbd>
+                    @endif
+                </label>
             </div>
         </div>
 

@@ -108,8 +108,11 @@ class FinanceTest extends TestCase
 
         $page = Livewire::test('pages::finance')
             ->assertSee('Rent now')->assertDontSee('Rent before')
-            ->set('from', $lastMonth->toDateString())
-            ->set('to', $lastMonth->toDateString())
+            ->call('openFilter')
+            ->set('filterFrom', $lastMonth->toDateString())
+            ->set('filterTo', $lastMonth->toDateString())
+            ->call('applyFilter')
+            ->assertDispatched('filter-applied')
             ->assertSee('Rent before')->assertDontSee('Rent now');
         $this->assertSame(2000.0, $page->instance()->summary['expenses']);
 
@@ -120,5 +123,7 @@ class FinanceTest extends TestCase
             ->assertSee(['Rent now', 'Rent before']);
 
         $page->call('export')->assertFileDownloaded();
+
+        $page->call('resetFilter')->assertSee('Rent now')->assertDontSee('Rent before');
     }
 }
