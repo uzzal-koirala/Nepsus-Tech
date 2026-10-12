@@ -230,14 +230,7 @@ class ClientProfileTest extends TestCase
 
         Livewire::test('pages::client-profile', ['client' => $client])
             ->call('setTab', 'tasks')
-            ->assertSee(['Late banner', 'Next reel', 'Finished post'])
-            ->set('workFilter', 'late')
-            ->assertSee('Late banner')
-            ->assertDontSee('Next reel')
-            ->set('workFilter', 'done')
-            ->assertSee('Finished post')
-            ->assertDontSee('Late banner')
-            ->set('workFilter', 'all')
+            ->assertSeeInOrder(['Late', 'Late banner', 'This week', 'Next reel', 'Done', 'Finished post'])
             ->set('workKind', 'reel')
             ->assertSee('Next reel')
             ->assertDontSee('Finished post');
