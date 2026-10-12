@@ -32,7 +32,7 @@
             <p @class(['truncate text-sm font-semibold tabular-nums', 'text-zinc-400' => $done, 'text-zinc-900 dark:text-white' => ! $done])>{{ \App\Models\Client::money($m->amount) }}</p>
             <p class="mt-0.5 flex items-center gap-1.5 truncate text-xs text-zinc-500">
                 <flux:icon.banknotes variant="micro" class="size-3.5 shrink-0 text-emerald-500" />
-                {{ __(\App\Models\Payment::TYPES[$m->type]['label'] ?? 'Payment') }}
+                {{ $m->typeLabel() }}
                 <span @class(['font-medium', 'text-emerald-600 dark:text-emerald-400' => $done, 'text-rose-600 dark:text-rose-400' => $late, 'text-zinc-400' => ! $done && ! $late])>· {{ $done ? __('Received') : ($late ? __('Overdue') : __('Due')) }}</span>
             </p>
         @else

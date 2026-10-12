@@ -36,6 +36,12 @@ class Payment extends Model
         ];
     }
 
+    /** The payment type as shown: built-in keys map to their label, anything else is the text that was typed. */
+    public function typeLabel(): string
+    {
+        return __(self::TYPES[$this->type]['label'] ?? ($this->type ?: 'Payment'));
+    }
+
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);

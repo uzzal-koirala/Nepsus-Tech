@@ -51,6 +51,7 @@ class ClientProfileTest extends TestCase
             ->call('savePayment')
             ->assertHasErrors(['payAmount'])
             ->set('payAmount', '25000')
+            ->set('payPaid', false)
             ->set('payDue', today()->subDays(3)->toDateString())
             ->call('savePayment')
             ->assertHasNoErrors();
@@ -94,11 +95,11 @@ class ClientProfileTest extends TestCase
 
         $page = Livewire::test('pages::client-profile', ['client' => $client])
             ->call('newPayment')
-            ->assertSet('payType', 'advance')
-            ->set('payType', 'nope')
+            ->assertSet('payType', 'Advance payment')
+            ->set('payType', '')
             ->call('savePayment')
             ->assertHasErrors(['payType'])
-            ->set('payType', 'advance')
+            ->set('payType', 'Advance payment')
             ->set('payAmount', '75000')
             ->set('payPaid', true)
             ->set('payDue', '2026-09-20')
@@ -108,22 +109,23 @@ class ClientProfileTest extends TestCase
             ->assertHasNoErrors();
 
         $advance = $client->payments()->sole();
-        $this->assertSame('advance', $advance->type);
+        $this->assertSame('Advance payment', $advance->typeLabel());
         $this->assertSame('2026-09-20', $advance->paid_at->toDateString());
         $this->assertSame('eSewa', $advance->method);
         $this->assertSame('paid', $advance->status());
 
         // A payment still to come keeps no method and shows as pending.
         $page->call('newPayment')
-            ->assertSet('payType', 'partial')
-            ->set('payType', 'final')
+            ->assertSet('payType', 'Partial payment')
+            ->set('payType', 'Final payment after launch')
+            ->set('payPaid', false)
             ->set('payAmount', '75000')
             ->set('payDue', today()->addWeeks(2)->toDateString())
             ->set('payMethod', 'Cash')
             ->call('savePayment')
             ->assertHasNoErrors();
 
-        $final = $client->payments()->where('type', 'final')->sole();
+        $final = $client->payments()->where('type', 'Final payment after launch')->sole();
         $this->assertNull($final->paid_at);
         $this->assertNull($final->method);
         $this->assertSame('pending', $final->status());

@@ -45,7 +45,7 @@ new #[Title('Client profile')] class extends Component {
     public string $payMethod = '';
     public string $payReference = '';
     public bool $payPaid = false;
-    public string $payType = 'advance';
+    public string $payType = '';
     public string $payNote = '';
 
     public string $contractStart = '';
@@ -290,9 +290,10 @@ new #[Title('Client profile')] class extends Component {
     public function newPayment(): void
     {
         $this->reset('payAmount', 'payDue', 'payMethod', 'payReference', 'payPaid', 'payNote');
-        $this->payType = $this->client->isRecurring() ? 'monthly' : ($this->payments->isEmpty() ? 'advance' : 'partial');
+        $this->payType = __(Payment::TYPES[$this->client->isRecurring() ? 'monthly' : ($this->payments->isEmpty() ? 'advance' : 'partial')]['label']);
         $this->payAmount = $this->client->price === null ? '' : rtrim(rtrim((string) $this->client->price, '0'), '.');
         $this->payDue = today()->toDateString();
+        $this->payPaid = true;
         $this->resetErrorBag();
         Flux::modal('payment-form')->show();
     }
@@ -302,18 +303,18 @@ new #[Title('Client profile')] class extends Component {
         $data = $this->validate([
             'payAmount' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
             'payDue' => ['nullable', 'date'],
-            'payMethod' => ['nullable', Rule::in(Payment::METHODS)],
+            'payMethod' => ['nullable', 'string', 'max:50'],
             'payReference' => ['nullable', 'string', 'max:255'],
             'payPaid' => ['boolean'],
-            'payType' => ['required', Rule::in(array_keys(Payment::TYPES))],
+            'payType' => ['required', 'string', 'max:60'],
             'payNote' => ['nullable', 'string', 'max:255'],
         ], attributes: ['payDue' => $this->payPaid ? __('received date') : __('due date')]);
 
         $this->client->payments()->create([
             'amount' => $data['payAmount'],
-            'type' => $data['payType'],
+            'type' => trim($data['payType']),
             'due_date' => $data['payDue'] ?: null,
-            'method' => $data['payPaid'] ? ($data['payMethod'] ?: null) : null,
+            'method' => $data['payPaid'] ? (trim((string) $data['payMethod']) ?: null) : null,
             'reference' => $data['payReference'] ?: null,
             'note' => $data['payNote'] ?: null,
             'paid_at' => $data['payPaid'] ? Date::parse($data['payDue'] ?: today())->setTimeFrom(now()) : null,
@@ -1323,7 +1324,7 @@ new #[Title('Client profile')] class extends Component {
                                     <tr wire:key="payment-{{ $payment->id }}" class="transition hover:bg-zinc-50/70 dark:hover:bg-white/[0.02]">
                                         <td class="px-5 py-3 text-zinc-700 dark:text-zinc-200" title="{{ $payment->due_date?->format('j M Y') }}">{{ $payment->due_date?->toNepali() ?: '-' }}</td>
                                         <td class="px-5 py-3">
-                                            <p class="inline-flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-100"><flux:icon :icon="Payment::TYPES[$payment->type]['icon'] ?? 'banknotes'" variant="micro" class="size-3.5 text-zinc-400" />{{ __(Payment::TYPES[$payment->type]['label'] ?? 'Payment') }}</p>
+                                            <p class="inline-flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-100"><flux:icon :icon="Payment::TYPES[$payment->type]['icon'] ?? 'banknotes'" variant="micro" class="size-3.5 text-zinc-400" />{{ $payment->typeLabel() }}</p>
                                             @if ($payment->reference || $payment->note)
                                                 <p class="max-w-56 truncate text-xs text-zinc-500">{{ collect([$payment->reference, $payment->note])->filter()->implode(' · ') }}</p>
                                             @endif
@@ -1535,121 +1536,101 @@ new #[Title('Client profile')] class extends Component {
 
     {{-- Record payment --}}
     @php
-        $methodIcons = ['Bank transfer' => 'building-library', 'Cash' => 'banknotes', 'eSewa' => 'device-phone-mobile', 'Khalti' => 'wallet', 'Cheque' => 'document-text', 'Card' => 'credit-card'];
         $outstanding = max(0, $stats['billed'] - $stats['received']);
         $quick = array_filter([
             __('Full price') => $c->totalValue(),
             __('Half') => $c->totalValue() ? round($c->totalValue() / 2) : null,
             __('Outstanding') => $outstanding ?: null,
         ]);
+        $typeSuggestions = collect(Payment::TYPES)->except('other')->map(fn ($t) => __($t['label']))->values();
+        $field = 'w-full rounded-xl border-0 bg-white px-3.5 py-2.5 text-sm text-zinc-900 ring-1 ring-zinc-200 transition placeholder:text-zinc-400 focus:ring-2 focus:ring-brand-500 focus:outline-none dark:bg-white/5 dark:text-white dark:ring-white/10';
+        $label = 'mb-1.5 block text-sm font-medium text-zinc-800 dark:text-white';
+        $suggest = 'rounded-full bg-zinc-100 px-2.5 py-1 text-[0.6875rem] font-medium text-zinc-600 transition hover:bg-brand-50 hover:text-brand-700 dark:bg-white/5 dark:text-zinc-300';
     @endphp
-    <flux:modal name="payment-form" class="w-full max-w-xl overflow-visible p-0!" :closable="false">
-        <form wire:submit="savePayment" class="flex flex-col" x-data="{ typeOpen: false, types: @js(collect(Payment::TYPES)->map(fn ($t) => ['label' => __($t['label']), 'hint' => __($t['hint'])])) }">
+    <flux:modal name="payment-form" class="w-full max-w-2xl overflow-visible p-0!" :closable="false">
+        <form wire:submit="savePayment" class="flex flex-col">
             {{-- Head --}}
-            <div class="flex items-start gap-4 border-b border-zinc-100 px-6 py-5 dark:border-white/5">
+            <div class="flex items-center gap-4 border-b border-zinc-100 px-6 py-5 dark:border-white/5">
                 <span class="flex size-11 shrink-0 items-center justify-center rounded-xl bg-linear-to-br from-emerald-400 to-emerald-600 text-white shadow-md shadow-emerald-500/30"><flux:icon.banknotes variant="mini" class="size-5" /></span>
                 <div class="min-w-0 flex-1">
                     <flux:heading size="lg">{{ __('Record payment') }}</flux:heading>
-                    <p class="truncate text-sm text-zinc-500">{{ $c->displayName() }}</p>
+                    <p class="truncate text-sm text-zinc-500">{{ $c->displayName() }}@if ($outstanding > 0) · <span class="font-medium text-amber-600 dark:text-amber-400">{{ __(':amount outstanding', ['amount' => Client::money($outstanding)]) }}</span>@endif</p>
                 </div>
-                @if ($outstanding > 0)
-                    <div class="shrink-0 rounded-lg bg-amber-50 px-3 py-1.5 text-end ring-1 ring-amber-200/70 dark:bg-amber-500/10 dark:ring-amber-500/20">
-                        <p class="text-[0.6875rem] text-amber-700 dark:text-amber-300">{{ __('Outstanding') }}</p>
-                        <p class="text-sm font-semibold text-amber-800 tabular-nums dark:text-amber-200">{{ Client::money($outstanding) }}</p>
-                    </div>
-                @endif
+                <div class="grid shrink-0 grid-cols-2 gap-1 rounded-xl bg-zinc-100 p-1 text-xs font-medium dark:bg-white/5">
+                    <button type="button" @click="$wire.payPaid = true" class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 transition" :class="$wire.payPaid ? 'bg-white text-emerald-700 shadow-sm dark:bg-zinc-800 dark:text-emerald-300' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-white'" data-test="pay-received">
+                        <flux:icon.check-circle variant="micro" class="size-3.5" />{{ __('Received') }}
+                    </button>
+                    <button type="button" @click="$wire.payPaid = false" class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 transition" :class="! $wire.payPaid ? 'bg-white text-amber-700 shadow-sm dark:bg-zinc-800 dark:text-amber-300' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-white'">
+                        <flux:icon.clock variant="micro" class="size-3.5" />{{ __('Due later') }}
+                    </button>
+                </div>
             </div>
 
-            <div class="flex flex-col gap-5 px-6 py-5">
-                {{-- Type --}}
-                <div class="relative" @click.outside="typeOpen = false" @keydown.escape.stop="typeOpen = false">
-                    <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Payment type') }}</span>
-                    <button type="button" @click="typeOpen = ! typeOpen" class="mt-2 flex w-full items-center gap-3 rounded-xl bg-white px-3 py-2.5 text-start ring-1 ring-zinc-200 transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 focus:outline-none dark:bg-white/5 dark:ring-white/10" :aria-expanded="typeOpen" aria-haspopup="listbox" data-test="payment-type-button">
-                        <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
-                            @foreach (Payment::TYPES as $key => $t)
-                                <flux:icon :icon="$t['icon']" variant="mini" class="size-4.5" x-show="$wire.payType === '{{ $key }}'" />
-                            @endforeach
-                        </span>
-                        <span class="min-w-0 flex-1">
-                            <span class="block text-sm font-semibold text-zinc-900 dark:text-white" x-text="types[$wire.payType]?.label"></span>
-                            <span class="block truncate text-xs text-zinc-500" x-text="types[$wire.payType]?.hint"></span>
-                        </span>
-                        <flux:icon.chevron-up-down variant="mini" class="size-4 text-zinc-400" />
-                    </button>
-                    <div x-show="typeOpen" x-transition.origin.top x-cloak class="absolute inset-x-0 top-full z-20 mt-1.5 max-h-80 overflow-y-auto rounded-xl bg-white p-1.5 shadow-[0_20px_50px_-12px_rgb(15_23_42/0.35)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10" role="listbox">
-                        @foreach (Payment::TYPES as $key => $t)
-                            <button type="button" role="option" @click="$wire.payType = '{{ $key }}'; typeOpen = false" :aria-selected="$wire.payType === '{{ $key }}'" class="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-start transition hover:bg-zinc-50 dark:hover:bg-white/5" :class="$wire.payType === '{{ $key }}' && 'bg-brand-50/70 dark:bg-brand-500/10'">
-                                <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-white/5" :class="$wire.payType === '{{ $key }}' && 'bg-brand-500! text-white!'"><flux:icon :icon="$t['icon']" variant="micro" class="size-4" /></span>
-                                <span class="min-w-0 flex-1">
-                                    <span class="block text-sm font-medium text-zinc-900 dark:text-white">{{ __($t['label']) }}</span>
-                                    <span class="block truncate text-xs text-zinc-500">{{ __($t['hint']) }}</span>
-                                </span>
-                                <flux:icon.check variant="mini" class="size-4 text-brand-600" x-show="$wire.payType === '{{ $key }}'" />
-                            </button>
-                        @endforeach
-                    </div>
-                    <flux:error name="payType" />
-                </div>
-
-                {{-- Amount --}}
-                <div>
-                    <div class="flex items-center justify-between">
-                        <label for="pay-amount" class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Amount') }}</label>
-                        <div class="flex gap-1">
-                            @foreach ($quick as $label => $value)
-                                <button type="button" @click="$wire.payAmount = '{{ (int) $value }}'" class="rounded-md bg-zinc-100 px-2 py-0.5 text-[0.6875rem] font-medium text-zinc-600 transition hover:bg-brand-50 hover:text-brand-700 dark:bg-white/5 dark:text-zinc-300">{{ $label }}</button>
+            <div class="flex flex-col gap-5 px-6 py-6">
+                {{-- Row 1: type + date --}}
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <label for="pay-type" class="{{ $label }}">{{ __('Payment type') }}</label>
+                        <input id="pay-type" wire:model="payType" type="text" maxlength="60" required placeholder="{{ __('e.g. Advance payment') }}" class="{{ $field }}" data-test="payment-type-input" />
+                        <div class="mt-2 flex flex-wrap gap-1">
+                            @foreach ($typeSuggestions as $s)
+                                <button type="button" @click="$wire.payType = @js($s)" class="{{ $suggest }}" :class="$wire.payType === @js($s) && 'bg-brand-500! text-white!'">{{ $s }}</button>
                             @endforeach
                         </div>
+                        <flux:error name="payType" />
                     </div>
-                    <div class="mt-2 flex items-center rounded-xl bg-white ring-1 ring-zinc-200 focus-within:ring-2 focus-within:ring-brand-500 dark:bg-white/5 dark:ring-white/10">
-                        <span class="ps-4 text-sm font-semibold text-zinc-400">{{ config('app.currency') }}</span>
-                        <input id="pay-amount" wire:model="payAmount" type="number" min="0" step="0.01" inputmode="decimal" required placeholder="0" class="w-full border-0 bg-transparent px-3 py-3 text-2xl font-semibold tracking-tight text-zinc-900 tabular-nums placeholder:text-zinc-300 focus:ring-0 focus:outline-none dark:text-white" />
-                    </div>
-                    <flux:error name="payAmount" />
-                </div>
-
-                {{-- Status --}}
-                <div class="grid grid-cols-2 gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-white/5">
-                    <button type="button" @click="$wire.payPaid = true" class="flex items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium transition" :class="$wire.payPaid ? 'bg-white text-emerald-700 shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-800 dark:text-emerald-300 dark:ring-white/10' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-white'" data-test="pay-received">
-                        <flux:icon.check-circle variant="mini" class="size-4" />{{ __('Received') }}
-                    </button>
-                    <button type="button" @click="$wire.payPaid = false" class="flex items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium transition" :class="! $wire.payPaid ? 'bg-white text-amber-700 shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-800 dark:text-amber-300 dark:ring-white/10' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-white'">
-                        <flux:icon.clock variant="mini" class="size-4" />{{ __('Due later') }}
-                    </button>
-                </div>
-
-                {{-- Date --}}
-                <div>
-                    <p class="mb-2 text-sm font-medium text-zinc-800 dark:text-white" x-text="$wire.payPaid ? @js(__('Payment date')) : @js(__('Due date'))"></p>
-                    <x-nepali-date wire:model="payDue" />
-                </div>
-
-                {{-- Method --}}
-                <div x-show="$wire.payPaid" x-transition>
-                    <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Payment method') }}</span>
-                    <div class="mt-2 grid grid-cols-3 gap-2">
-                        @foreach (Payment::METHODS as $method)
-                            <button type="button" @click="$wire.payMethod = $wire.payMethod === @js($method) ? '' : @js($method)" class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ring-1 transition" :class="$wire.payMethod === @js($method) ? 'bg-brand-50 text-brand-700 ring-2 ring-brand-500 dark:bg-brand-500/10 dark:text-brand-200' : 'text-zinc-600 ring-zinc-200 hover:bg-zinc-50 dark:text-zinc-300 dark:ring-white/10 dark:hover:bg-white/5'">
-                                <flux:icon :icon="$methodIcons[$method] ?? 'banknotes'" variant="micro" class="size-4 shrink-0" />
-                                <span class="truncate">{{ $method }}</span>
-                            </button>
-                        @endforeach
+                    <div>
+                        <p class="{{ $label }}" x-text="$wire.payPaid ? @js(__('Payment date')) : @js(__('Due date'))"></p>
+                        <x-nepali-date wire:model="payDue" />
+                        <flux:error name="payDue" />
                     </div>
                 </div>
 
-                {{-- Reference and note --}}
+                {{-- Row 2: amount + received in --}}
                 <div class="grid gap-4 sm:grid-cols-2">
-                    <flux:input wire:model="payReference" :label="__('Reference')" :placeholder="__('e.g. INV-1042 or txn ID')" />
-                    <flux:input wire:model="payNote" :label="__('Note')" :placeholder="__('e.g. Dashain package')" />
+                    <div>
+                        <label for="pay-amount" class="{{ $label }}">{{ __('Amount') }}</label>
+                        <div class="flex items-center rounded-xl bg-white ring-1 ring-zinc-200 transition focus-within:ring-2 focus-within:ring-brand-500 dark:bg-white/5 dark:ring-white/10">
+                            <span class="ps-3.5 text-sm font-semibold text-zinc-400">{{ config('app.currency') }}</span>
+                            <input id="pay-amount" wire:model="payAmount" type="number" min="0" step="0.01" inputmode="decimal" required placeholder="0" class="w-full border-0 bg-transparent px-2.5 py-2.5 text-sm font-semibold text-zinc-900 tabular-nums placeholder:text-zinc-300 focus:ring-0 focus:outline-none dark:text-white" />
+                        </div>
+                        @if ($quick)
+                            <div class="mt-2 flex flex-wrap gap-1">
+                                @foreach ($quick as $qLabel => $value)
+                                    <button type="button" @click="$wire.payAmount = '{{ (int) $value }}'" class="{{ $suggest }}">{{ $qLabel }} · {{ number_format($value) }}</button>
+                                @endforeach
+                            </div>
+                        @endif
+                        <flux:error name="payAmount" />
+                    </div>
+                    <div x-show="$wire.payPaid" x-transition>
+                        <label for="pay-method" class="{{ $label }}">{{ __('Received in') }}</label>
+                        <input id="pay-method" wire:model="payMethod" type="text" maxlength="50" placeholder="{{ __('e.g. NIC Asia bank, eSewa, cash') }}" class="{{ $field }}" />
+                        <div class="mt-2 flex flex-wrap gap-1">
+                            @foreach (Payment::METHODS as $method)
+                                <button type="button" @click="$wire.payMethod = @js($method)" class="{{ $suggest }}" :class="$wire.payMethod === @js($method) && 'bg-brand-500! text-white!'">{{ $method }}</button>
+                            @endforeach
+                        </div>
+                        <flux:error name="payMethod" />
+                    </div>
+                </div>
+
+                {{-- Row 3: reference + note --}}
+                <div class="grid gap-4 border-t border-dashed border-zinc-200 pt-5 sm:grid-cols-2 dark:border-white/10">
+                    <div>
+                        <label for="pay-ref" class="{{ $label }}">{{ __('Reference') }} <span class="font-normal text-zinc-400">{{ __('optional') }}</span></label>
+                        <input id="pay-ref" wire:model="payReference" type="text" maxlength="255" placeholder="{{ __('Invoice no. or transaction ID') }}" class="{{ $field }}" />
+                    </div>
+                    <div>
+                        <label for="pay-note" class="{{ $label }}">{{ __('Note') }} <span class="font-normal text-zinc-400">{{ __('optional') }}</span></label>
+                        <input id="pay-note" wire:model="payNote" type="text" maxlength="255" placeholder="{{ __('Anything to remember') }}" class="{{ $field }}" />
+                    </div>
                 </div>
             </div>
 
-            <div class="flex items-center justify-between gap-3 rounded-b-xl border-t border-zinc-100 bg-zinc-50/70 px-6 py-4 dark:border-white/5 dark:bg-white/[0.02]">
-                <p class="hidden text-xs text-zinc-500 sm:block" x-text="$wire.payPaid ? @js(__('Counts as received right away.')) : @js(__('Shows as due with a reminder.'))"></p>
-                <div class="ms-auto flex gap-2">
-                    <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
-                    <flux:button type="submit" variant="primary" icon="check" data-test="save-payment-button">{{ __('Save payment') }}</flux:button>
-                </div>
+            <div class="flex items-center justify-end gap-2 rounded-b-xl border-t border-zinc-100 bg-zinc-50/70 px-6 py-4 dark:border-white/5 dark:bg-white/[0.02]">
+                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
+                <flux:button type="submit" variant="primary" icon="check" data-test="save-payment-button">{{ __('Save payment') }}</flux:button>
             </div>
         </form>
     </flux:modal>
