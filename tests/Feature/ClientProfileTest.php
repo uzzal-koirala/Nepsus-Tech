@@ -314,4 +314,25 @@ class ClientProfileTest extends TestCase
         $this->assertSame('blog-article', $task->fresh()->type); // the task keeps its name
         $page->call('setTab', 'tasks')->assertSee('Blog Article');
     }
+
+    public function test_a_task_can_be_opened_changed_and_closed(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $client = Client::factory()->create();
+        $task = $client->tasks()->create(['title' => 'Logo animation', 'description' => 'Short intro for reels', 'type' => 'video']);
+
+        $page = Livewire::test('pages::client-profile', ['client' => $client])
+            ->call('setTab', 'tasks')
+            ->call('openTask', $task->id)
+            ->assertSet('viewTaskId', $task->id)
+            ->assertSee('Short intro for reels')
+            ->call('setTaskStatus', $task->id, 'review');
+        $this->assertSame('review', $task->fresh()->stage());
+
+        $page->call('toggleTask', $task->id);
+        $this->assertNotNull($task->fresh()->completed_at);
+
+        $page->call('deleteTask', $task->id)->assertSet('viewTaskId', null);
+        $this->assertModelMissing($task);
+    }
 }
