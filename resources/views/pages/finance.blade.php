@@ -298,7 +298,6 @@ new #[Title('Finance')] class extends Component {
             'category' => $e['category'],
             'source' => $sourceLabels[$e['source']],
             'bs' => NepaliDate::format($e['date']),
-            'ad' => $e['date']->format('l, j F Y'),
             'amount' => $money($e['amount']),
             'method' => $e['method'] ? __($e['method']) : null,
             'reference' => $e['reference'],
@@ -370,9 +369,8 @@ new #[Title('Finance')] class extends Component {
                                     </div>
                                 </td>
                                 {{-- Date --}}
-                                <td class="px-3 py-3.5 whitespace-nowrap" title="{{ $e['date']->format('l, j M Y') }}">
+                                <td class="px-3 py-3.5 whitespace-nowrap">
                                     <p class="font-medium text-zinc-900 dark:text-white">{{ $bs ? $bs[2].' '.NepaliDate::MONTHS[$bs[1] - 1].' '.$bs[0] : '' }}</p>
-                                    <p class="text-xs text-zinc-500">{{ $e['date']->format('D, j M Y') }}</p>
                                 </td>
                                 {{-- Category --}}
                                 <td class="px-3 py-3.5">
@@ -413,7 +411,7 @@ new #[Title('Finance')] class extends Component {
                             <p class="mt-1.5 truncate text-sm font-medium text-white/90" x-text="rows[open].title"></p>
                         </div>
                         <dl class="divide-y divide-zinc-100 px-6 text-sm dark:divide-white/5">
-                            <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Date') }}</dt><dd class="text-end"><p class="font-medium text-zinc-900 dark:text-white" x-text="rows[open].bs"></p><p class="text-xs text-zinc-500" x-text="rows[open].ad"></p></dd></div>
+                            <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Date') }}</dt><dd class="font-medium text-zinc-900 dark:text-white" x-text="rows[open].bs"></dd></div>
                             <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Category') }}</dt><dd class="font-medium text-zinc-900 dark:text-white" x-text="rows[open].category"></dd></div>
                             <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Source') }}</dt><dd class="font-medium text-zinc-900 dark:text-white" x-text="rows[open].source"></dd></div>
                             <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Method') }}</dt><dd class="font-medium text-zinc-900 dark:text-white" x-text="rows[open].method || '—'"></dd></div>
