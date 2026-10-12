@@ -96,4 +96,34 @@ class FinanceTest extends TestCase
         auth()->logout();
         $this->get(route('transactions.receipt', $entry))->assertRedirect(route('login'));
     }
+
+    public function test_date_filters_and_export(): void
+    {
+        $this->actingAs(User::factory()->create());
+        [$y, $m] = NepaliDate::fromAd(today());
+        $thisMonth = NepaliDate::toAd($y, $m, 1);
+        $lastMonth = NepaliDate::addMonths($thisMonth, -1);
+        Transaction::create(['kind' => 'expense', 'category' => 'rent', 'title' => 'Rent now', 'amount' => 1000, 'date' => $thisMonth]);
+        Transaction::create(['kind' => 'expense', 'category' => 'rent', 'title' => 'Rent before', 'amount' => 2000, 'date' => $lastMonth]);
+
+        $page = Livewire::test('pages::finance')
+            ->assertSee('Rent now')->assertDontSee('Rent before')
+            ->call('preset', 'last_month')
+            ->assertSee('Rent before')->assertDontSee('Rent now')
+            ->call('preset', 'last_3')
+            ->assertSee(['Rent now', 'Rent before'])
+            ->call('openCustomRange')
+            ->set('customFrom', $thisMonth->toDateString())
+            ->set('customTo', $lastMonth->toDateString())
+            ->call('applyCustomRange')
+            ->assertHasErrors(['customTo'])
+            ->set('customFrom', $lastMonth->toDateString())
+            ->set('customTo', $lastMonth->toDateString())
+            ->call('applyCustomRange')
+            ->assertHasNoErrors()
+            ->assertSee('Rent before')->assertDontSee('Rent now');
+        $this->assertSame(2000.0, $page->instance()->summary['expenses']);
+
+        $page->call('preset', 'last_3')->call('export')->assertFileDownloaded();
+    }
 }

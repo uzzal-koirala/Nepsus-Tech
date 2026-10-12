@@ -17,9 +17,16 @@ use Livewire\WithFileUploads;
 new #[Title('Finance')] class extends Component {
     use WithFileUploads;
 
-    /** BS month shown, e.g. "2083-06". */
-    #[Url(as: 'month')]
-    public string $period = '';
+    /** Date range shown (AD, Y-m-d). Defaults to the current Nepali month. */
+    #[Url]
+    public string $from = '';
+
+    #[Url]
+    public string $to = '';
+
+    // Custom range picker
+    public string $customFrom = '';
+    public string $customTo = '';
 
     #[Url(except: 'all')]
     public string $show = 'all';
@@ -38,36 +45,96 @@ new #[Title('Finance')] class extends Component {
 
     public function mount(): void
     {
-        if (! preg_match('/^\d{4}-\d{2}$/', $this->period)) {
-            $this->period = NepaliDate::period(today());
+        $valid = fn ($d) => preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) && strtotime($d);
+        if (! $valid($this->from) || ! $valid($this->to) || $this->from > $this->to) {
+            $this->setMonth(NepaliDate::period(today()));
         }
+    }
+
+    /** Shows one whole BS month, e.g. "2083-06". */
+    private function setMonth(string $period): void
+    {
+        [$y, $m] = array_map('intval', explode('-', $period));
+        $this->from = NepaliDate::toAd($y, $m, 1)->toDateString();
+        $this->to = NepaliDate::toAd($y, $m, NepaliDate::monthLength($y, $m))->toDateString();
+    }
+
+    /** The BS month key when the range is exactly one whole month, otherwise null. */
+    #[Computed]
+    public function monthKey(): ?string
+    {
+        $period = NepaliDate::period(Carbon::parse($this->from));
+        [$from, $to] = $this->monthRange($period);
+
+        return $from->toDateString() === $this->from && $to->toDateString() === $this->to ? $period : null;
     }
 
     public function shiftMonth(int $by): void
     {
-        [$y, $m] = array_map('intval', explode('-', $this->period));
+        [$y, $m] = array_map('intval', explode('-', NepaliDate::period(Carbon::parse($this->from))));
         $index = $y * 12 + $m - 1 + max(-1, min(1, $by));
-        $this->period = sprintf('%d-%02d', intdiv($index, 12), $index % 12 + 1);
+        $this->setMonth(sprintf('%d-%02d', intdiv($index, 12), $index % 12 + 1));
     }
 
     public function goToday(): void
     {
-        $this->period = NepaliDate::period(today());
+        $this->setMonth(NepaliDate::period(today()));
+    }
+
+    public function preset(string $name): void
+    {
+        [$y, $m] = NepaliDate::fromAd(today());
+
+        match ($name) {
+            'last_month' => $this->setMonth($m === 1 ? sprintf('%d-12', $y - 1) : sprintf('%d-%02d', $y, $m - 1)),
+            'last_3' => [$this->from, $this->to] = [
+                NepaliDate::addMonths(NepaliDate::toAd($y, $m, 1), -2)->toDateString(),
+                NepaliDate::toAd($y, $m, NepaliDate::monthLength($y, $m))->toDateString(),
+            ],
+            'this_year' => [$this->from, $this->to] = [
+                NepaliDate::toAd($y, 1, 1)->toDateString(),
+                NepaliDate::toAd($y, 12, NepaliDate::monthLength($y, 12))->toDateString(),
+            ],
+            default => $this->goToday(),
+        };
+    }
+
+    public function openCustomRange(): void
+    {
+        [$this->customFrom, $this->customTo] = [$this->from, $this->to];
+        $this->resetErrorBag();
+        Flux::modal('date-range')->show();
+    }
+
+    public function applyCustomRange(): void
+    {
+        $data = $this->validate([
+            'customFrom' => ['required', 'date'],
+            'customTo' => ['required', 'date', 'after_or_equal:customFrom'],
+        ], attributes: ['customFrom' => __('from date'), 'customTo' => __('to date')]);
+
+        $this->from = Carbon::parse($data['customFrom'])->toDateString();
+        $this->to = Carbon::parse($data['customTo'])->toDateString();
+        Flux::modal('date-range')->close();
     }
 
     /** First and last AD day of a BS month key. */
-    private function range(string $period): array
+    private function monthRange(string $period): array
     {
         [$y, $m] = array_map('intval', explode('-', $period));
 
         return [NepaliDate::toAd($y, $m, 1)->startOfDay(), NepaliDate::toAd($y, $m, NepaliDate::monthLength($y, $m))->endOfDay()];
     }
 
-    /** Totals for one BS month. */
-    private function totals(string $period): array
+    /** The shown range as start/end of day. */
+    private function range(): array
     {
-        [$from, $to] = $this->range($period);
+        return [Carbon::parse($this->from)->startOfDay(), Carbon::parse($this->to)->endOfDay()];
+    }
 
+    /** Totals for a date range. */
+    private function totals(Carbon $from, Carbon $to): array
+    {
         $clientIncome = (float) Payment::whereNotNull('paid_at')->whereBetween('paid_at', [$from, $to])->sum('amount');
         $otherIncome = (float) Transaction::where('kind', 'income')->whereBetween('date', [$from->toDateString(), $to->toDateString()])->sum('amount');
         $expenses = (float) Transaction::where('kind', 'expense')->whereBetween('date', [$from->toDateString(), $to->toDateString()])->sum('amount');
@@ -86,8 +153,13 @@ new #[Title('Finance')] class extends Component {
     #[Computed]
     public function summary(): array
     {
-        $now = $this->totals($this->period);
-        $prev = $this->totals($this->previousPeriod());
+        [$from, $to] = $this->range();
+        $now = $this->totals($from, $to);
+        // Compare with the month before, or the same number of days before a custom range.
+        $prevRange = $this->monthKey
+            ? $this->monthRange(NepaliDate::period($from->copy()->subDay()))
+            : [$from->copy()->subDays($from->diffInDays($to) + 1)->startOfDay(), $from->copy()->subDay()->endOfDay()];
+        $prev = $this->totals(...$prevRange);
         $unpaid = Payment::whereNull('paid_at')->get();
 
         return $now + [
@@ -100,18 +172,11 @@ new #[Title('Finance')] class extends Component {
         ];
     }
 
-    private function previousPeriod(): string
-    {
-        [$y, $m] = array_map('intval', explode('-', $this->period));
-
-        return $m === 1 ? sprintf('%d-12', $y - 1) : sprintf('%d-%02d', $y, $m - 1);
-    }
-
     /** Every money movement of the month: client payments, other income, expenses and salaries. */
     #[Computed]
     public function entries()
     {
-        [$from, $to] = $this->range($this->period);
+        [$from, $to] = $this->range();
 
         $payments = Payment::with('client')->whereNotNull('paid_at')->whereBetween('paid_at', [$from, $to])->get()
             ->map(fn ($p) => [
@@ -140,6 +205,51 @@ new #[Title('Finance')] class extends Component {
         return $payments->concat($salaries)->concat($manual)->sortByDesc(fn ($e) => $e['date']->timestamp.$e['key'])->values();
     }
 
+    /** Entries after the In/Out filter and search. */
+    #[Computed]
+    public function visible()
+    {
+        $q = mb_strtolower(trim($this->search));
+
+        return $this->entries
+            ->filter(fn ($e) => $this->show === 'all' || $e['kind'] === $this->show)
+            ->filter(fn ($e) => $q === '' || str_contains(mb_strtolower($e['title'].' '.$e['category'].' '.$e['note'].' '.$e['reference'].' '.$e['method']), $q))
+            ->values();
+    }
+
+    public function export()
+    {
+        $rows = $this->visible;
+        $name = 'transactions-'.str_replace(' ', '-', strtolower($this->rangeLabel())).'.csv';
+
+        return response()->streamDownload(function () use ($rows) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF"); // so Excel reads Nepali month names correctly
+            fputcsv($out, ['Title', 'Date (BS)', 'Date (AD)', 'Category', 'Payment type', 'Method', 'Reference', 'Note', 'Amount', 'In / Out']);
+            foreach ($rows as $e) {
+                fputcsv($out, [
+                    $e['title'], NepaliDate::format($e['date']), $e['date']->toDateString(), $e['category'],
+                    $e['kind'] === 'income' ? 'Income' : 'Expense', $e['method'], $e['reference'], $e['note'],
+                    ($e['kind'] === 'income' ? '' : '-').number_format($e['amount'], 2, '.', ''), $e['kind'] === 'income' ? 'In' : 'Out',
+                ]);
+            }
+            fclose($out);
+        }, $name, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /** "Ashoj 2083" for a whole month, otherwise "1 Bhadra – 26 Ashoj 2083". */
+    public function rangeLabel(): string
+    {
+        if ($this->monthKey) {
+            return NepaliDate::periodLabel($this->monthKey);
+        }
+
+        [$from, $to] = $this->range();
+        $sameYear = NepaliDate::fromAd($from)[0] === NepaliDate::fromAd($to)[0];
+
+        return NepaliDate::format($from, withYear: ! $sameYear).' – '.NepaliDate::format($to);
+    }
+
     // Add / delete
 
     public function newEntry(string $kind): void
@@ -148,7 +258,7 @@ new #[Title('Finance')] class extends Component {
         $this->reset('title', 'amount', 'method', 'note', 'receipt');
         $this->kind = $kind === 'income' ? 'income' : 'expense';
         $this->category = array_key_first(Transaction::categories($this->kind));
-        [$from, $to] = $this->range($this->period);
+        [$from, $to] = $this->range();
         $this->date = today()->between($from, $to) ? today()->toDateString() : $from->toDateString();
 
         Flux::modal('entry-form')->show();
@@ -183,8 +293,10 @@ new #[Title('Finance')] class extends Component {
             'receipt_path' => $this->receipt?->store('receipts', 'local'),
         ]);
 
-        // Show the month the entry belongs to.
-        $this->period = NepaliDate::period(Carbon::parse($data['date']));
+        // Show the month the entry belongs to when it falls outside the range.
+        if (! Carbon::parse($data['date'])->between(...$this->range())) {
+            $this->setMonth(NepaliDate::period(Carbon::parse($data['date'])));
+        }
         $this->reset('receipt');
         Flux::modal('entry-form')->close();
         Flux::toast(variant: 'success', text: $data['kind'] === 'income' ? __('Income added.') : __('Expense added.'));
@@ -201,8 +313,8 @@ new #[Title('Finance')] class extends Component {
     $money = fn ($v) => Client::money(round($v));
     $sum = $this->summary;
     $entries = $this->entries;
-    $label = NepaliDate::periodLabel($period);
-    $isNow = $period === NepaliDate::period(today());
+    $label = $this->rangeLabel();
+    $isMonth = $this->monthKey !== null;
     $panel = 'rounded-xl bg-white ring-1 ring-zinc-200/70 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:ring-white/10';
     $iconTile = 'flex size-9 shrink-0 items-center justify-center rounded-lg';
     $change = fn (float $now, float $before) => $before > 0 ? (int) round(($now - $before) / $before * 100) : null;
@@ -214,16 +326,33 @@ new #[Title('Finance')] class extends Component {
     <header class="flex flex-wrap items-end justify-between gap-4">
         <div class="flex flex-col gap-1">
             <h1 class="text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-3xl dark:text-white">{{ __('Finance') }}</h1>
-            <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ __('Money in, money out and what is left, month by month.') }}</p>
+            <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ __('Money in, money out and what is left.') }}</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
+            {{-- Month stepper --}}
             <div class="flex items-center rounded-lg bg-white ring-1 ring-zinc-200 dark:bg-zinc-950 dark:ring-white/10">
                 <button type="button" wire:click="shiftMonth(-1)" class="flex size-10 items-center justify-center rounded-s-lg text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:hover:bg-white/5 dark:hover:text-white" aria-label="{{ __('Previous month') }}"><flux:icon.chevron-left variant="mini" class="size-4" /></button>
-                <button type="button" wire:click="goToday" class="h-10 min-w-36 border-x border-zinc-200 px-3 text-sm font-semibold text-zinc-800 dark:border-white/10 dark:text-zinc-100" title="{{ __('Back to this month') }}">{{ $label }}</button>
+                <span class="flex h-10 min-w-36 items-center justify-center border-x border-zinc-200 px-3 text-sm font-semibold whitespace-nowrap text-zinc-800 dark:border-white/10 dark:text-zinc-100">{{ $label }}</span>
                 <button type="button" wire:click="shiftMonth(1)" class="flex size-10 items-center justify-center rounded-e-lg text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:hover:bg-white/5 dark:hover:text-white" aria-label="{{ __('Next month') }}"><flux:icon.chevron-right variant="mini" class="size-4" /></button>
             </div>
-            <flux:button icon="arrow-down-left" wire:click="newEntry('income')" data-test="add-income">{{ __('Add income') }}</flux:button>
-            <flux:button variant="primary" icon="arrow-up-right" wire:click="newEntry('expense')" class="shadow-lg shadow-brand-500/25" data-test="add-expense">{{ __('Add expense') }}</flux:button>
+
+            {{-- Date filter --}}
+            <flux:dropdown align="end">
+                <flux:button icon="calendar-days" icon:trailing="chevron-down" data-test="date-filter">{{ __('Date') }}</flux:button>
+                <flux:menu>
+                    <flux:menu.item icon="calendar" wire:click="preset('this_month')">{{ __('This month') }}</flux:menu.item>
+                    <flux:menu.item icon="arrow-uturn-left" wire:click="preset('last_month')">{{ __('Last month') }}</flux:menu.item>
+                    <flux:menu.item icon="calendar-days" wire:click="preset('last_3')">{{ __('Last 3 months') }}</flux:menu.item>
+                    <flux:menu.item icon="sun" wire:click="preset('this_year')">{{ __('This year (:year)', ['year' => NepaliDate::fromAd(today())[0]]) }}</flux:menu.item>
+                    <flux:menu.separator />
+                    <flux:menu.item icon="adjustments-horizontal" wire:click="openCustomRange">{{ __('Custom range…') }}</flux:menu.item>
+                </flux:menu>
+            </flux:dropdown>
+
+            {{-- Export --}}
+            <flux:button icon="arrow-down-tray" wire:click="export" data-test="export">{{ __('Export') }}</flux:button>
+
+            <flux:button variant="primary" icon="plus" wire:click="newEntry('expense')" class="shadow-lg shadow-brand-500/25" data-test="add-transaction">{{ __('Add transaction') }}</flux:button>
         </div>
     </header>
 
@@ -242,7 +371,7 @@ new #[Title('Finance')] class extends Component {
                     <p class="flex-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ $card['label'] }}</p>
                     @if ($card['delta'] !== null)
                         @php $better = $card['good'] === 'up' ? $card['delta'] >= 0 : $card['delta'] <= 0; @endphp
-                        <span @class(['inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-semibold tabular-nums', 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' => $better, 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300' => ! $better]) title="{{ __('Compared with last month') }}">
+                        <span @class(['inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-semibold tabular-nums', 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' => $better, 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300' => ! $better]) title="{{ $isMonth ? __('Compared with last month') : __('Compared with the same number of days before') }}">
                             <flux:icon :icon="$card['delta'] >= 0 ? 'arrow-trending-up' : 'arrow-trending-down'" variant="micro" class="size-3.5" />{{ abs($card['delta']) }}%
                         </span>
                     @endif
@@ -286,11 +415,8 @@ new #[Title('Finance')] class extends Component {
 
     {{-- Transactions --}}
     @php
-        $q = mb_strtolower(trim($search));
         $sourceLabels = ['client' => __('Client payment'), 'salary' => __('Salary'), 'manual' => __('Manual entry')];
-        $visible = $entries
-            ->filter(fn ($e) => $show === 'all' || $e['kind'] === $show)
-            ->filter(fn ($e) => $q === '' || str_contains(mb_strtolower($e['title'].' '.$e['category'].' '.$e['note'].' '.$e['reference'].' '.$e['method']), $q));
+        $visible = $this->visible;
         $th = 'px-3 py-2.5 text-start text-[0.6875rem] font-semibold tracking-wide text-zinc-500 uppercase whitespace-nowrap';
         $detailData = $visible->mapWithKeys(fn ($e) => [$e['key'] => [
             'kind' => $e['kind'],
@@ -440,7 +566,29 @@ new #[Title('Finance')] class extends Component {
         </template>
     </section>
 
-    {{-- Add income / expense --}}
+    {{-- Custom date range --}}
+    <flux:modal name="date-range" class="w-full max-w-md">
+        <form wire:submit="applyCustomRange" class="flex flex-col gap-5">
+            <div class="flex items-start gap-3">
+                <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300"><flux:icon.calendar-days variant="mini" class="size-5" /></span>
+                <div>
+                    <flux:heading size="lg">{{ __('Custom date range') }}</flux:heading>
+                    <flux:text class="mt-0.5">{{ __('Show money in and out between two dates.') }}</flux:text>
+                </div>
+            </div>
+            <div class="grid gap-4 sm:grid-cols-2">
+                <x-nepali-date wire:model="customFrom" :label="__('From')" />
+                <x-nepali-date wire:model="customTo" :label="__('To')" />
+            </div>
+            <flux:error name="customTo" />
+            <div class="flex justify-end gap-2">
+                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
+                <flux:button type="submit" variant="primary" icon="check" data-test="apply-range">{{ __('Apply') }}</flux:button>
+            </div>
+        </form>
+    </flux:modal>
+
+    {{-- Add transaction --}}
     <flux:modal name="entry-form" class="w-full max-w-xl overflow-visible p-0!" :closable="false">
         <form wire:submit="saveEntry" class="flex flex-col">
             <div class="flex items-center gap-4 border-b border-zinc-100 px-6 py-5 dark:border-white/5">
@@ -448,7 +596,7 @@ new #[Title('Finance')] class extends Component {
                     <flux:icon.arrows-up-down variant="mini" class="size-5" />
                 </span>
                 <div class="min-w-0 flex-1">
-                    <flux:heading size="lg" x-text="$wire.kind === 'income' ? @js(__('Add income')) : @js(__('Add expense'))"></flux:heading>
+                    <flux:heading size="lg">{{ __('Add transaction') }}</flux:heading>
                     <p class="text-sm text-zinc-500">{{ __('Client payments and salaries are added on their own pages.') }}</p>
                 </div>
                 <flux:modal.close><flux:button variant="ghost" size="sm" icon="x-mark" :aria-label="__('Close')" /></flux:modal.close>
