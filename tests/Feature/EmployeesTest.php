@@ -131,8 +131,18 @@ class EmployeesTest extends TestCase
         $day = NepaliDate::toAd($y, $m, 1)->toDateString();
 
         $page = Livewire::test('pages::employee-profile', ['employee' => $employee])
-            ->call('markDay', $day, 'leave');
-        $this->assertSame('leave', $employee->attendances()->sole()->status);
+            ->call('markDay', $day, 'leave')
+            ->assertSet('leaveDate', $day);
+        $this->assertSame(0, $employee->attendances()->count()); // nothing saved without a reason
+
+        $page->set('leaveReason', '')
+            ->call('saveLeave')
+            ->assertHasErrors(['leaveReason'])
+            ->set('leaveReason', 'Sick with fever')
+            ->call('saveLeave')
+            ->assertHasNoErrors()
+            ->assertSee('Sick with fever');
+        $this->assertSame(['leave', 'Sick with fever'], [$employee->attendances()->sole()->status, $employee->attendances()->sole()->note]);
 
         $page->call('markDay', $day, 'present');
         $this->assertSame('present', $employee->attendances()->sole()->status);

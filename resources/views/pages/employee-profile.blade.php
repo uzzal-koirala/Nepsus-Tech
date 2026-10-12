@@ -34,6 +34,9 @@ new #[Title('Employee')] class extends Component {
     public string $contractEnd = '';
 
     public $docUpload;
+
+    public string $leaveDate = '';
+    public string $leaveReason = '';
     public string $docType = 'agreement';
 
     public string $name = '';
@@ -101,7 +104,7 @@ new #[Title('Employee')] class extends Component {
         for ($day = 1; $day <= $length; $day++) {
             $ad = $first->copy()->addDays($day - 1);
             $key = $ad->toDateString();
-            $cells[] = ['day' => $day, 'ad' => $ad, 'status' => $marks[$key]->status ?? null, 'done' => $doneByDay[$key] ?? collect()];
+            $cells[] = ['day' => $day, 'ad' => $ad, 'status' => $marks[$key]->status ?? null, 'note' => $marks[$key]->note ?? null, 'done' => $doneByDay[$key] ?? collect()];
         }
         $cells = array_pad($cells, (int) ceil(count($cells) / 7) * 7, null);
 
@@ -137,14 +140,39 @@ new #[Title('Employee')] class extends Component {
     {
         $day = Carbon::parse($date)->toDateString();
 
+        if ($status === 'leave') {
+            // Leave needs a reason: ask for it first.
+            $this->leaveDate = $day;
+            $this->leaveReason = (string) $this->employee->attendances()->whereDate('date', $day)->where('status', 'leave')->value('note');
+            $this->resetErrorBag();
+            Flux::modal('leave-reason')->show();
+
+            return;
+        }
+
         if ($status === '') {
             $this->employee->attendances()->whereDate('date', $day)->delete();
         } else {
             abort_unless(array_key_exists($status, Attendance::STATUSES), 422);
-            $this->employee->attendances()->updateOrCreate(['date' => $day], ['status' => $status]);
+            $this->employee->attendances()->updateOrCreate(['date' => $day], ['status' => $status, 'note' => null]);
         }
 
         unset($this->calendar, $this->attendanceTotals);
+    }
+
+    public function saveLeave(): void
+    {
+        $data = $this->validate([
+            'leaveDate' => ['required', 'date'],
+            'leaveReason' => ['required', 'string', 'min:3', 'max:255'],
+        ], attributes: ['leaveReason' => __('reason')]);
+
+        $this->employee->attendances()->updateOrCreate(['date' => Carbon::parse($data['leaveDate'])->toDateString()], ['status' => 'leave', 'note' => trim($data['leaveReason'])]);
+
+        unset($this->calendar, $this->attendanceTotals);
+        $this->reset('leaveDate', 'leaveReason');
+        Flux::modal('leave-reason')->close();
+        Flux::toast(variant: 'success', text: __('Leave marked.'));
     }
 
     /** Marks every unmarked working day (not Saturday) of the shown month, up to today, as present. */
@@ -622,9 +650,12 @@ new #[Title('Employee')] class extends Component {
                                                     <span class="text-[0.625rem] text-zinc-300 tabular-nums dark:text-zinc-600">{{ $cell['ad']->format('j') }}</span>
                                                 </span>
                                                 @if ($mark)
-                                                    <span class="{{ $markTone[$mark]['pill'] }} inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-semibold">
+                                                    <span class="{{ $markTone[$mark]['pill'] }} inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-semibold" @if ($cell['note']) title="{{ $cell['note'] }}" @endif>
                                                         <flux:icon :icon="Attendance::STATUSES[$mark]['icon']" variant="micro" class="size-3" />{{ __(Attendance::STATUSES[$mark]['label']) }}
                                                     </span>
+                                                    @if ($mark === 'leave' && $cell['note'])
+                                                        <span class="line-clamp-2 text-[0.6875rem] leading-snug text-sky-800 dark:text-sky-200" title="{{ $cell['note'] }}">{{ $cell['note'] }}</span>
+                                                    @endif
                                                 @elseif (! $isFuture && $i !== 6)
                                                     <span class="text-[0.6875rem] text-zinc-300 opacity-0 transition group-hover:opacity-100 dark:text-zinc-600">{{ __('Mark') }}</span>
                                                 @endif
@@ -1064,6 +1095,29 @@ new #[Title('Employee')] class extends Component {
             <div class="flex justify-end gap-2">
                 <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
                 <flux:button type="submit" variant="primary">{{ __('Save payment') }}</flux:button>
+            </div>
+        </form>
+    </flux:modal>
+
+    {{-- Leave reason --}}
+    <flux:modal name="leave-reason" class="w-full max-w-md">
+        <form wire:submit="saveLeave" class="flex flex-col gap-5">
+            <div class="flex items-start gap-3">
+                <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300"><flux:icon.sun variant="mini" class="size-5" /></span>
+                <div>
+                    <flux:heading size="lg">{{ __('Mark leave') }}</flux:heading>
+                    <flux:text class="mt-0.5">{{ $leaveDate ? __(':name · :date', ['name' => $e->name, 'date' => \Illuminate\Support\Carbon::parse($leaveDate)->toNepali()]) : $e->name }}</flux:text>
+                </div>
+            </div>
+            <flux:textarea wire:model="leaveReason" :label="__('Reason for leave')" :placeholder="__('e.g. Sick, family function, Dashain holiday')" rows="3" required autofocus />
+            <div class="flex flex-wrap gap-1.5">
+                @foreach ([__('Sick'), __('Family function'), __('Festival'), __('Personal work'), __('Travel')] as $preset)
+                    <button type="button" @click="$wire.leaveReason = @js($preset)" class="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-600 transition hover:bg-sky-50 hover:text-sky-700 dark:bg-white/5 dark:text-zinc-300">{{ $preset }}</button>
+                @endforeach
+            </div>
+            <div class="flex justify-end gap-2">
+                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
+                <flux:button type="submit" variant="primary" icon="check" data-test="save-leave">{{ __('Mark leave') }}</flux:button>
             </div>
         </form>
     </flux:modal>
