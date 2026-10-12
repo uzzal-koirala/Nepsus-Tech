@@ -410,18 +410,9 @@ new #[Title('Finance')] class extends Component {
     @php
         $q = mb_strtolower(trim($search));
         $sourceLabels = ['client' => __('Client payment'), 'salary' => __('Salary'), 'manual' => __('Manual entry')];
-        // Running balance for the month, oldest first.
-        $running = 0;
-        $balances = [];
-        foreach ($entries->sortBy(fn ($e) => $e['date']->timestamp.$e['key']) as $e) {
-            $running += $e['kind'] === 'income' ? $e['amount'] : -$e['amount'];
-            $balances[$e['key']] = $running;
-        }
         $visible = $entries
             ->filter(fn ($e) => $show === 'all' || $e['kind'] === $show)
             ->filter(fn ($e) => $q === '' || str_contains(mb_strtolower($e['title'].' '.$e['category'].' '.$e['note'].' '.$e['reference'].' '.$e['method']), $q));
-        $visIn = $visible->where('kind', 'income')->sum('amount');
-        $visOut = $visible->where('kind', 'expense')->sum('amount');
         $th = 'px-3 py-2.5 text-start text-[0.6875rem] font-semibold tracking-wide text-zinc-500 uppercase whitespace-nowrap';
         $detailData = $visible->mapWithKeys(fn ($e) => [$e['key'] => [
             'kind' => $e['kind'],
@@ -434,7 +425,6 @@ new #[Title('Finance')] class extends Component {
             'method' => $e['method'] ? __($e['method']) : null,
             'reference' => $e['reference'],
             'note' => $e['note'],
-            'balance' => $money($balances[$e['key']]),
             'link' => $e['link'],
             'linkLabel' => ['client' => __('Open client'), 'salary' => __('Open employee')][$e['source']] ?? null,
             'proof' => $e['proof'],
@@ -467,30 +457,25 @@ new #[Title('Finance')] class extends Component {
             </div>
         @else
             <div class="overflow-x-auto border-t border-zinc-100 dark:border-white/5">
-                <table class="w-full min-w-[68rem] text-sm">
+                <table class="w-full min-w-[58rem] text-sm">
                     <thead class="bg-zinc-50/80 dark:bg-white/[0.02]">
                         <tr>
-                            <th class="{{ $th }} ps-5">#</th>
-                            <th class="{{ $th }}">{{ __('Date') }}</th>
+                            <th class="{{ $th }} ps-5">{{ __('Date') }}</th>
                             <th class="{{ $th }}">{{ __('Description') }}</th>
                             <th class="{{ $th }}">{{ __('Category') }}</th>
                             <th class="{{ $th }}">{{ __('Method') }}</th>
                             <th class="{{ $th }}">{{ __('Reference / note') }}</th>
-                            <th class="{{ $th }} text-end">{{ __('Money in') }}</th>
-                            <th class="{{ $th }} text-end">{{ __('Money out') }}</th>
-                            <th class="{{ $th }} pe-5 text-end">{{ __('Balance') }}</th>
+                            <th class="{{ $th }} pe-5 text-end">{{ __('Amount') }}</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-zinc-100 dark:divide-white/5">
-                        @foreach ($visible->values() as $i => $e)
+                        @foreach ($visible->values() as $e)
                             @php
                                 $in = $e['kind'] === 'income';
                                 $bs = NepaliDate::fromAd($e['date']);
-                                $bal = $balances[$e['key']];
                             @endphp
                             <tr wire:key="entry-{{ $e['key'] }}" @click="open = '{{ $e['key'] }}'" class="cursor-pointer transition hover:bg-brand-50/40 dark:hover:bg-white/[0.03]" tabindex="0" @keydown.enter="open = '{{ $e['key'] }}'">
-                                <td class="px-3 py-3 ps-5 text-xs text-zinc-400 tabular-nums">{{ $i + 1 }}</td>
-                                <td class="px-3 py-3 whitespace-nowrap" title="{{ $e['date']->format('l, j M Y') }}">
+                                <td class="px-3 py-3 ps-5 whitespace-nowrap" title="{{ $e['date']->format('l, j M Y') }}">
                                     <p class="font-semibold text-zinc-900 dark:text-white">{{ $bs ? $bs[2].' '.NepaliDate::MONTHS[$bs[1] - 1] : '' }}</p>
                                     <p class="text-xs text-zinc-500">{{ $e['date']->format('D, j M Y') }}</p>
                                 </td>
@@ -521,24 +506,12 @@ new #[Title('Finance')] class extends Component {
                                         <span class="mt-0.5 inline-flex items-center gap-1 text-[0.6875rem] font-medium text-emerald-700 dark:text-emerald-300"><flux:icon.paper-clip variant="micro" class="size-3" />{{ __('Receipt') }}</span>
                                     @endif
                                 </td>
-                                <td class="px-3 py-3 text-end font-semibold whitespace-nowrap tabular-nums">
-                                    @if ($in)<span class="text-brand-700 dark:text-brand-300">+ {{ $money($e['amount']) }}</span>@endif
+                                <td class="px-3 py-3 pe-5 text-end whitespace-nowrap">
+                                    <span @class(['inline-flex items-center rounded-lg px-2.5 py-1 text-sm font-semibold tabular-nums', 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200' => $in, 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-200' => ! $in])>{{ $in ? '+' : '−' }} {{ $money($e['amount']) }}</span>
                                 </td>
-                                <td class="px-3 py-3 text-end font-semibold whitespace-nowrap tabular-nums">
-                                    @unless ($in)<span class="text-zinc-900 dark:text-white">− {{ $money($e['amount']) }}</span>@endunless
-                                </td>
-                                <td @class(['px-3 py-3 pe-5 text-end text-xs font-medium whitespace-nowrap tabular-nums', 'text-zinc-500' => $bal >= 0, 'text-rose-600 dark:text-rose-400' => $bal < 0])>{{ $bal < 0 ? '− ' : '' }}{{ $money(abs($bal)) }}</td>
                             </tr>
                         @endforeach
                     </tbody>
-                    <tfoot class="border-t-2 border-zinc-200 bg-zinc-50/80 dark:border-white/10 dark:bg-white/[0.02]">
-                        <tr>
-                            <td colspan="6" class="px-3 py-3 ps-5 text-sm font-semibold text-zinc-700 dark:text-zinc-200">{{ __('Total') }} <span class="font-normal text-zinc-500">· {{ trans_choice(':count entry|:count entries', $visible->count()) }}</span></td>
-                            <td class="px-3 py-3 text-end font-bold whitespace-nowrap text-brand-700 tabular-nums dark:text-brand-300">+ {{ $money($visIn) }}</td>
-                            <td class="px-3 py-3 text-end font-bold whitespace-nowrap text-zinc-900 tabular-nums dark:text-white">− {{ $money($visOut) }}</td>
-                            <td @class(['px-3 py-3 pe-5 text-end font-bold whitespace-nowrap tabular-nums', 'text-emerald-700 dark:text-emerald-300' => $visIn >= $visOut, 'text-rose-700 dark:text-rose-300' => $visIn < $visOut])>{{ $visIn < $visOut ? '− ' : '' }}{{ $money(abs($visIn - $visOut)) }}</td>
-                        </tr>
-                    </tfoot>
                 </table>
             </div>
         @endif
@@ -561,7 +534,6 @@ new #[Title('Finance')] class extends Component {
                             <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Method') }}</dt><dd class="font-medium text-zinc-900 dark:text-white" x-text="rows[open].method || '—'"></dd></div>
                             <div class="flex justify-between gap-4 py-3" x-show="rows[open].reference"><dt class="text-zinc-500">{{ __('Reference') }}</dt><dd class="font-medium text-zinc-900 tabular-nums dark:text-white" x-text="rows[open].reference"></dd></div>
                             <div class="flex justify-between gap-4 py-3" x-show="rows[open].note"><dt class="text-zinc-500">{{ __('Note') }}</dt><dd class="text-end text-zinc-800 dark:text-zinc-100" x-text="rows[open].note"></dd></div>
-                            <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Balance after') }}</dt><dd class="font-semibold text-zinc-900 tabular-nums dark:text-white" x-text="rows[open].balance"></dd></div>
                             <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Recorded') }}</dt><dd class="text-zinc-600 dark:text-zinc-300" x-text="rows[open].recorded"></dd></div>
                         </dl>
                         <div class="flex flex-wrap items-center gap-2 border-t border-zinc-100 bg-zinc-50/70 px-6 py-4 dark:border-white/5 dark:bg-white/[0.02]">
