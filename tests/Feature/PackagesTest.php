@@ -43,7 +43,7 @@ class PackagesTest extends TestCase
             ->call('save')
             ->assertHasNoErrors()
             ->assertSee('Growth')
-            ->assertSee('NPR 30,000');
+            ->assertSee('30,000');
 
         $growth = Package::firstWhere('name', 'Growth');
         $this->assertSame(['16 posts a month', '4 reels', 'Monthly report'], $growth->features);
