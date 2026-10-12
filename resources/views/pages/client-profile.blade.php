@@ -1861,144 +1861,150 @@ new #[Title('Client profile')] class extends Component {
         $fieldIcon = 'pointer-events-none absolute start-3.5 top-1/2 size-4 -translate-y-1/2 text-zinc-400';
         $label = 'mb-1.5 block text-sm font-medium text-zinc-800 dark:text-white';
     @endphp
-    <flux:modal name="payment-form" class="w-full max-w-3xl overflow-visible p-0!" :closable="false">
-        <form wire:submit="savePayment"
-            class="grid overflow-visible md:grid-cols-[16rem_minmax(0,1fr)]"
+    <flux:modal name="payment-form" class="w-full max-w-2xl overflow-visible p-0!" :closable="false">
+        <form wire:submit="savePayment" class="flex flex-col"
             x-data="{
                 billed: {{ $billed }}, received: {{ $received }}, methodOpen: false,
-                methods: @js(collect($methodLook)->map(fn ($m, $k) => ['label' => __($k), 'hint' => $m['hint']])),
                 get amount() { return Math.max(0, parseFloat($wire.payAmount) || 0) },
                 get after() { return Math.max(0, this.billed - this.received - this.amount) },
                 get pct() { return this.billed > 0 ? Math.min(100, Math.round((this.received + this.amount) / this.billed * 100)) : 0 },
+                get before() { return this.billed > 0 ? Math.min(100, Math.round(this.received / this.billed * 100)) : 0 },
                 money(v) { return @js(config('app.currency')) + ' ' + Math.round(v).toLocaleString('en-US') },
             }">
-            {{-- Summary --}}
-            <aside class="relative overflow-hidden rounded-t-xl bg-linear-to-br from-emerald-500 via-emerald-600 to-teal-700 p-6 text-white md:rounded-s-xl md:rounded-tr-none">
-                <div class="absolute -top-12 -right-12 size-40 rounded-full bg-white/10"></div>
-                <div class="absolute -bottom-16 -left-10 size-44 rounded-full bg-sun/25 blur-2xl"></div>
+            {{-- Summary across the top --}}
+            <div class="relative overflow-hidden rounded-t-xl bg-linear-to-br from-emerald-500 via-emerald-600 to-teal-700 px-6 pt-5 pb-6 text-white">
+                <div class="absolute -top-16 -right-10 size-48 rounded-full bg-white/10"></div>
+                <div class="absolute -bottom-20 left-1/3 size-48 rounded-full bg-sun/20 blur-3xl"></div>
 
                 <div class="relative flex items-center gap-3">
                     <x-client-avatar :client="$c" tint="bg-white/20 text-white" class="size-11 rounded-xl text-sm ring-2 ring-white/30" />
-                    <div class="min-w-0">
-                        <p class="text-[0.6875rem] font-medium tracking-wider text-white/70 uppercase">{{ __('Payment from') }}</p>
-                        <p class="truncate text-sm font-semibold">{{ $c->displayName() }}</p>
+                    <div class="min-w-0 flex-1">
+                        <flux:heading size="lg" class="text-white!">{{ __('Record payment') }}</flux:heading>
+                        <p class="truncate text-sm text-white/75">{{ __('From :name', ['name' => $c->displayName()]) }}</p>
+                    </div>
+                    <flux:modal.close>
+                        <button type="button" class="flex size-9 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/15 hover:text-white" aria-label="{{ __('Close') }}"><flux:icon.x-mark variant="mini" class="size-5" /></button>
+                    </flux:modal.close>
+                </div>
+
+                <div class="relative mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div class="rounded-xl bg-white/10 px-3 py-2.5 ring-1 ring-white/15">
+                        <p class="text-[0.6875rem] text-white/70">{{ __('Total billed') }}</p>
+                        <p class="mt-0.5 truncate text-sm font-semibold tabular-nums">{{ Client::money($billed) }}</p>
+                    </div>
+                    <div class="rounded-xl bg-white/10 px-3 py-2.5 ring-1 ring-white/15">
+                        <p class="text-[0.6875rem] text-white/70">{{ __('Received so far') }}</p>
+                        <p class="mt-0.5 truncate text-sm font-semibold tabular-nums">{{ Client::money($received) }}</p>
+                    </div>
+                    <div class="rounded-xl bg-white/10 px-3 py-2.5 ring-1 ring-white/15">
+                        <p class="text-[0.6875rem] text-white/70">{{ __('This payment') }}</p>
+                        <p class="mt-0.5 truncate text-sm font-semibold text-sun tabular-nums" x-text="'+ ' + money(amount)">+ {{ Client::money(0) }}</p>
+                    </div>
+                    <div class="rounded-xl bg-white px-3 py-2.5 text-emerald-900 shadow-sm">
+                        <p class="text-[0.6875rem] text-emerald-700/80">{{ __('Outstanding after') }}</p>
+                        <p class="mt-0.5 truncate text-sm font-bold tabular-nums" x-text="money(after)">{{ Client::money($outstanding) }}</p>
                     </div>
                 </div>
 
-                <dl class="relative mt-6 flex flex-col gap-3 text-sm">
-                    <div class="flex items-center justify-between gap-2"><dt class="text-white/70">{{ __('Total billed') }}</dt><dd class="font-medium tabular-nums">{{ Client::money($billed) }}</dd></div>
-                    <div class="flex items-center justify-between gap-2"><dt class="text-white/70">{{ __('Received so far') }}</dt><dd class="font-medium tabular-nums">{{ Client::money($received) }}</dd></div>
-                    <div class="flex items-center justify-between gap-2"><dt class="text-white/70">{{ __('This payment') }}</dt><dd class="font-semibold text-sun tabular-nums" x-text="'+ ' + money(amount)"></dd></div>
-                </dl>
-
-                <div class="relative mt-6 rounded-xl bg-white/10 p-4 ring-1 ring-white/15 backdrop-blur">
-                    <p class="text-[0.6875rem] font-medium tracking-wider text-white/70 uppercase">{{ __('Outstanding after') }}</p>
-                    <p class="mt-1 text-2xl font-semibold tracking-tight tabular-nums" x-text="money(after)">{{ Client::money($outstanding) }}</p>
-                    <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-white/20"><div class="h-full rounded-full bg-sun transition-[width] duration-500" :style="`width: ${pct}%`"></div></div>
-                    <p class="mt-2 text-xs text-white/80"><span x-text="pct"></span>% {{ __('of the total received') }}</p>
+                <div class="relative mt-4 flex items-center gap-3">
+                    <div class="relative h-2 flex-1 overflow-hidden rounded-full bg-white/20">
+                        <div class="absolute inset-y-0 left-0 rounded-full bg-sun transition-[width] duration-500" :style="`width: ${pct}%`"></div>
+                        <div class="absolute inset-y-0 left-0 rounded-full bg-white/90 transition-[width] duration-500" :style="`width: ${before}%`"></div>
+                    </div>
+                    <span class="text-xs font-semibold tabular-nums"><span x-text="pct"></span>% {{ __('received') }}</span>
                 </div>
-            </aside>
+            </div>
 
             {{-- Form --}}
-            <div class="flex min-w-0 flex-col">
-                <div class="flex items-start justify-between gap-4 px-6 pt-6">
-                    <div>
-                        <flux:heading size="lg">{{ __('Record payment') }}</flux:heading>
-                        <flux:text class="mt-0.5">{{ __('Money you have received from this client.') }}</flux:text>
+            <div class="flex flex-col gap-5 px-6 py-6">
+                {{-- Amount --}}
+                <div>
+                    <label for="pay-amount" class="{{ $label }}">{{ __('Amount') }}</label>
+                    <div class="flex items-center rounded-2xl bg-zinc-50 ring-1 ring-zinc-200 transition focus-within:bg-white focus-within:ring-2 focus-within:ring-emerald-500 dark:bg-white/5 dark:ring-white/10">
+                        <span class="ms-2 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-zinc-500 shadow-xs ring-1 ring-zinc-200 dark:bg-white/10 dark:ring-white/10">{{ config('app.currency') }}</span>
+                        <input id="pay-amount" wire:model="payAmount" type="number" min="0" step="0.01" inputmode="decimal" required placeholder="0" class="w-full border-0 bg-transparent px-3 py-3 text-2xl font-semibold tracking-tight text-zinc-900 tabular-nums placeholder:text-zinc-300 focus:ring-0 focus:outline-none dark:text-white" />
                     </div>
-                    <flux:modal.close><flux:button variant="ghost" size="sm" icon="x-mark" :aria-label="__('Close')" /></flux:modal.close>
+                    <flux:error name="payAmount" />
                 </div>
 
-                <div class="flex flex-col gap-5 px-6 py-6">
-                    {{-- Amount --}}
+                {{-- Type + date --}}
+                <div class="grid gap-4 sm:grid-cols-2">
                     <div>
-                        <label for="pay-amount" class="{{ $label }}">{{ __('Amount') }}</label>
-                        <div class="flex items-center rounded-2xl bg-zinc-50 ring-1 ring-zinc-200 transition focus-within:bg-white focus-within:ring-2 focus-within:ring-emerald-500 dark:bg-white/5 dark:ring-white/10">
-                            <span class="ms-2 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-zinc-500 shadow-xs ring-1 ring-zinc-200 dark:bg-white/10 dark:ring-white/10">{{ config('app.currency') }}</span>
-                            <input id="pay-amount" wire:model="payAmount" type="number" min="0" step="0.01" inputmode="decimal" required placeholder="0" class="w-full border-0 bg-transparent px-3 py-3 text-2xl font-semibold tracking-tight text-zinc-900 tabular-nums placeholder:text-zinc-300 focus:ring-0 focus:outline-none dark:text-white" />
+                        <label for="pay-type" class="{{ $label }}">{{ __('Payment type') }}</label>
+                        <div class="relative">
+                            <flux:icon.tag variant="micro" class="{{ $fieldIcon }}" />
+                            <input id="pay-type" wire:model="payType" type="text" maxlength="60" required placeholder="{{ __('e.g. Advance payment') }}" class="{{ $field }}" data-test="payment-type-input" />
                         </div>
-                        <flux:error name="payAmount" />
+                        <flux:error name="payType" />
                     </div>
-
-                    {{-- Type + date --}}
-                    <div class="grid gap-4 sm:grid-cols-2">
-                        <div>
-                            <label for="pay-type" class="{{ $label }}">{{ __('Payment type') }}</label>
-                            <div class="relative">
-                                <flux:icon.tag variant="micro" class="{{ $fieldIcon }}" />
-                                <input id="pay-type" wire:model="payType" type="text" maxlength="60" required placeholder="{{ __('e.g. Advance payment') }}" class="{{ $field }}" data-test="payment-type-input" />
-                            </div>
-                            <flux:error name="payType" />
-                        </div>
-                        <div>
-                            <p class="{{ $label }}">{{ __('Payment date') }}</p>
-                            <x-nepali-date wire:model="payDue" />
-                            <flux:error name="payDue" />
-                        </div>
-                    </div>
-
-                    {{-- Received in --}}
-                    <div class="relative" @click.outside="methodOpen = false" @keydown.escape.stop="methodOpen = false">
-                        <span class="{{ $label }}">{{ __('Received in') }}</span>
-                        <button type="button" @click="methodOpen = ! methodOpen" class="flex w-full items-center gap-3 rounded-xl bg-white px-3 py-2.5 text-start ring-1 ring-zinc-200 transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 focus:outline-none dark:bg-white/5 dark:ring-white/10" :aria-expanded="methodOpen" aria-haspopup="listbox" data-test="payment-method-button">
-                            <template x-if="! $wire.payMethod">
-                                <span class="flex items-center gap-3">
-                                    <span class="flex size-9 items-center justify-center rounded-lg border border-dashed border-zinc-300 text-zinc-400 dark:border-white/20"><flux:icon.wallet variant="mini" class="size-4.5" /></span>
-                                    <span class="text-sm text-zinc-400">{{ __('Choose where it was received') }}</span>
-                                </span>
-                            </template>
-                            @foreach ($methodLook as $key => $m)
-                                <span x-show="$wire.payMethod === @js($key)" class="flex items-center gap-3" x-cloak>
-                                    <span class="{{ $m['tile'] }} flex size-9 items-center justify-center rounded-lg"><flux:icon :icon="$m['icon']" variant="mini" class="size-4.5" /></span>
-                                    <span>
-                                        <span class="block text-sm font-semibold text-zinc-900 dark:text-white">{{ __($key) }}</span>
-                                        <span class="block text-xs text-zinc-500">{{ $m['hint'] }}</span>
-                                    </span>
-                                </span>
-                            @endforeach
-                            <flux:icon.chevron-up-down variant="mini" class="ms-auto size-4 text-zinc-400" />
-                        </button>
-                        <div x-show="methodOpen" x-transition.origin.top x-cloak class="absolute inset-x-0 top-full z-30 mt-1.5 grid grid-cols-2 gap-1 rounded-xl bg-white p-1.5 shadow-[0_20px_50px_-12px_rgb(15_23_42/0.35)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10" role="listbox">
-                            @foreach ($methodLook as $key => $m)
-                                <button type="button" role="option" @click="$wire.payMethod = @js($key); methodOpen = false" :aria-selected="$wire.payMethod === @js($key)" class="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-start transition hover:bg-zinc-50 dark:hover:bg-white/5" :class="$wire.payMethod === @js($key) && 'bg-brand-50 ring-1 ring-brand-200 dark:bg-brand-500/10 dark:ring-brand-500/30'">
-                                    <span class="{{ $m['tile'] }} flex size-8 shrink-0 items-center justify-center rounded-lg"><flux:icon :icon="$m['icon']" variant="micro" class="size-4" /></span>
-                                    <span class="min-w-0 flex-1">
-                                        <span class="block text-sm font-medium text-zinc-900 dark:text-white">{{ __($key) }}</span>
-                                        <span class="block truncate text-[0.6875rem] text-zinc-500">{{ $m['hint'] }}</span>
-                                    </span>
-                                    <flux:icon.check-circle variant="mini" class="size-4 text-brand-600" x-show="$wire.payMethod === @js($key)" />
-                                </button>
-                            @endforeach
-                        </div>
-                        <flux:error name="payMethod" />
-                    </div>
-
-                    {{-- Reference + note --}}
-                    <div class="grid gap-4 sm:grid-cols-2">
-                        <div>
-                            <label for="pay-ref" class="{{ $label }}">{{ __('Reference') }} <span class="font-normal text-zinc-400">{{ __('optional') }}</span></label>
-                            <div class="relative">
-                                <flux:icon.hashtag variant="micro" class="{{ $fieldIcon }}" />
-                                <input id="pay-ref" wire:model="payReference" type="text" maxlength="255" placeholder="{{ __('Invoice no. or transaction ID') }}" class="{{ $field }}" />
-                            </div>
-                        </div>
-                        <div>
-                            <label for="pay-note" class="{{ $label }}">{{ __('Note') }} <span class="font-normal text-zinc-400">{{ __('optional') }}</span></label>
-                            <div class="relative">
-                                <flux:icon.pencil variant="micro" class="{{ $fieldIcon }}" />
-                                <input id="pay-note" wire:model="payNote" type="text" maxlength="255" placeholder="{{ __('Anything to remember') }}" class="{{ $field }}" />
-                            </div>
-                        </div>
+                    <div>
+                        <p class="{{ $label }}">{{ __('Payment date') }}</p>
+                        <x-nepali-date wire:model="payDue" />
+                        <flux:error name="payDue" />
                     </div>
                 </div>
 
-                <div class="mt-auto flex items-center justify-end gap-2 rounded-b-xl border-t border-zinc-100 bg-zinc-50/70 px-6 py-4 md:rounded-bl-none dark:border-white/5 dark:bg-white/[0.02]">
-                    <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
-                    <button type="submit" class="inline-flex h-10 items-center gap-2 rounded-lg bg-linear-to-r from-emerald-500 to-emerald-600 px-4 text-sm font-semibold text-white shadow-md shadow-emerald-500/30 transition hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-60" wire:loading.attr="disabled" wire:target="savePayment" data-test="save-payment-button">
-                        <flux:icon.check variant="mini" class="size-4" />
-                        <span x-text="amount > 0 ? @js(__('Save')) + ' ' + money(amount) : @js(__('Save payment'))">{{ __('Save payment') }}</span>
+                {{-- Received in --}}
+                <div class="relative" @click.outside="methodOpen = false" @keydown.escape.stop="methodOpen = false">
+                    <span class="{{ $label }}">{{ __('Received in') }}</span>
+                    <button type="button" @click="methodOpen = ! methodOpen" class="flex w-full items-center gap-3 rounded-xl bg-white px-3 py-2.5 text-start ring-1 ring-zinc-200 transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 focus:outline-none dark:bg-white/5 dark:ring-white/10" :aria-expanded="methodOpen" aria-haspopup="listbox" data-test="payment-method-button">
+                        <template x-if="! $wire.payMethod">
+                            <span class="flex items-center gap-3">
+                                <span class="flex size-9 items-center justify-center rounded-lg border border-dashed border-zinc-300 text-zinc-400 dark:border-white/20"><flux:icon.wallet variant="mini" class="size-4.5" /></span>
+                                <span class="text-sm text-zinc-400">{{ __('Choose where it was received') }}</span>
+                            </span>
+                        </template>
+                        @foreach ($methodLook as $key => $m)
+                            <span x-show="$wire.payMethod === @js($key)" class="flex items-center gap-3" x-cloak>
+                                <span class="{{ $m['tile'] }} flex size-9 items-center justify-center rounded-lg"><flux:icon :icon="$m['icon']" variant="mini" class="size-4.5" /></span>
+                                <span>
+                                    <span class="block text-sm font-semibold text-zinc-900 dark:text-white">{{ __($key) }}</span>
+                                    <span class="block text-xs text-zinc-500">{{ $m['hint'] }}</span>
+                                </span>
+                            </span>
+                        @endforeach
+                        <flux:icon.chevron-up-down variant="mini" class="ms-auto size-4 text-zinc-400" />
                     </button>
+                    <div x-show="methodOpen" x-transition.origin.top x-cloak class="absolute inset-x-0 top-full z-30 mt-1.5 grid grid-cols-2 gap-1 rounded-xl bg-white p-1.5 shadow-[0_20px_50px_-12px_rgb(15_23_42/0.35)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10" role="listbox">
+                        @foreach ($methodLook as $key => $m)
+                            <button type="button" role="option" @click="$wire.payMethod = @js($key); methodOpen = false" :aria-selected="$wire.payMethod === @js($key)" class="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-start transition hover:bg-zinc-50 dark:hover:bg-white/5" :class="$wire.payMethod === @js($key) && 'bg-brand-50 ring-1 ring-brand-200 dark:bg-brand-500/10 dark:ring-brand-500/30'">
+                                <span class="{{ $m['tile'] }} flex size-8 shrink-0 items-center justify-center rounded-lg"><flux:icon :icon="$m['icon']" variant="micro" class="size-4" /></span>
+                                <span class="min-w-0 flex-1">
+                                    <span class="block text-sm font-medium text-zinc-900 dark:text-white">{{ __($key) }}</span>
+                                    <span class="block truncate text-[0.6875rem] text-zinc-500">{{ $m['hint'] }}</span>
+                                </span>
+                                <flux:icon.check-circle variant="mini" class="size-4 text-brand-600" x-show="$wire.payMethod === @js($key)" />
+                            </button>
+                        @endforeach
+                    </div>
+                    <flux:error name="payMethod" />
                 </div>
+
+                {{-- Reference + note --}}
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <label for="pay-ref" class="{{ $label }}">{{ __('Reference') }} <span class="font-normal text-zinc-400">{{ __('optional') }}</span></label>
+                        <div class="relative">
+                            <flux:icon.hashtag variant="micro" class="{{ $fieldIcon }}" />
+                            <input id="pay-ref" wire:model="payReference" type="text" maxlength="255" placeholder="{{ __('Invoice no. or transaction ID') }}" class="{{ $field }}" />
+                        </div>
+                    </div>
+                    <div>
+                        <label for="pay-note" class="{{ $label }}">{{ __('Note') }} <span class="font-normal text-zinc-400">{{ __('optional') }}</span></label>
+                        <div class="relative">
+                            <flux:icon.pencil variant="micro" class="{{ $fieldIcon }}" />
+                            <input id="pay-note" wire:model="payNote" type="text" maxlength="255" placeholder="{{ __('Anything to remember') }}" class="{{ $field }}" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end gap-2 rounded-b-xl border-t border-zinc-100 bg-zinc-50/70 px-6 py-4 dark:border-white/5 dark:bg-white/[0.02]">
+                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
+                <button type="submit" class="inline-flex h-10 items-center gap-2 rounded-lg bg-linear-to-r from-emerald-500 to-emerald-600 px-4 text-sm font-semibold text-white shadow-md shadow-emerald-500/30 transition hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-60" wire:loading.attr="disabled" wire:target="savePayment" data-test="save-payment-button">
+                    <flux:icon.check variant="mini" class="size-4" />
+                    <span x-text="amount > 0 ? @js(__('Save')) + ' ' + money(amount) : @js(__('Save payment'))">{{ __('Save payment') }}</span>
+                </button>
             </div>
         </form>
     </flux:modal>
