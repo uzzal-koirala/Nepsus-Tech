@@ -147,7 +147,7 @@ new #[Title('Finance')] class extends Component {
             ->map(fn ($p) => [
                 'key' => 'p'.$p->id, 'kind' => 'income', 'source' => 'client', 'date' => $p->paid_at->copy()->startOfDay(),
                 'title' => $p->client?->displayName() ?? __('Client payment'), 'category' => $p->typeLabel(), 'icon' => 'building-office-2',
-                'amount' => (float) $p->amount, 'method' => $p->method, 'note' => $p->reference, 'link' => $p->client ? route('clients.show', ['client' => $p->client_id, 'tab' => 'payments']) : null,
+                'amount' => (float) $p->amount, 'method' => $p->method, 'reference' => $p->reference, 'note' => $p->note, 'recorded' => $p->created_at->toNepali(), 'link' => $p->client ? route('clients.show', ['client' => $p->client_id, 'tab' => 'payments']) : null,
                 'proof' => $p->proof_path ? route('payments.proof', $p) : null, 'id' => null,
             ]);
 
@@ -155,7 +155,7 @@ new #[Title('Finance')] class extends Component {
             ->map(fn ($s) => [
                 'key' => 's'.$s->id, 'kind' => 'expense', 'source' => 'salary', 'date' => $s->paid_on,
                 'title' => $s->employee?->name ?? __('Salary'), 'category' => __('Salary · :month', ['month' => NepaliDate::periodLabel($s->period)]), 'icon' => 'user-group',
-                'amount' => (float) $s->amount, 'method' => null, 'note' => $s->note, 'link' => $s->employee ? route('employees.show', ['employee' => $s->employee_id, 'tab' => 'salary']) : null,
+                'amount' => (float) $s->amount, 'method' => null, 'reference' => null, 'note' => $s->note, 'recorded' => $s->created_at->toNepali(), 'link' => $s->employee ? route('employees.show', ['employee' => $s->employee_id, 'tab' => 'salary']) : null,
                 'proof' => null, 'id' => null,
             ]);
 
@@ -163,7 +163,7 @@ new #[Title('Finance')] class extends Component {
             ->map(fn ($t) => [
                 'key' => 't'.$t->id, 'kind' => $t->kind, 'source' => 'manual', 'date' => $t->date,
                 'title' => $t->title, 'category' => $t->categoryLabel(), 'icon' => Transaction::categories($t->kind)[$t->category]['icon'] ?? 'tag',
-                'amount' => (float) $t->amount, 'method' => $t->method, 'note' => $t->note, 'link' => null,
+                'amount' => (float) $t->amount, 'method' => $t->method, 'reference' => null, 'note' => $t->note, 'recorded' => $t->created_at->toNepali(), 'link' => null,
                 'proof' => $t->receipt_path ? route('transactions.receipt', $t) : null, 'id' => $t->id,
             ]);
 
@@ -409,15 +409,44 @@ new #[Title('Finance')] class extends Component {
     {{-- Transactions --}}
     @php
         $q = mb_strtolower(trim($search));
+        $sourceLabels = ['client' => __('Client payment'), 'salary' => __('Salary'), 'manual' => __('Manual entry')];
+        // Running balance for the month, oldest first.
+        $running = 0;
+        $balances = [];
+        foreach ($entries->sortBy(fn ($e) => $e['date']->timestamp.$e['key']) as $e) {
+            $running += $e['kind'] === 'income' ? $e['amount'] : -$e['amount'];
+            $balances[$e['key']] = $running;
+        }
         $visible = $entries
             ->filter(fn ($e) => $show === 'all' || $e['kind'] === $show)
-            ->filter(fn ($e) => $q === '' || str_contains(mb_strtolower($e['title'].' '.$e['category'].' '.$e['note']), $q));
+            ->filter(fn ($e) => $q === '' || str_contains(mb_strtolower($e['title'].' '.$e['category'].' '.$e['note'].' '.$e['reference'].' '.$e['method']), $q));
+        $visIn = $visible->where('kind', 'income')->sum('amount');
+        $visOut = $visible->where('kind', 'expense')->sum('amount');
+        $th = 'px-3 py-2.5 text-start text-[0.6875rem] font-semibold tracking-wide text-zinc-500 uppercase whitespace-nowrap';
+        $detailData = $visible->mapWithKeys(fn ($e) => [$e['key'] => [
+            'kind' => $e['kind'],
+            'title' => $e['title'],
+            'category' => $e['category'],
+            'source' => $sourceLabels[$e['source']],
+            'bs' => NepaliDate::format($e['date']),
+            'ad' => $e['date']->format('l, j F Y'),
+            'amount' => $money($e['amount']),
+            'method' => $e['method'] ? __($e['method']) : null,
+            'reference' => $e['reference'],
+            'note' => $e['note'],
+            'balance' => $money($balances[$e['key']]),
+            'link' => $e['link'],
+            'linkLabel' => ['client' => __('Open client'), 'salary' => __('Open employee')][$e['source']] ?? null,
+            'proof' => $e['proof'],
+            'id' => $e['id'],
+            'recorded' => $e['recorded'],
+        ]]);
     @endphp
-    <section class="{{ $panel }} overflow-hidden">
+    <section class="{{ $panel }} overflow-hidden" x-data="{ open: null, rows: @js($detailData) }" @keydown.escape.window="open = null">
         <div class="flex flex-col gap-3 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
                 <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Transactions') }}</h2>
-                <p class="text-xs text-zinc-500">{{ $label }} · {{ trans_choice(':count entry|:count entries', $entries->count()) }}</p>
+                <p class="text-xs text-zinc-500">{{ $label }} · {{ trans_choice(':count entry|:count entries', $entries->count()) }} · {{ __('click a row for details') }}</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <div class="flex gap-1 rounded-xl bg-zinc-100 p-1 text-xs font-medium dark:bg-white/5">
@@ -427,7 +456,7 @@ new #[Title('Finance')] class extends Component {
                         </button>
                     @endforeach
                 </div>
-                <flux:input wire:model.live.debounce.300ms="search" icon="magnifying-glass" :placeholder="__('Search')" clearable size="sm" class="w-56" />
+                <flux:input wire:model.live.debounce.300ms="search" icon="magnifying-glass" :placeholder="__('Search name, category, reference')" clearable size="sm" class="w-64" />
             </div>
         </div>
 
@@ -437,61 +466,121 @@ new #[Title('Finance')] class extends Component {
                 <p class="text-sm text-zinc-500">{{ $entries->isEmpty() ? __('Nothing recorded in :month yet.', ['month' => $label]) : __('Nothing matches.') }}</p>
             </div>
         @else
-            <ul class="divide-y divide-zinc-100 border-t border-zinc-100 dark:divide-white/5 dark:border-white/5">
-                @foreach ($visible as $e)
-                    @php
-                        $in = $e['kind'] === 'income';
-                        $bs = NepaliDate::fromAd($e['date']);
-                        $sourceLabel = ['client' => __('Client payment'), 'salary' => __('Salary'), 'manual' => $in ? __('Income') : __('Expense')][$e['source']];
-                    @endphp
-                    <li wire:key="entry-{{ $e['key'] }}" class="group flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5 transition hover:bg-zinc-50/70 sm:flex-nowrap dark:hover:bg-white/[0.02]">
-                        <div class="flex w-40 shrink-0 items-center gap-3" title="{{ $e['date']->format('l, j M Y') }}">
-                            <span @class(['flex size-10 shrink-0 items-center justify-center rounded-xl', 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300' => $in, 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' => ! $in])>
-                                <flux:icon :icon="$in ? 'arrow-down-left' : 'arrow-up-right'" variant="mini" class="size-5" />
-                            </span>
-                            <div>
-                                <p class="text-sm font-semibold text-zinc-900 dark:text-white">{{ $bs ? $bs[2].' '.NepaliDate::MONTHS[$bs[1] - 1] : $e['date']->format('j M') }}</p>
-                                <p class="text-xs text-zinc-500">{{ $e['date']->format('D, j M') }}</p>
-                            </div>
-                        </div>
-
-                        <div class="min-w-0 flex-1">
-                            @if ($e['link'])
-                                <a href="{{ $e['link'] }}" wire:navigate class="block truncate text-sm font-semibold text-zinc-900 hover:text-brand-600 dark:text-white">{{ $e['title'] }}</a>
-                            @else
-                                <p class="truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $e['title'] }}</p>
-                            @endif
-                            <div class="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-                                <span class="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700 dark:bg-white/10 dark:text-zinc-200">
-                                    <flux:icon :icon="$e['icon']" variant="micro" class="size-3.5" />{{ $e['category'] }}
-                                </span>
-                                <span class="text-xs text-zinc-400">{{ $sourceLabel }}</span>
-                                @if ($e['note'])
-                                    <span class="truncate text-xs text-zinc-500">· {{ $e['note'] }}</span>
-                                @endif
-                                @if ($e['proof'])
-                                    <a href="{{ $e['proof'] }}" target="_blank" class="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.paper-clip variant="micro" class="size-3.5" />{{ __('Receipt') }}</a>
-                                @endif
-                            </div>
-                        </div>
-
-                        <div class="hidden w-28 shrink-0 md:block">
-                            @if ($e['method'])
-                                <span class="inline-flex items-center gap-1.5 text-sm text-zinc-600 dark:text-zinc-300"><flux:icon :icon="$methodIcons[$e['method']] ?? 'credit-card'" variant="micro" class="size-4 text-zinc-400" />{{ __($e['method']) }}</span>
-                            @endif
-                        </div>
-
-                        <p @class(['w-32 shrink-0 text-end text-base font-semibold tabular-nums', 'text-brand-700 dark:text-brand-300' => $in, 'text-zinc-900 dark:text-white' => ! $in])>{{ $in ? '+' : '−' }} {{ $money($e['amount']) }}</p>
-
-                        <div class="w-8 shrink-0 text-end">
-                            @if ($e['id'])
-                                <button type="button" wire:click="deleteEntry({{ $e['id'] }})" wire:confirm="{{ __('Delete this entry?') }}" class="rounded-md p-1.5 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 focus:opacity-100 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete') }}"><flux:icon.trash variant="micro" class="size-4" /></button>
-                            @endif
-                        </div>
-                    </li>
-                @endforeach
-            </ul>
+            <div class="overflow-x-auto border-t border-zinc-100 dark:border-white/5">
+                <table class="w-full min-w-[68rem] text-sm">
+                    <thead class="bg-zinc-50/80 dark:bg-white/[0.02]">
+                        <tr>
+                            <th class="{{ $th }} ps-5">#</th>
+                            <th class="{{ $th }}">{{ __('Date') }}</th>
+                            <th class="{{ $th }}">{{ __('Description') }}</th>
+                            <th class="{{ $th }}">{{ __('Category') }}</th>
+                            <th class="{{ $th }}">{{ __('Method') }}</th>
+                            <th class="{{ $th }}">{{ __('Reference / note') }}</th>
+                            <th class="{{ $th }} text-end">{{ __('Money in') }}</th>
+                            <th class="{{ $th }} text-end">{{ __('Money out') }}</th>
+                            <th class="{{ $th }} pe-5 text-end">{{ __('Balance') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-zinc-100 dark:divide-white/5">
+                        @foreach ($visible->values() as $i => $e)
+                            @php
+                                $in = $e['kind'] === 'income';
+                                $bs = NepaliDate::fromAd($e['date']);
+                                $bal = $balances[$e['key']];
+                            @endphp
+                            <tr wire:key="entry-{{ $e['key'] }}" @click="open = '{{ $e['key'] }}'" class="cursor-pointer transition hover:bg-brand-50/40 dark:hover:bg-white/[0.03]" tabindex="0" @keydown.enter="open = '{{ $e['key'] }}'">
+                                <td class="px-3 py-3 ps-5 text-xs text-zinc-400 tabular-nums">{{ $i + 1 }}</td>
+                                <td class="px-3 py-3 whitespace-nowrap" title="{{ $e['date']->format('l, j M Y') }}">
+                                    <p class="font-semibold text-zinc-900 dark:text-white">{{ $bs ? $bs[2].' '.NepaliDate::MONTHS[$bs[1] - 1] : '' }}</p>
+                                    <p class="text-xs text-zinc-500">{{ $e['date']->format('D, j M Y') }}</p>
+                                </td>
+                                <td class="max-w-64 px-3 py-3">
+                                    <div class="flex items-center gap-2.5">
+                                        <span @class(['flex size-8 shrink-0 items-center justify-center rounded-lg', 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300' => $in, 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' => ! $in])>
+                                            <flux:icon :icon="$in ? 'arrow-down-left' : 'arrow-up-right'" variant="micro" class="size-4" />
+                                        </span>
+                                        <div class="min-w-0">
+                                            <p class="truncate font-medium text-zinc-900 dark:text-white">{{ $e['title'] }}</p>
+                                            <p class="text-xs text-zinc-500">{{ $sourceLabels[$e['source']] }}</p>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-3 py-3">
+                                    <span class="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs font-medium whitespace-nowrap text-zinc-700 dark:bg-white/10 dark:text-zinc-200"><flux:icon :icon="$e['icon']" variant="micro" class="size-3.5" />{{ $e['category'] }}</span>
+                                </td>
+                                <td class="px-3 py-3 whitespace-nowrap text-zinc-600 dark:text-zinc-300">
+                                    @if ($e['method'])
+                                        <span class="inline-flex items-center gap-1.5"><flux:icon :icon="$methodIcons[$e['method']] ?? 'credit-card'" variant="micro" class="size-4 text-zinc-400" />{{ __($e['method']) }}</span>
+                                    @else
+                                        <span class="text-zinc-300 dark:text-zinc-600">—</span>
+                                    @endif
+                                </td>
+                                <td class="max-w-48 px-3 py-3">
+                                    <p class="truncate text-xs text-zinc-600 dark:text-zinc-300">{{ collect([$e['reference'], $e['note']])->filter()->unique()->implode(' · ') ?: '—' }}</p>
+                                    @if ($e['proof'])
+                                        <span class="mt-0.5 inline-flex items-center gap-1 text-[0.6875rem] font-medium text-emerald-700 dark:text-emerald-300"><flux:icon.paper-clip variant="micro" class="size-3" />{{ __('Receipt') }}</span>
+                                    @endif
+                                </td>
+                                <td class="px-3 py-3 text-end font-semibold whitespace-nowrap tabular-nums">
+                                    @if ($in)<span class="text-brand-700 dark:text-brand-300">+ {{ $money($e['amount']) }}</span>@endif
+                                </td>
+                                <td class="px-3 py-3 text-end font-semibold whitespace-nowrap tabular-nums">
+                                    @unless ($in)<span class="text-zinc-900 dark:text-white">− {{ $money($e['amount']) }}</span>@endunless
+                                </td>
+                                <td @class(['px-3 py-3 pe-5 text-end text-xs font-medium whitespace-nowrap tabular-nums', 'text-zinc-500' => $bal >= 0, 'text-rose-600 dark:text-rose-400' => $bal < 0])>{{ $bal < 0 ? '− ' : '' }}{{ $money(abs($bal)) }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                    <tfoot class="border-t-2 border-zinc-200 bg-zinc-50/80 dark:border-white/10 dark:bg-white/[0.02]">
+                        <tr>
+                            <td colspan="6" class="px-3 py-3 ps-5 text-sm font-semibold text-zinc-700 dark:text-zinc-200">{{ __('Total') }} <span class="font-normal text-zinc-500">· {{ trans_choice(':count entry|:count entries', $visible->count()) }}</span></td>
+                            <td class="px-3 py-3 text-end font-bold whitespace-nowrap text-brand-700 tabular-nums dark:text-brand-300">+ {{ $money($visIn) }}</td>
+                            <td class="px-3 py-3 text-end font-bold whitespace-nowrap text-zinc-900 tabular-nums dark:text-white">− {{ $money($visOut) }}</td>
+                            <td @class(['px-3 py-3 pe-5 text-end font-bold whitespace-nowrap tabular-nums', 'text-emerald-700 dark:text-emerald-300' => $visIn >= $visOut, 'text-rose-700 dark:text-rose-300' => $visIn < $visOut])>{{ $visIn < $visOut ? '− ' : '' }}{{ $money(abs($visIn - $visOut)) }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
         @endif
+
+        {{-- Transaction detail --}}
+        <template x-teleport="body">
+            <div x-show="open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4 backdrop-blur-sm" x-transition.opacity @click.self="open = null">
+                <template x-if="open && rows[open]">
+                    <div class="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5 dark:bg-zinc-900 dark:ring-white/10" role="dialog" aria-modal="true">
+                        <div class="relative px-6 pt-6 pb-5 text-white" :class="rows[open].kind === 'income' ? 'bg-linear-to-br from-brand-500 to-brand-700' : 'bg-linear-to-br from-amber-500 to-orange-600'">
+                            <button type="button" @click="open = null" class="absolute top-4 right-4 flex size-8 items-center justify-center rounded-lg text-white/80 hover:bg-white/15 hover:text-white" aria-label="{{ __('Close') }}"><flux:icon.x-mark variant="mini" class="size-5" /></button>
+                            <p class="text-xs font-semibold tracking-wider text-white/75 uppercase" x-text="rows[open].kind === 'income' ? @js(__('Money in')) : @js(__('Money out'))"></p>
+                            <p class="mt-1 text-3xl font-bold tracking-tight tabular-nums"><span x-text="rows[open].kind === 'income' ? '+ ' : '− '"></span><span x-text="rows[open].amount"></span></p>
+                            <p class="mt-1.5 truncate text-sm font-medium text-white/90" x-text="rows[open].title"></p>
+                        </div>
+                        <dl class="divide-y divide-zinc-100 px-6 text-sm dark:divide-white/5">
+                            <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Date') }}</dt><dd class="text-end"><p class="font-medium text-zinc-900 dark:text-white" x-text="rows[open].bs"></p><p class="text-xs text-zinc-500" x-text="rows[open].ad"></p></dd></div>
+                            <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Category') }}</dt><dd class="font-medium text-zinc-900 dark:text-white" x-text="rows[open].category"></dd></div>
+                            <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Source') }}</dt><dd class="font-medium text-zinc-900 dark:text-white" x-text="rows[open].source"></dd></div>
+                            <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Method') }}</dt><dd class="font-medium text-zinc-900 dark:text-white" x-text="rows[open].method || '—'"></dd></div>
+                            <div class="flex justify-between gap-4 py-3" x-show="rows[open].reference"><dt class="text-zinc-500">{{ __('Reference') }}</dt><dd class="font-medium text-zinc-900 tabular-nums dark:text-white" x-text="rows[open].reference"></dd></div>
+                            <div class="flex justify-between gap-4 py-3" x-show="rows[open].note"><dt class="text-zinc-500">{{ __('Note') }}</dt><dd class="text-end text-zinc-800 dark:text-zinc-100" x-text="rows[open].note"></dd></div>
+                            <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Balance after') }}</dt><dd class="font-semibold text-zinc-900 tabular-nums dark:text-white" x-text="rows[open].balance"></dd></div>
+                            <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Recorded') }}</dt><dd class="text-zinc-600 dark:text-zinc-300" x-text="rows[open].recorded"></dd></div>
+                        </dl>
+                        <div class="flex flex-wrap items-center gap-2 border-t border-zinc-100 bg-zinc-50/70 px-6 py-4 dark:border-white/5 dark:bg-white/[0.02]">
+                            <template x-if="rows[open].id">
+                                <button type="button" @click="if (confirm(@js(__('Delete this entry?')))) { $wire.deleteEntry(rows[open].id); open = null }" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"><flux:icon.trash variant="micro" class="size-4" />{{ __('Delete') }}</button>
+                            </template>
+                            <div class="ms-auto flex gap-2">
+                                <template x-if="rows[open].proof">
+                                    <a :href="rows[open].proof" target="_blank" class="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-sm font-medium text-zinc-700 ring-1 ring-zinc-200 hover:bg-zinc-50 dark:bg-white/5 dark:text-zinc-200 dark:ring-white/10"><flux:icon.paper-clip variant="micro" class="size-4" />{{ __('View receipt') }}</a>
+                                </template>
+                                <template x-if="rows[open].link">
+                                    <a :href="rows[open].link" wire:navigate class="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-600"><span x-text="rows[open].linkLabel"></span><flux:icon.arrow-right variant="micro" class="size-4" /></a>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </template>
     </section>
 
     {{-- Add income / expense --}}
