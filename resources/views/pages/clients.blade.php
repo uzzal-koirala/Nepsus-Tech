@@ -344,6 +344,12 @@ new #[Title('Clients')] class extends Component {
 }; ?>
 
 @php
+    $serviceTones = [
+        'social_media' => ['pill' => 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-600/15 dark:bg-fuchsia-500/10 dark:text-fuchsia-300', 'dot' => 'bg-linear-to-br from-fuchsia-500 to-pink-500'],
+        'website' => ['pill' => 'bg-sky-50 text-sky-700 ring-sky-600/15 dark:bg-sky-500/10 dark:text-sky-300', 'dot' => 'bg-linear-to-br from-sky-400 to-blue-600'],
+        'software' => ['pill' => 'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-500/10 dark:text-emerald-300', 'dot' => 'bg-linear-to-br from-emerald-400 to-teal-600'],
+        'video' => ['pill' => 'bg-rose-50 text-rose-700 ring-rose-600/15 dark:bg-rose-500/10 dark:text-rose-300', 'dot' => 'bg-linear-to-br from-rose-400 to-orange-500'],
+    ];
     $tabs = ['all' => __('All clients'), 'active' => __('Active'), 'inactive' => __('Inactive')];
     $badges = [
         'active' => 'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-500/10 dark:text-emerald-300',
@@ -506,6 +512,21 @@ new #[Title('Clients')] class extends Component {
                 @endphp
                 <article wire:key="client-{{ $client->id }}" wire:sort:item="{{ $client->id }}" class="{{ $pkg ? $pkg->theme()['card'] : 'from-zinc-50 ring-zinc-200/80 hover:ring-zinc-300 hover:shadow-[0_18px_40px_-24px_rgb(24_24_27/0.3)] dark:from-white/[0.02] dark:ring-white/10' }} flex flex-col rounded-lg bg-white bg-linear-to-b via-white via-45% to-white ring-1 transition duration-300 hover:-translate-y-0.5 dark:bg-zinc-950 dark:via-zinc-950 dark:to-zinc-950">
                     <div class="flex flex-col gap-4 p-4">
+                        @php
+                            $svc = Client::SERVICE_TYPES[$client->service_type] ?? null;
+                            $tone = $serviceTones[$client->service_type] ?? $serviceTones['website'];
+                        @endphp
+                        @if ($svc)
+                            <div class="-mb-1 flex items-center justify-between gap-2">
+                                <span class="{{ $tone['pill'] }} inline-flex items-center gap-1.5 rounded-full py-0.5 ps-0.5 pe-2.5 text-[0.6875rem] font-semibold ring-1 ring-inset">
+                                    <span class="{{ $tone['dot'] }} flex size-5 items-center justify-center rounded-full text-white shadow-sm">
+                                        <flux:icon :icon="$svc['icon']" variant="micro" class="size-3" />
+                                    </span>
+                                    {{ __($svc['label']) }}
+                                </span>
+                                <span class="truncate text-[0.6875rem] text-zinc-400">{{ __($svc['hint']) }}</span>
+                            </div>
+                        @endif
                         <div class="flex items-center gap-3">
                             <button type="button" wire:sort:handle class="-ms-2 -me-1.5 flex h-10 w-5 shrink-0 cursor-grab items-center justify-center rounded text-zinc-300 transition hover:bg-zinc-100 hover:text-zinc-500 active:cursor-grabbing dark:text-zinc-600 dark:hover:bg-white/5" aria-label="{{ __('Drag to change priority') }}" title="{{ __('Drag to change priority') }}">
                                 <flux:icon.grip-vertical variant="micro" class="size-4" />
@@ -563,11 +584,13 @@ new #[Title('Clients')] class extends Component {
                                     <flux:icon :icon="$pkg->icon" variant="micro" class="size-3.5 shrink-0" />
                                     <span class="truncate">{{ $pkg->name }}</span>
                                 </span>
-                            @else
-                                <span class="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-700 dark:bg-white/10 dark:text-zinc-200">
-                                    <flux:icon :icon="Client::SERVICE_TYPES[$client->service_type]['icon'] ?? 'cube'" variant="micro" class="size-3.5" />
-                                    {{ __(Client::SERVICE_TYPES[$client->service_type]['label'] ?? 'Client') }}
+                            @elseif ($client->service_type === 'social_media')
+                                <span class="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-500 dark:bg-white/10 dark:text-zinc-400">
+                                    <flux:icon.cube variant="micro" class="size-3.5" />
+                                    {{ __('No package') }}
                                 </span>
+                            @else
+                                <span class="text-xs text-zinc-400">{{ $client->service_type === 'video' ? __('Price per video') : __('Project price') }}</span>
                             @endif
                             @if ($client->price !== null)
                                 <p class="whitespace-nowrap">
@@ -637,7 +660,7 @@ new #[Title('Clients')] class extends Component {
                     <tr class="border-b border-zinc-100 text-xs font-medium text-zinc-500 dark:border-white/5">
                         <th class="px-5 py-3 text-start font-medium">{{ __('Client') }}</th>
                         <th class="px-5 py-3 text-start font-medium">{{ __('Phone') }}</th>
-                        <th class="px-5 py-3 text-start font-medium">{{ __('Package') }}</th>
+                        <th class="px-5 py-3 text-start font-medium">{{ __('Service') }}</th>
                         <th class="px-5 py-3 text-end font-medium">{{ __('Price') }}</th>
                         <th class="px-5 py-3 text-start font-medium">{{ __('Progress') }}</th>
                         <th class="px-5 py-3 text-start font-medium">{{ __('Social') }}</th>
@@ -660,19 +683,25 @@ new #[Title('Clients')] class extends Component {
                                     </div>
                                 </div>
                             </td>
-                            <td class="px-5 py-3 text-zinc-600 tabular-nums dark:text-zinc-300">{{ $client->phone ?? '-' }}</td>
+                            <td class="px-5 py-3 whitespace-nowrap text-zinc-600 tabular-nums dark:text-zinc-300">{{ $client->phone ?? '-' }}</td>
                             <td class="px-5 py-3">
-                                @if ($pkg = $client->package)
-                                    <span class="{{ $pkg->theme()['chip'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold">
-                                        <flux:icon :icon="$pkg->icon" variant="micro" class="size-3.5" />
-                                        {{ $pkg->name }}
-                                    </span>
-                                @else
-                                    <span class="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-700 dark:bg-white/10 dark:text-zinc-200">
-                                        <flux:icon :icon="Client::SERVICE_TYPES[$client->service_type]['icon'] ?? 'cube'" variant="micro" class="size-3.5" />
-                                        {{ __(Client::SERVICE_TYPES[$client->service_type]['label'] ?? 'Client') }}
-                                    </span>
-                                @endif
+                                <div class="flex flex-wrap items-center gap-1.5">
+                                    @if ($svc = Client::SERVICE_TYPES[$client->service_type] ?? null)
+                                        @php
+                                            $tone = $serviceTones[$client->service_type];
+                                        @endphp
+                                        <span class="{{ $tone['pill'] }} inline-flex items-center gap-1.5 rounded-full py-0.5 ps-0.5 pe-2.5 text-xs font-semibold whitespace-nowrap ring-1 ring-inset">
+                                            <span class="{{ $tone['dot'] }} flex size-5 items-center justify-center rounded-full text-white"><flux:icon :icon="$svc['icon']" variant="micro" class="size-3" /></span>
+                                            {{ __($svc['label']) }}
+                                        </span>
+                                    @endif
+                                    @if ($pkg = $client->package)
+                                        <span class="{{ $pkg->theme()['chip'] }} inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold whitespace-nowrap">
+                                            <flux:icon :icon="$pkg->icon" variant="micro" class="size-3.5" />
+                                            {{ $pkg->name }}
+                                        </span>
+                                    @endif
+                                </div>
                             </td>
                             <td class="px-5 py-3 text-end whitespace-nowrap">
                                 @if ($client->price !== null)
