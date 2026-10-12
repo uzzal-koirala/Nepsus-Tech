@@ -39,8 +39,6 @@ new #[Title('Client profile')] class extends Component {
     public string $newTypeName = '';
     public ?int $viewTaskId = null;
 
-    /** Tasks tab: show one kind of work only. */
-    public string $workKind = '';
 
     /** BS month shown on the work calendar. */
     public int $calYear = 0;
@@ -259,10 +257,10 @@ new #[Title('Client profile')] class extends Component {
 
     // Tasks
 
-    public function newTask(string $status = 'todo'): void
+    public function newTask(string $status = 'todo', ?string $type = null): void
     {
         $this->reset('taskTitle', 'taskDue', 'taskId', 'taskDescription', 'taskStart', 'taskAssignees', 'newTypeName');
-        $this->taskType = $this->defaultType();
+        $this->taskType = $type !== null && array_key_exists($type, $this->types) ? $type : $this->defaultType();
         $this->taskStatus = array_key_exists($status, Task::STATUSES) ? $status : 'todo';
         $this->taskPriority = 'medium';
         $this->resetErrorBag();
@@ -1178,9 +1176,8 @@ new #[Title('Client profile')] class extends Component {
     @elseif ($tab === 'tasks')
         @php
             $allTasks = $this->tasks;
-            $shown = $workKind !== '' ? $allTasks->where('type', $workKind) : $allTasks;
+            $shown = $allTasks;
             $byStage = $shown->groupBy(fn ($t) => $t->stage());
-            $kinds = $allTasks->groupBy('type');
             $doneCount = isset($byStage['done']) ? $byStage['done']->count() : 0;
             $lateCount = $shown->filter->isOverdue()->count();
             $donePct = $shown->count() ? (int) round($doneCount / $shown->count() * 100) : 0;
@@ -1223,46 +1220,43 @@ new #[Title('Client profile')] class extends Component {
                         <flux:button variant="primary" icon="plus" wire:click="newTask" class="shadow-md shadow-brand-500/20" data-test="add-task-button">{{ __('Add task') }}</flux:button>
                     </div>
                 </div>
-                @if ($kinds->isNotEmpty())
-                    <div class="flex flex-wrap gap-1.5">
-                        <button type="button" wire:click="$set('workKind', '')" @class([
-                            'rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset transition',
-                            'bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900' => $workKind === '',
-                            'bg-white text-zinc-600 ring-zinc-200 hover:ring-zinc-300 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10' => $workKind !== '',
-                        ])>{{ __('All types') }} <span class="opacity-60 tabular-nums">{{ $allTasks->count() }}</span></button>
-                        @foreach ($kinds as $key => $items)
-                            @php $kt = $typeOf($key); @endphp
-                            <button type="button" wire:click="$set('workKind', '{{ $key }}')" @class([
-                                'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset transition',
-                                'bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900' => $workKind === $key,
-                                'bg-white text-zinc-600 ring-zinc-200 hover:ring-zinc-300 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10' => $workKind !== $key,
-                            ])>
-                                <span class="{{ $toneOf($key)['dot'] }} size-1.5 rounded-full"></span>{{ $kt['label'] }}
-                                <span class="opacity-60 tabular-nums">{{ $items->count() }}</span>
-                            </button>
-                        @endforeach
-                    </div>
-                @endif
             </section>
 
-            {{-- Board: open work in three columns --}}
-            <div class="grid items-start gap-4 lg:grid-cols-3">
-                @foreach (['todo', 'in_progress', 'review'] as $stage)
+            {{-- Board: one box per type of work --}}
+            @php
+                $openWork = $allTasks->reject(fn ($t) => $t->stage() === 'done')->groupBy('type');
+                $boxes = collect(array_keys($types))->merge($openWork->keys())->unique()->filter(fn ($k) => isset($openWork[$k]))->values();
+            @endphp
+            @if ($boxes->isEmpty())
+                <section class="{{ $panel }} flex flex-col items-center gap-3 px-6 py-14 text-center">
+                    <span class="flex size-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-500 dark:bg-brand-500/15"><flux:icon.clipboard-document-check class="size-6" /></span>
+                    <p class="font-semibold text-zinc-900 dark:text-white">{{ $allTasks->isEmpty() ? __('No work planned yet') : __('All work is done') }}</p>
+                    <p class="text-sm text-zinc-500">{{ $allTasks->isEmpty() ? __('Add posts, reels, videos or tasks for this client.') : __('Finished work is in History.') }}</p>
+                    <flux:button variant="primary" size="sm" icon="plus" wire:click="newTask">{{ __('Add task') }}</flux:button>
+                </section>
+            @endif
+            <div class="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+                @foreach ($boxes as $kind)
                     @php
-                        $st = Task::STATUSES[$stage];
-                        $rows = ($byStage[$stage] ?? collect())->sortBy(fn ($t) => [$t->due_date?->timestamp ?? PHP_INT_MAX, $t->id])->values();
+                        $kt = $typeOf($kind);
+                        $ktone = $toneOf($kind);
+                        $rows = $openWork[$kind]->sortBy(fn ($t) => [array_search($t->stage(), array_keys(Task::STATUSES)), $t->due_date?->timestamp ?? PHP_INT_MAX, $t->id])->values();
+                        $lateHere = $rows->filter->isOverdue()->count();
                     @endphp
-                    <section wire:key="stage-{{ $stage }}" class="flex flex-col rounded-2xl bg-zinc-100/70 p-2.5 ring-1 ring-zinc-200/50 dark:bg-white/[0.03] dark:ring-white/5">
-                        <div class="flex items-center gap-2 px-1.5 pt-1 pb-3">
-                            <span class="{{ $statusTones[$stage]['dot'] }} size-2.5 rounded-full"></span>
-                            <h3 class="text-sm font-semibold text-zinc-900 dark:text-white">{{ __($st['label']) }}</h3>
-                            <span class="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-zinc-500 tabular-nums shadow-xs dark:bg-white/10 dark:text-zinc-300">{{ $rows->count() }}</span>
-                            <button type="button" wire:click="newTask('{{ $stage }}')" class="ms-auto flex size-7 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-white hover:text-brand-600 dark:hover:bg-white/10" aria-label="{{ __('Add a task to :status', ['status' => __($st['label'])]) }}"><flux:icon.plus variant="micro" class="size-4" /></button>
+                    <section wire:key="box-{{ $kind }}" class="flex flex-col overflow-hidden rounded-2xl bg-zinc-100/70 ring-1 ring-zinc-200/50 dark:bg-white/[0.03] dark:ring-white/5">
+                        <div class="{{ $ktone['chip'] }} flex items-center gap-2.5 px-4 py-3">
+                            <span class="{{ $ktone['dot'] }} flex size-8 items-center justify-center rounded-lg text-white shadow-sm"><flux:icon :icon="$kt['icon']" variant="micro" class="size-4" /></span>
+                            <div class="min-w-0">
+                                <h3 class="truncate text-sm font-semibold">{{ $kt['label'] }}</h3>
+                                <p class="text-[0.6875rem] opacity-80">{{ trans_choice(':count open|:count open', $rows->count()) }}@if ($lateHere) · {{ trans_choice(':count late|:count late', $lateHere) }}@endif</p>
+                            </div>
+                            <button type="button" wire:click="newTask('todo', '{{ $kind }}')" class="ms-auto flex size-8 items-center justify-center rounded-lg bg-white/70 transition hover:bg-white dark:bg-white/10 dark:hover:bg-white/20" aria-label="{{ __('Add :type', ['type' => $kt['label']]) }}"><flux:icon.plus variant="micro" class="size-4" /></button>
                         </div>
 
-                        <div class="flex flex-col gap-2.5">
+                        <div class="flex flex-col gap-2.5 p-2.5">
                             @forelse ($rows as $t)
                                 @php
+                                    $stage = $t->stage();
                                     $tt = $typeOf($t->type);
                                     $tone = $toneOf($t->type);
                                     $done = false;
@@ -1281,8 +1275,8 @@ new #[Title('Client profile')] class extends Component {
                             <article wire:key="task-card-{{ $t->id }}" wire:click="openTask({{ $t->id }})" class="group relative cursor-pointer rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgb(15_23_42/0.05)] ring-1 ring-zinc-200/70 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_34px_-18px_rgb(15_23_42/0.45)] hover:ring-zinc-300 dark:bg-zinc-950 dark:ring-white/10" role="button" tabindex="0" @keydown.enter="$wire.openTask({{ $t->id }})" aria-label="{{ __('Open :task', ['task' => $t->title]) }}">
                                 {{-- Pills and check --}}
                                 <div class="flex items-center gap-1.5">
-                                    <span class="{{ $tone['chip'] }} inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold ring-1 ring-inset">
-                                        <flux:icon :icon="$tt['icon']" variant="micro" class="size-3" />{{ $tt['label'] }}
+                                    <span class="{{ $statusTones[$stage]['pill'] }} inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold">
+                                        <span class="{{ $statusTones[$stage]['dot'] }} size-1.5 rounded-full"></span>{{ __(Task::STATUSES[$stage]['label']) }}
                                     </span>
                                     @if (in_array($t->priority, ['high', 'urgent']))
                                         <span class="{{ $priorityTones[$t->priority] }} inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold ring-1 ring-inset">
@@ -1324,9 +1318,6 @@ new #[Title('Client profile')] class extends Component {
                                 </div>
                             </article>
                             @empty
-                                <button type="button" wire:click="newTask('{{ $stage }}')" class="flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-300/80 py-6 text-sm text-zinc-400 transition hover:border-brand-300 hover:bg-white hover:text-brand-600 dark:border-white/10 dark:hover:bg-white/5">
-                                    <flux:icon.plus variant="micro" class="size-4" />{{ __('Add task') }}
-                                </button>
                             @endforelse
                         </div>
                     </section>

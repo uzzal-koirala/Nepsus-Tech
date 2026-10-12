@@ -234,10 +234,10 @@ class ClientProfileTest extends TestCase
 
         Livewire::test('pages::client-profile', ['client' => $client])
             ->call('setTab', 'tasks')
-            ->assertSeeInOrder(['To do', 'Late banner', 'Next reel', 'Completed work', 'Finished post'])
-            ->set('workKind', 'reel')
-            ->assertSee('Next reel')
-            ->assertDontSee('Finished post');
+            // One box per type of work (in the type order), finished work only in History.
+            ->assertSeeInOrder(['Reel', 'Next reel', 'Design', 'Late banner', 'Completed work', 'Finished post'])
+            ->call('newTask', 'todo', 'reel')
+            ->assertSet('taskType', 'reel');
     }
 
     public function test_tasks_can_be_edited_moved_and_prioritised(): void
