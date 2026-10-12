@@ -80,18 +80,6 @@ new #[Title('Finance')] class extends Component {
         return $from->toDateString() === $this->from && $to->toDateString() === $this->to ? $period : null;
     }
 
-    public function shiftMonth(int $by): void
-    {
-        [$y, $m] = array_map('intval', explode('-', NepaliDate::period(Carbon::parse($this->from))));
-        $index = $y * 12 + $m - 1 + max(-1, min(1, $by));
-        $this->setMonth(sprintf('%d-%02d', intdiv($index, 12), $index % 12 + 1));
-    }
-
-    public function goToday(): void
-    {
-        $this->setMonth(NepaliDate::period(today()));
-    }
-
     /** First and last AD day of a BS month key. */
     private function monthRange(string $period): array
     {
@@ -303,13 +291,6 @@ new #[Title('Finance')] class extends Component {
             <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ __('Money in, money out and what is left.') }}</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-            {{-- Month stepper --}}
-            <div class="flex items-center rounded-lg bg-white ring-1 ring-zinc-200 dark:bg-zinc-950 dark:ring-white/10">
-                <button type="button" wire:click="shiftMonth(-1)" class="flex size-10 items-center justify-center rounded-s-lg text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:hover:bg-white/5 dark:hover:text-white" aria-label="{{ __('Previous month') }}"><flux:icon.chevron-left variant="mini" class="size-4" /></button>
-                <span class="flex h-10 min-w-36 items-center justify-center border-x border-zinc-200 px-3 text-sm font-semibold whitespace-nowrap text-zinc-800 dark:border-white/10 dark:text-zinc-100">{{ $label }}</span>
-                <button type="button" wire:click="shiftMonth(1)" class="flex size-10 items-center justify-center rounded-e-lg text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:hover:bg-white/5 dark:hover:text-white" aria-label="{{ __('Next month') }}"><flux:icon.chevron-right variant="mini" class="size-4" /></button>
-            </div>
-
             {{-- Date filter: from → to --}}
             <div class="flex items-center gap-2 rounded-lg bg-white p-1 ring-1 ring-zinc-200 dark:bg-zinc-950 dark:ring-white/10" data-test="date-filter">
                 <span class="ps-2 text-xs font-medium text-zinc-500">{{ __('From') }}</span>
