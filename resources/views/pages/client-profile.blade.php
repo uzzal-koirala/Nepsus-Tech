@@ -762,12 +762,56 @@ new #[Title('Client profile')] class extends Component {
                         </div>
                     </div>
 
-                    {{-- Legend --}}
-                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-y border-zinc-100 bg-zinc-50/60 px-5 py-2.5 text-xs text-zinc-500 dark:border-white/5 dark:bg-white/[0.02]">
+                    {{-- Legend with this month's counts --}}
+                    @php
+                        $monthPayments = collect($cal['weeks'])->flatten(1)->filter()->flatMap(fn ($d) => $d['payments']);
+                        $chip = 'inline-flex items-center gap-1.5 rounded-full py-1 ps-2 pe-1 text-xs font-medium ring-1 ring-inset transition';
+                        $count = 'rounded-full px-1.5 py-px text-[0.6875rem] font-semibold tabular-nums';
+                    @endphp
+                    <div class="flex flex-wrap items-center gap-1.5 border-y border-zinc-100 bg-zinc-50/60 px-5 py-2.5 dark:border-white/5 dark:bg-white/[0.02]">
                         @foreach (Task::TYPES as $key => $type)
-                            <span class="inline-flex items-center gap-1.5"><span class="{{ $workTones[$key]['dot'] }} size-2 rounded-full"></span>{{ __($type['label']) }}</span>
+                            @php
+                                $all = isset($byType[$key]) ? $byType[$key]->count() : 0;
+                                $done = $all ? $byType[$key]->whereNotNull('completed_at')->count() : 0;
+                                $complete = $all && $done === $all;
+                            @endphp
+                            @continue(! $all)
+                            <span @class([
+                                $chip,
+                                'bg-white text-zinc-700 shadow-xs ring-zinc-200 dark:bg-white/5 dark:text-zinc-200 dark:ring-white/10' => $all,
+                                'text-zinc-400 ring-transparent' => ! $all,
+                            ]) title="{{ __(':done of :all :type done this month', ['done' => $done, 'all' => $all, 'type' => __($type['label'])]) }}">
+                                <span @class([$workTones[$key]['dot'], 'size-2 rounded-full', 'opacity-40' => ! $all])></span>
+                                {{ __($type['label']) }}
+                                @if ($all)
+                                    <span @class([$count, 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' => $complete, 'bg-zinc-100 text-zinc-600 dark:bg-white/10 dark:text-zinc-300' => ! $complete])>
+                                        @if ($complete)&#10003; @endif{{ $done }}/{{ $all }}
+                                    </span>
+                                @else
+                                    <span class="pe-1.5"></span>
+                                @endif
+                            </span>
                         @endforeach
-                        <span class="inline-flex items-center gap-1.5"><flux:icon.banknotes variant="micro" class="size-3.5 text-emerald-500" />{{ __('Payment') }}</span>
+                        @php
+                            $payAll = $monthPayments->count();
+                            $payDone = $monthPayments->whereNotNull('paid_at')->count();
+                        @endphp
+                        @if ($byType->isEmpty() && ! $payAll)
+                            <span class="text-xs text-zinc-400">{{ __('No work planned this month yet. Hover a day and click Add.') }}</span>
+                        @endif
+                        @if ($payAll)
+                        <span @class([
+                            $chip,
+                            'bg-white text-zinc-700 shadow-xs ring-zinc-200 dark:bg-white/5 dark:text-zinc-200 dark:ring-white/10' => $payAll,
+                            'text-zinc-400 ring-transparent' => ! $payAll,
+                        ])>
+                            <flux:icon.banknotes variant="micro" @class(['size-3.5 text-emerald-500', 'opacity-40' => ! $payAll]) />
+                            {{ __('Payment') }}
+                            @if ($payAll)
+                                <span @class([$count, 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' => $payDone === $payAll, 'bg-zinc-100 text-zinc-600 dark:bg-white/10 dark:text-zinc-300' => $payDone !== $payAll])>{{ $payDone }}/{{ $payAll }}</span>
+                            @endif
+                        </span>
+                        @endif
                     </div>
 
                     {{-- Grid --}}
