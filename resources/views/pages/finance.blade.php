@@ -342,7 +342,7 @@ new #[Title('Finance')] class extends Component {
                             <th class="{{ $th }}">{{ __('Category') }}</th>
                             <th class="{{ $th }}">{{ __('Payment type') }}</th>
                             <th class="{{ $th }}">{{ __('Method') }}</th>
-                            <th class="{{ $th }} pe-5 text-end">{{ __('Amount') }}</th>
+                            <th class="{{ str_replace('text-start', 'text-end', $th) }} pe-5">{{ __('Amount') }}</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-zinc-100 dark:divide-white/5">
@@ -353,9 +353,9 @@ new #[Title('Finance')] class extends Component {
                             @endphp
                             <tr wire:key="entry-{{ $e['key'] }}" @click="open = '{{ $e['key'] }}'" class="cursor-pointer transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]" tabindex="0" @keydown.enter="open = '{{ $e['key'] }}'">
                                 {{-- Title --}}
-                                <td class="max-w-80 px-3 py-3.5 ps-5">
+                                <td class="max-w-80 px-3 py-2.5 ps-5">
                                     <div class="flex items-center gap-3">
-                                        <span @class(['flex size-9 shrink-0 items-center justify-center rounded-xl', 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300' => $in, 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300' => ! $in])>
+                                        <span @class(['flex size-8 shrink-0 items-center justify-center rounded-lg', 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300' => $in, 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300' => ! $in])>
                                             <flux:icon :icon="$in ? 'arrow-down-left' : 'arrow-up-right'" variant="micro" class="size-4" />
                                         </span>
                                         <div class="min-w-0">
@@ -370,21 +370,21 @@ new #[Title('Finance')] class extends Component {
                                     </div>
                                 </td>
                                 {{-- Date --}}
-                                <td class="px-3 py-3.5 whitespace-nowrap">
+                                <td class="px-3 py-2.5 whitespace-nowrap">
                                     <p class="font-medium text-zinc-900 dark:text-white">{{ $bs ? $bs[2].' '.NepaliDate::MONTHS[$bs[1] - 1].' '.$bs[0] : '' }}</p>
                                 </td>
                                 {{-- Category --}}
-                                <td class="px-3 py-3.5">
+                                <td class="px-3 py-2.5">
                                     <span class="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium whitespace-nowrap text-zinc-700 dark:bg-white/10 dark:text-zinc-200"><flux:icon :icon="$e['icon']" variant="micro" class="size-3.5" />{{ $e['category'] }}</span>
                                 </td>
                                 {{-- Payment type --}}
-                                <td class="px-3 py-3.5 whitespace-nowrap">
+                                <td class="px-3 py-2.5 whitespace-nowrap">
                                     <span @class(['inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset', 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20' => $in, 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20' => ! $in])>
                                         <flux:icon :icon="$in ? 'arrow-down-left' : 'arrow-up-right'" variant="micro" class="size-3" />{{ $in ? __('Income') : __('Expense') }}
                                     </span>
                                 </td>
                                 {{-- Method --}}
-                                <td class="px-3 py-3.5 whitespace-nowrap text-zinc-700 dark:text-zinc-300">
+                                <td class="px-3 py-2.5 whitespace-nowrap text-zinc-700 dark:text-zinc-300">
                                     @if ($e['method'])
                                         <span class="inline-flex items-center gap-1.5"><flux:icon :icon="$methodIcons[$e['method']] ?? 'credit-card'" variant="micro" class="size-4 text-zinc-400" />{{ __($e['method']) }}</span>
                                     @else
@@ -392,7 +392,7 @@ new #[Title('Finance')] class extends Component {
                                     @endif
                                 </td>
                                 {{-- Amount --}}
-                                <td class="px-3 py-3.5 pe-5 text-end whitespace-nowrap">
+                                <td class="px-3 py-2.5 pe-5 text-end whitespace-nowrap">
                                     <span @class([
                                         'inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-sm font-bold tabular-nums ring-1 ring-inset',
                                         'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20' => $in,
