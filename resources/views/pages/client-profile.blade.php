@@ -519,7 +519,7 @@ new #[Title('Client profile')] class extends Component {
                     <dd class="{{ $metaValue }}">
                         @if ($c->agreement_signed_at)
                             <span class="{{ $metaIcon }} bg-emerald-50! text-emerald-600! dark:bg-emerald-500/10!"><flux:icon.document-check variant="micro" class="size-3.5" /></span>
-                            <span class="truncate">{{ __('Signed') }}@if ($c->contract_end)<span class="font-normal text-zinc-500"> · {{ __('until :date', ['date' => $c->contract_end->toNepali()]) }}</span>@endif</span>
+                            <span class="truncate">{{ __('Signed') }}@if ($c->agreement_signed_at)<span class="font-normal text-zinc-500"> · {{ $c->agreement_signed_at->toNepali() }}</span>@endif</span>
                         @else
                             <span class="{{ $metaIcon }} bg-amber-50! text-amber-600! dark:bg-amber-500/10!"><flux:icon.document variant="micro" class="size-3.5" /></span>
                             <button type="button" wire:click="editAgreement" class="truncate text-amber-700 hover:underline dark:text-amber-400">{{ __('Not signed yet') }}</button>
@@ -540,26 +540,7 @@ new #[Title('Client profile')] class extends Component {
             $days <= 3 => 'text-amber-600 dark:text-amber-400',
             default => 'text-zinc-500',
         };
-        $daysText = fn (int $days) => match (true) {
-            $days < 0 => trans_choice(':count day late|:count days late', abs($days)),
-            $days === 0 => __('Today'),
-            default => trans_choice('in :count day|in :count days', $days),
-        };
-
-        // Nearest dated things still to come (or late): open tasks, unpaid payments, renewal or project deadline.
-        $deadlines = collect();
-        foreach ($this->tasks->whereNull('completed_at')->whereNotNull('due_date') as $t) {
-            $deadlines->push(['icon' => 'check-circle', 'label' => $t->title, 'date' => $t->due_date]);
-        }
-        foreach ($this->payments->whereNull('paid_at')->whereNotNull('due_date') as $p) {
-            $deadlines->push(['icon' => 'banknotes', 'label' => __('Payment :amount', ['amount' => Client::money($p->amount)]), 'date' => $p->due_date]);
-        }
-        if ($periodEnd = $c->periodEnd()) {
-            $deadlines->push(['icon' => 'arrow-path', 'label' => __('Billing period ends'), 'date' => $periodEnd]);
-        } elseif (! $c->isRecurring() && $c->contract_end && ! $c->contract_end->isBefore(today()->subMonth())) {
-            $deadlines->push(['icon' => 'flag', 'label' => __('Project deadline'), 'date' => $c->contract_end]);
-        }
-        $deadlines = $deadlines->sortBy(fn ($d) => $d['date']->timestamp)->take(3)->values();
+        $agreementDays = $c->contract_end ? (int) today()->diffInDays($c->contract_end, false) : null;
     @endphp
     <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {{-- Package: name, price and billing together --}}
@@ -638,22 +619,38 @@ new #[Title('Client profile')] class extends Component {
             </div>
         </div>
 
-        {{-- Upcoming deadlines --}}
-        <div class="{{ $panel }} flex flex-col gap-3 p-5">
+        {{-- Agreement ends --}}
+        <div class="{{ $panel }} flex flex-col gap-4 p-5">
             <div class="flex items-center gap-3">
-                <span class="{{ $iconTile }} bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300"><flux:icon.clock variant="mini" class="size-4.5" /></span>
-                <p class="text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Upcoming deadlines') }}</p>
+                <span @class([$iconTile, 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300' => $c->agreement_signed_at, 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300' => ! $c->agreement_signed_at])><flux:icon.document-check variant="mini" class="size-4.5" /></span>
+                <p class="flex-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Agreement ends') }}</p>
+                @if ($c->agreement_signed_at)
+                    <span class="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">{{ __('Signed') }}</span>
+                @else
+                    <span class="rounded-md bg-amber-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">{{ __('Not signed') }}</span>
+                @endif
             </div>
-            @forelse ($deadlines as $d)
-                @php $days = (int) today()->diffInDays($d['date'], false); @endphp
-                <div class="flex items-center gap-2.5 text-xs" title="{{ $d['date']->format('j M Y') }}">
-                    <flux:icon :icon="$d['icon']" variant="micro" class="size-3.5 shrink-0 text-zinc-400" />
-                    <span class="min-w-0 flex-1 truncate font-medium text-zinc-700 dark:text-zinc-200">{{ $d['label'] }}</span>
-                    <span class="{{ $deadlineTone($days) }} shrink-0 tabular-nums">{{ $days > 7 ? $d['date']->toNepali(withYear: false) : $daysText($days) }}</span>
+            @if ($c->contract_end)
+                <div>
+                    <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 dark:text-white" title="{{ $c->contract_end->format('j M Y') }}">{{ $c->contract_end->toNepali() }}</p>
+                    <p @class(['mt-1.5 text-xs font-medium', 'text-rose-600 dark:text-rose-400' => $agreementDays < 0, 'text-amber-600 dark:text-amber-400' => $agreementDays >= 0 && $agreementDays <= 30, 'text-zinc-500' => $agreementDays > 30])>
+                        @if ($agreementDays < 0)
+                            {{ trans_choice('Ended :count day ago|Ended :count days ago', abs($agreementDays)) }}
+                        @elseif ($agreementDays === 0)
+                            {{ __('Ends today') }}
+                        @else
+                            {{ trans_choice(':count day left|:count days left', $agreementDays) }}
+                        @endif
+                    </p>
                 </div>
-            @empty
-                <p class="text-xs text-zinc-500">{{ __('Nothing due. Add due dates to tasks or a payment plan to see them here.') }}</p>
-            @endforelse
+                <div class="mt-auto flex flex-col gap-1.5">
+                    <div class="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div @class(['h-full rounded-full transition-[width] duration-700', 'bg-rose-500' => $agreementDays < 0, 'bg-amber-400' => $agreementDays >= 0 && $agreementDays <= 30, 'bg-emerald-500' => $agreementDays > 30]) style="width: {{ $contractPct ?? 100 }}%"></div></div>
+                    <p class="text-xs text-zinc-500">{{ $c->contract_start ? __('Started :date', ['date' => $c->contract_start->toNepali()]) : __('No start date') }}</p>
+                </div>
+            @else
+                <p class="text-[1.625rem] leading-none font-semibold text-zinc-300 dark:text-zinc-600">{{ __('No end date') }}</p>
+                <button type="button" wire:click="editAgreement" class="mt-auto inline-flex items-center gap-1.5 text-start text-xs font-medium text-brand-600 hover:underline dark:text-brand-300"><flux:icon.plus variant="micro" class="size-3.5" />{{ __('Add agreement dates') }}</button>
+            @endif
         </div>
     </section>
 
