@@ -20,7 +20,7 @@ new #[Title('Employee')] class extends Component {
 
     public Employee $employee;
 
-    public const TABS = ['overview', 'work', 'salary', 'documents'];
+    public const TABS = ['overview', 'work', 'salary', 'documents', 'details'];
 
     #[Url(except: 'overview')]
     public string $tab = 'overview';
@@ -546,6 +546,7 @@ new #[Title('Employee')] class extends Component {
             'work' => ['label' => __('Work'), 'icon' => 'clipboard-document-check', 'count' => $openWork->count() ?: null],
             'salary' => ['label' => __('Salary'), 'icon' => 'banknotes', 'count' => null],
             'documents' => ['label' => __('Documents'), 'icon' => 'document-text', 'count' => $docs->count() ?: null],
+            'details' => ['label' => __('Details'), 'icon' => 'identification', 'count' => null],
         ];
         $markTone = [
             'present' => ['cell' => 'bg-emerald-50/80 dark:bg-emerald-500/10', 'pill' => 'bg-emerald-500 text-white', 'dot' => 'bg-emerald-500', 'text' => 'text-emerald-700 dark:text-emerald-300'],
@@ -829,29 +830,6 @@ new #[Title('Employee')] class extends Component {
                     @endunless
                 </section>
 
-                {{-- Details --}}
-                <section class="{{ $panel }}">
-                    <div class="flex items-center justify-between border-b border-zinc-100 px-5 py-4 dark:border-white/5">
-                        <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Details') }}</h2>
-                        <flux:button size="sm" variant="ghost" icon="pencil-square" wire:click="edit">{{ __('Edit') }}</flux:button>
-                    </div>
-                    <dl class="divide-y divide-zinc-100 text-sm dark:divide-white/5">
-                        @foreach ([
-                            ['briefcase', __('Role'), $e->designation],
-                            [$meta['icon'], __('Department'), __($meta['label'])],
-                            ['phone', __('Phone'), $e->phone],
-                            ['envelope', __('Email'), $e->email],
-                            ['calendar', __('Joined'), $e->joined_on?->toNepali()],
-                            ['banknotes', __('Salary day'), $e->salary_day ? __('Day :day of each month', ['day' => $e->salary_day]) : null],
-                        ] as [$icon, $label, $value])
-                            <div class="flex items-center gap-3 px-5 py-3">
-                                <flux:icon :icon="$icon" variant="micro" class="size-4 shrink-0 text-zinc-400" />
-                                <dt class="w-24 shrink-0 text-zinc-500">{{ $label }}</dt>
-                                <dd @class(['min-w-0 flex-1 truncate', 'font-medium text-zinc-800 dark:text-zinc-100' => $value, 'text-zinc-400' => ! $value])>{{ $value ?: __('Not set') }}</dd>
-                            </div>
-                        @endforeach
-                    </dl>
-                </section>
             </aside>
         </div>
     @elseif ($tab === 'work')
@@ -1000,6 +978,47 @@ new #[Title('Employee')] class extends Component {
                 </div>
             @endforelse
         </section>
+        </div>
+    @elseif ($tab === 'details')
+        @php
+            $groups = [
+                __('Work') => [
+                    ['briefcase', __('Role'), $e->designation],
+                    [$meta['icon'], __('Department'), __($meta['label'])],
+                    ['signal', __('Status'), __(Employee::STATUSES[$e->status])],
+                    ['calendar', __('Joined'), $e->joined_on ? $e->joined_on->toNepali().' · '.$e->joined_on->format('j M Y') : null],
+                    ['clock', __('With the team'), $e->tenure()],
+                ],
+                __('Contact') => [
+                    ['phone', __('Phone'), $e->phone],
+                    ['envelope', __('Email'), $e->email],
+                ],
+                __('Pay & agreement') => [
+                    ['wallet', __('Monthly salary'), $e->salary ? $money($e->salary) : null],
+                    ['banknotes', __('Salary day'), $e->salary_day ? __('Day :day of each month', ['day' => $e->salary_day]) : null],
+                    ['document-check', __('Agreement starts'), $e->contract_start?->toNepali()],
+                    ['document-check', __('Agreement ends'), $e->contract_end?->toNepali()],
+                ],
+            ];
+        @endphp
+        <div class="grid items-start gap-6 lg:grid-cols-2">
+            @foreach ($groups as $groupLabel => $rows)
+                <section class="{{ $panel }} overflow-hidden">
+                    <div class="flex items-center justify-between border-b border-zinc-100 px-5 py-4 dark:border-white/5">
+                        <h2 class="font-semibold text-zinc-900 dark:text-white">{{ $groupLabel }}</h2>
+                        <flux:button size="sm" variant="ghost" icon="pencil-square" wire:click="edit">{{ __('Edit') }}</flux:button>
+                    </div>
+                    <dl class="divide-y divide-zinc-100 text-sm dark:divide-white/5">
+                        @foreach ($rows as [$icon, $label, $value])
+                            <div class="flex items-center gap-3 px-5 py-3.5">
+                                <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-white/5 dark:text-zinc-400"><flux:icon :icon="$icon" variant="micro" class="size-4" /></span>
+                                <dt class="w-36 shrink-0 text-zinc-500">{{ $label }}</dt>
+                                <dd @class(['min-w-0 flex-1 truncate', 'font-medium text-zinc-800 dark:text-zinc-100' => $value, 'text-zinc-400' => ! $value])>{{ $value ?: __('Not set') }}</dd>
+                            </div>
+                        @endforeach
+                    </dl>
+                </section>
+            @endforeach
         </div>
     @else
         {{-- Documents --}}
