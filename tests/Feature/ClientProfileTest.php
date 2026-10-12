@@ -219,4 +219,27 @@ class ClientProfileTest extends TestCase
 
         $page->call('goToday')->assertSet('calMonth', $m);
     }
+
+    public function test_tasks_tab_groups_and_filters_work(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $client = Client::factory()->create();
+        $client->tasks()->create(['title' => 'Late banner', 'type' => 'design', 'due_date' => today()->subDays(3)]);
+        $client->tasks()->create(['title' => 'Next reel', 'type' => 'reel', 'due_date' => today()->addDays(2)]);
+        $client->tasks()->create(['title' => 'Finished post', 'type' => 'post', 'due_date' => today()->subDay(), 'completed_at' => now()]);
+
+        Livewire::test('pages::client-profile', ['client' => $client])
+            ->call('setTab', 'tasks')
+            ->assertSee(['Late banner', 'Next reel', 'Finished post'])
+            ->set('workFilter', 'late')
+            ->assertSee('Late banner')
+            ->assertDontSee('Next reel')
+            ->set('workFilter', 'done')
+            ->assertSee('Finished post')
+            ->assertDontSee('Late banner')
+            ->set('workFilter', 'all')
+            ->set('workKind', 'reel')
+            ->assertSee('Next reel')
+            ->assertDontSee('Finished post');
+    }
 }
