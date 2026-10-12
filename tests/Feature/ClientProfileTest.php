@@ -51,15 +51,15 @@ class ClientProfileTest extends TestCase
             ->call('savePayment')
             ->assertHasErrors(['payAmount'])
             ->set('payAmount', '25000')
-            ->set('payPaid', false)
+            ->set('payMethod', 'Bank')
             ->set('payDue', today()->subDays(3)->toDateString())
             ->call('savePayment')
             ->assertHasNoErrors();
 
         $payment = $client->payments()->sole();
-        $this->assertSame('overdue', $payment->status());
+        $this->assertSame('paid', $payment->status());
         $page->call('togglePaid', $payment->id);
-        $this->assertSame('paid', $payment->fresh()->status());
+        $this->assertSame('overdue', $payment->fresh()->status());
 
         Storage::fake('local');
 
@@ -101,8 +101,10 @@ class ClientProfileTest extends TestCase
             ->assertHasErrors(['payType'])
             ->set('payType', 'Advance payment')
             ->set('payAmount', '75000')
-            ->set('payPaid', true)
             ->set('payDue', '2026-09-20')
+            ->set('payMethod', 'Card')
+            ->call('savePayment')
+            ->assertHasErrors(['payMethod'])
             ->set('payMethod', 'eSewa')
             ->set('payReference', 'TXN-88')
             ->call('savePayment')
@@ -114,21 +116,19 @@ class ClientProfileTest extends TestCase
         $this->assertSame('eSewa', $advance->method);
         $this->assertSame('paid', $advance->status());
 
-        // A payment still to come keeps no method and shows as pending.
+        // A custom type is kept as typed.
         $page->call('newPayment')
             ->assertSet('payType', 'Partial payment')
             ->set('payType', 'Final payment after launch')
-            ->set('payPaid', false)
             ->set('payAmount', '75000')
-            ->set('payDue', today()->addWeeks(2)->toDateString())
-            ->set('payMethod', 'Cash')
+            ->set('payMethod', 'Cheque')
             ->call('savePayment')
             ->assertHasNoErrors();
 
         $final = $client->payments()->where('type', 'Final payment after launch')->sole();
-        $this->assertNull($final->paid_at);
-        $this->assertNull($final->method);
-        $this->assertSame('pending', $final->status());
+        $this->assertSame('Final payment after launch', $final->typeLabel());
+        $this->assertSame('Cheque', $final->method);
+        $this->assertSame('paid', $final->status());
     }
 
     public function test_profile_tabs_and_next_up(): void

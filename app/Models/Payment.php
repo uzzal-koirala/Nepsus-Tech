@@ -14,7 +14,8 @@ class Payment extends Model
     /** @use HasFactory<PaymentFactory> */
     use HasFactory;
 
-    public const METHODS = ['Bank transfer', 'Cash', 'eSewa', 'Khalti', 'Cheque', 'Card'];
+    /** Where a payment was received. */
+    public const METHODS = ['Bank', 'eSewa', 'Khalti', 'Cash', 'Cheque', 'Other'];
 
     /** What a payment is for. */
     public const TYPES = [
