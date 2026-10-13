@@ -1189,56 +1189,6 @@ new #[Title('Employee')] class extends Component {
             @endif
         </section>
 
-        {{-- Payment history --}}
-        <section class="{{ $panel }}">
-            <div class="flex items-center justify-between gap-3 border-b border-zinc-100 px-5 py-4 dark:border-white/5">
-                <div>
-                    <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Payment history') }}</h2>
-                    <p class="text-xs text-zinc-500">{{ __('Every salary payment, newest first') }}</p>
-                </div>
-                <flux:button size="sm" icon="plus" wire:click="openPay">{{ __('Add payment') }}</flux:button>
-            </div>
-            @forelse ($payments->groupBy('period') as $period => $rows)
-                @php
-                    $sum = (float) $rows->sum('amount');
-                    $isFull = $e->salary && $sum >= (float) $e->salary;
-                @endphp
-                <div wire:key="period-{{ $period }}" class="border-b border-zinc-100 last:border-0 dark:border-white/5">
-                    <div class="flex items-center gap-3 bg-zinc-50/70 px-5 py-2.5 dark:bg-white/[0.02]">
-                        <p class="flex-1 text-sm font-semibold text-zinc-900 dark:text-white">{{ NepaliDate::periodLabel($period) }}</p>
-                        @if ($e->salary)
-                            <span @class([
-                                'rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium',
-                                'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' => $isFull,
-                                'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' => ! $isFull,
-                            ])>{{ $isFull ? __('Paid') : __('Part paid') }}</span>
-                        @endif
-                        <p class="text-sm font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $money($sum) }}</p>
-                    </div>
-                    @foreach ($rows as $sp)
-                        <div wire:key="sp-{{ $sp->id }}" class="group flex items-center gap-3 px-5 py-3 text-sm">
-                            <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.arrow-up-right variant="micro" class="size-4" /></span>
-                            <div class="min-w-0 flex-1">
-                                <p class="font-medium text-zinc-800 dark:text-zinc-100" title="{{ $sp->paid_on->format('j M Y') }}">{{ __('Paid :date', ['date' => $sp->paid_on->toNepali()]) }}</p>
-                                @if ($sp->note)
-                                    <p class="truncate text-xs text-zinc-500">{{ $sp->note }}</p>
-                                @endif
-                            </div>
-                            <span class="font-semibold text-zinc-800 tabular-nums dark:text-zinc-100">{{ $money($sp->amount) }}</span>
-                            <button type="button" wire:click="confirmDeleteSalaryPayment({{ $sp->id }})" class="text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:text-rose-500 focus:opacity-100" aria-label="{{ __('Delete payment') }}">
-                                <flux:icon.trash variant="micro" class="size-4" />
-                            </button>
-                        </div>
-                    @endforeach
-                </div>
-            @empty
-                <div class="flex flex-col items-center gap-3 px-6 py-12 text-center">
-                    <span class="flex size-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-500 dark:bg-brand-500/15"><flux:icon.banknotes class="size-6" /></span>
-                    <p class="text-sm text-zinc-500">{{ __('No salary paid yet.') }}</p>
-                    <flux:button size="sm" variant="primary" icon="banknotes" wire:click="openPay">{{ __('Record first payment') }}</flux:button>
-                </div>
-            @endforelse
-        </section>
         </div>
     @elseif ($tab === 'details')
         @php
