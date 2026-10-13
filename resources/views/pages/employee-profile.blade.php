@@ -645,10 +645,33 @@ new #[Title('Employee')] class extends Component {
         @php
             $at = $this->attendanceTotals;
             $attCards = [
-                ['label' => __('Total present'), 'value' => $at['present'], 'icon' => 'check-circle', 'tile' => 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30', 'glow' => 'bg-emerald-100/70 dark:bg-emerald-500/10', 'sub' => $at['half_day'] ? trans_choice('+ :count half day|+ :count half days', $at['half_day']) : __('Days at work'), 'tone' => 'text-emerald-700 dark:text-emerald-300'],
                 ['label' => __('Total absent'), 'value' => $at['absent'], 'icon' => 'x-circle', 'tile' => 'bg-rose-500 text-white shadow-md shadow-rose-500/30', 'glow' => 'bg-rose-100/70 dark:bg-rose-500/10', 'sub' => __('Days missed without leave'), 'tone' => 'text-rose-700 dark:text-rose-300'],
                 ['label' => __('Total leave'), 'value' => $at['leave'], 'icon' => 'sun', 'tile' => 'bg-sky-500 text-white shadow-md shadow-sky-500/30', 'glow' => 'bg-sky-100/70 dark:bg-sky-500/10', 'sub' => __('Days on approved leave'), 'tone' => 'text-sky-700 dark:text-sky-300'],
             ];
+            // Salary still to pay for this month: salary minus every payment made for it.
+            $due = $this->thisMonth;
+        @endphp
+        <div class="{{ $panel }} relative flex flex-col gap-4 overflow-hidden p-5" data-test="to-pay-card">
+            <div @class(['absolute -top-12 -right-12 size-32 rounded-full', 'bg-emerald-100/70 dark:bg-emerald-500/10' => $due && $due['left'] <= 0, 'bg-amber-100/70 dark:bg-amber-500/10' => ! $due || $due['left'] > 0])></div>
+            <div class="relative flex items-center gap-3">
+                <span @class([$iconTile, 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30' => $due && $due['left'] <= 0, 'bg-amber-500 text-white shadow-md shadow-amber-500/30' => ! $due || $due['left'] > 0])><flux:icon :icon="$due && $due['left'] <= 0 ? 'check-badge' : 'wallet'" variant="mini" class="size-4.5" /></span>
+                <p class="flex-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('To pay this month') }}</p>
+                @if ($due)
+                    <span @class(['rounded-md px-1.5 py-0.5 text-xs font-semibold tabular-nums', 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' => $due['left'] <= 0, 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' => $due['left'] > 0]) title="{{ __('Paid so far') }}">{{ $due['percent'] }}%</span>
+                @endif
+            </div>
+            <p @class(['relative text-[1.875rem] leading-none font-bold tracking-tight tabular-nums', 'text-emerald-700 dark:text-emerald-300' => $due && $due['left'] <= 0, 'text-zinc-900 dark:text-white' => ! $due || $due['left'] > 0])>
+                {{ $due ? ($due['left'] <= 0 ? __('All paid') : $money($due['left'])) : '—' }}
+            </p>
+            <p class="relative mt-auto text-xs text-zinc-500">
+                @if ($due)
+                    {{ __(':paid paid of :salary', ['paid' => $money($due['paid']), 'salary' => $money($due['salary'])]) }} · {{ $periodLabel }}
+                @else
+                    {{ __('Not on payroll') }}
+                @endif
+            </p>
+        </div>
+        @php
         @endphp
         @foreach ($attCards as $card)
             <div class="{{ $panel }} relative flex flex-col gap-4 overflow-hidden p-5">
@@ -656,9 +679,6 @@ new #[Title('Employee')] class extends Component {
                 <div class="relative flex items-center gap-3">
                     <span class="{{ $iconTile }} {{ $card['tile'] }}"><flux:icon :icon="$card['icon']" variant="mini" class="size-4.5" /></span>
                     <p class="flex-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ $card['label'] }}</p>
-                    @if ($at['rate'] !== null && $loop->first)
-                        <span class="rounded-md bg-emerald-50 px-1.5 py-0.5 text-xs font-semibold text-emerald-700 tabular-nums dark:bg-emerald-500/10 dark:text-emerald-300" title="{{ __('Attendance rate') }}">{{ $at['rate'] }}%</span>
-                    @endif
                 </div>
                 <p class="relative flex items-baseline gap-1.5 leading-none">
                     <span class="{{ $card['tone'] }} text-[1.875rem] font-bold tracking-tight tabular-nums">{{ $card['value'] }}</span>

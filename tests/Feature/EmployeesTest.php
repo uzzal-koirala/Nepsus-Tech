@@ -120,7 +120,8 @@ class EmployeesTest extends TestCase
             ->set('payAmount', '15000')
             ->call('savePay')
             ->assertHasNoErrors()
-            ->assertSee('Pay NPR 25,000');
+            ->assertSee('Pay NPR 25,000')
+            ->assertSee(['To pay this month', 'NPR 15,000 paid of NPR 40,000']);
 
         $payment = $employee->salaryPayments()->sole();
         $page->call('confirmDeleteSalaryPayment', $payment->id)->assertSee('Delete this salary payment?')->call('deleteSalaryPayment', $payment->id);
@@ -157,7 +158,7 @@ class EmployeesTest extends TestCase
         $page->call('markDay', $day, 'present');
         $this->assertSame('present', $employee->attendances()->sole()->status);
         $this->assertSame(1, $page->instance()->calendar['counts']['present']);
-        $page->assertSee(['Total present', 'Total absent', 'Total leave']);
+        $page->assertSee(['To pay this month', 'Total absent', 'Total leave'])->assertDontSee('Total present');
 
         $page->call('markDay', $day, '');
         $this->assertSame(0, $employee->attendances()->count());
