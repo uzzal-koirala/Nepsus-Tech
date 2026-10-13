@@ -4,6 +4,7 @@
             ['route' => 'settings.business', 'icon' => 'building-office-2', 'label' => __('Business'), 'hint' => __('Name, logo and contact details')],
             ['route' => 'settings.preferences', 'icon' => 'adjustments-horizontal', 'label' => __('Preferences'), 'hint' => __('Currency, reminders and holidays')],
             ['route' => 'settings.work-types', 'icon' => 'swatch', 'label' => __('Work types'), 'hint' => __('Post, reel, edit and more')],
+            ['route' => 'settings.attendance-device', 'icon' => 'finger-print', 'label' => __('Attendance device'), 'hint' => __('Hikvision fingerprint machine')],
         ],
         __('Your account') => [
             ['route' => 'profile.edit', 'icon' => 'user-circle', 'label' => __('Profile'), 'hint' => __('Your name and email')],

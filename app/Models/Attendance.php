@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
-#[Fillable(['date', 'status', 'note'])]
+#[Fillable(['employee_id', 'date', 'status', 'check_in', 'note', 'source'])]
 class Attendance extends Model
 {
     public const STATUSES = [

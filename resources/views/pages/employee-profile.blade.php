@@ -121,7 +121,7 @@ new #[Title('Employee')] class extends Component {
         for ($day = 1; $day <= $length; $day++) {
             $ad = $first->copy()->addDays($day - 1);
             $key = $ad->toDateString();
-            $cells[] = ['day' => $day, 'ad' => $ad, 'status' => $marks[$key]->status ?? null, 'note' => $marks[$key]->note ?? null, 'done' => $doneByDay[$key] ?? collect()];
+            $cells[] = ['day' => $day, 'ad' => $ad, 'status' => $marks[$key]->status ?? null, 'note' => $marks[$key]->note ?? null, 'in' => $marks[$key]->check_in ?? null, 'device' => ($marks[$key]->source ?? '') === 'device', 'done' => $doneByDay[$key] ?? collect()];
         }
         $cells = array_pad($cells, (int) ceil(count($cells) / 7) * 7, null);
 
@@ -173,7 +173,7 @@ new #[Title('Employee')] class extends Component {
             $this->employee->attendances()->whereDate('date', $day)->delete();
         } else {
             abort_unless(array_key_exists($status, Attendance::STATUSES), 422);
-            $this->employee->attendances()->updateOrCreate(['date' => $day], ['status' => $status, 'note' => null]);
+            $this->employee->attendances()->updateOrCreate(['date' => $day], ['status' => $status, 'note' => null, 'source' => 'manual']);
         }
 
         unset($this->calendar, $this->attendanceTotals);
@@ -187,7 +187,7 @@ new #[Title('Employee')] class extends Component {
         ], attributes: ['leaveReason' => __('reason')]);
         abort_if(Carbon::parse($data['leaveDate'])->isHoliday(), 422);
 
-        $this->employee->attendances()->updateOrCreate(['date' => Carbon::parse($data['leaveDate'])->toDateString()], ['status' => 'leave', 'note' => trim($data['leaveReason'])]);
+        $this->employee->attendances()->updateOrCreate(['date' => Carbon::parse($data['leaveDate'])->toDateString()], ['status' => 'leave', 'note' => trim($data['leaveReason']), 'source' => 'manual']);
 
         unset($this->calendar, $this->attendanceTotals);
         $this->reset('leaveDate', 'leaveReason');
@@ -890,6 +890,11 @@ new #[Title('Employee')] class extends Component {
                                                         <span class="{{ $markTone[$mark]['pill'] }} inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-semibold" @if ($cell['note']) title="{{ $cell['note'] }}" @endif>
                                                             <flux:icon :icon="Attendance::STATUSES[$mark]['icon']" variant="micro" class="size-3" />{{ __(Attendance::STATUSES[$mark]['label']) }}
                                                         </span>
+                                                        @if ($cell['in'])
+                                                            <span class="inline-flex w-fit items-center gap-1 text-[0.6875rem] font-medium text-zinc-600 tabular-nums dark:text-zinc-300" title="{{ $cell['device'] ? __('Check-in from the attendance device') : __('Check-in') }}">
+                                                                <flux:icon :icon="$cell['device'] ? 'finger-print' : 'clock'" variant="micro" class="size-3 text-zinc-400" />{{ $cell['in'] }}
+                                                            </span>
+                                                        @endif
                                                         @if ($mark === 'leave' && $cell['note'])
                                                             <span class="line-clamp-2 text-[0.6875rem] leading-snug text-sky-800 dark:text-sky-200" title="{{ $cell['note'] }}">{{ $cell['note'] }}</span>
                                                         @endif
