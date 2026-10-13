@@ -39,17 +39,15 @@ class VehiclesTest extends TestCase
             ->set('form.brand', 'Honda')
             ->set('form.model', 'Dio')
             ->set('form.employee_id', (string) $rider->id)
-            ->set('form.bluebook_expiry', today()->addDays(10)->toDateString())
             ->call('save')
             ->assertHasNoErrors();
 
         $vehicle = Vehicle::sole();
         $this->assertSame('Honda Dio', $vehicle->subtitle());
         $this->assertSame($rider->id, $vehicle->employee_id);
-        $this->assertCount(1, $vehicle->renewalsDue());
 
-        $this->get(route('vehicles.index'))->assertOk()->assertSee(['Office scooter', 'Ba 85 Pa 1234', 'Renewal due', 'images/vehicles/scooter.png']);
-        $this->get(route('vehicles.show', $vehicle))->assertOk()->assertSee(['Office scooter', 'Hari Rider', 'Bluebook renewal']);
+        $this->get(route('vehicles.index'))->assertOk()->assertSee(['Office scooter', 'Ba 85 Pa 1234', 'images/vehicles/scooter.png'])->assertDontSee(['Renewal', 'Bluebook', 'Insurance']);
+        $this->get(route('vehicles.show', $vehicle))->assertOk()->assertSee(['Office scooter', 'Hari Rider'])->assertDontSee(['Papers', 'Bluebook', 'Insurance']);
     }
 
     public function test_expenses_are_recorded_and_count_in_finance(): void

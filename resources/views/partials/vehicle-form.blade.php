@@ -41,7 +41,5 @@
             @endforeach
         </flux:select>
         <flux:input wire:model="form.notes" :label="__('Notes')" :placeholder="__('Optional')" />
-        <x-nepali-date wire:model="form.bluebook_expiry" :label="__('Bluebook renewal due')" />
-        <x-nepali-date wire:model="form.insurance_expiry" :label="__('Insurance expires')" />
     </div>
 </div>

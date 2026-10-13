@@ -18,8 +18,6 @@ class VehicleExpense extends Model
         'maintenance' => ['label' => 'Maintenance / repair', 'image' => 'maintenance', 'tone' => 'bg-zinc-100 text-zinc-700 dark:bg-white/10 dark:text-zinc-200', 'bar' => 'bg-zinc-500'],
         'oil' => ['label' => 'Engine oil', 'image' => 'oil', 'tone' => 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300', 'bar' => 'bg-amber-500'],
         'tyre' => ['label' => 'Tyres', 'image' => 'tyre', 'tone' => 'bg-stone-100 text-stone-700 dark:bg-stone-500/10 dark:text-stone-300', 'bar' => 'bg-stone-500'],
-        'insurance' => ['label' => 'Insurance', 'image' => 'insurance', 'tone' => 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300', 'bar' => 'bg-indigo-500'],
-        'tax' => ['label' => 'Bluebook & tax', 'image' => 'tax', 'tone' => 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300', 'bar' => 'bg-violet-500'],
         'parking' => ['label' => 'Parking & toll', 'image' => 'parking', 'tone' => 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300', 'bar' => 'bg-blue-500'],
         'wash' => ['label' => 'Washing', 'image' => 'wash', 'tone' => 'bg-cyan-50 text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-300', 'bar' => 'bg-cyan-500'],
         'other' => ['label' => 'Other', 'image' => 'other', 'tone' => 'bg-zinc-100 text-zinc-700 dark:bg-white/10 dark:text-zinc-200', 'bar' => 'bg-zinc-400'],
