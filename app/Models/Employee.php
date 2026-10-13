@@ -12,7 +12,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
-#[Fillable(['name', 'designation', 'department', 'email', 'phone', 'status', 'salary', 'salary_day', 'joined_on', 'contract_start', 'contract_end'])]
+#[Fillable([
+    'name', 'designation', 'department', 'email', 'phone', 'status', 'salary', 'salary_day', 'joined_on', 'contract_start', 'contract_end',
+    'date_of_birth', 'gender', 'blood_group', 'marital_status', 'father_name', 'mother_name', 'spouse_name',
+    'permanent_address', 'current_address', 'district', 'province', 'emergency_name', 'emergency_relation', 'emergency_phone',
+    'citizenship_no', 'pan_no', 'bank_name', 'bank_account_name', 'bank_account_no',
+])]
 class Employee extends Model
 {
     /** @use HasFactory<EmployeeFactory> */
@@ -52,6 +57,7 @@ class Employee extends Model
             'joined_on' => 'date',
             'contract_start' => 'date',
             'contract_end' => 'date',
+            'date_of_birth' => 'date',
             'salary' => 'decimal:2',
         ];
     }

@@ -255,4 +255,33 @@ class EmployeesTest extends TestCase
         // The salary history lists this month as paid with both payments.
         $page->assertSee(['Salary history', 'Months fully paid', 'Total for']);
     }
+
+    public function test_personal_details_can_be_saved(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $employee = Employee::factory()->create();
+
+        Livewire::test('pages::employee-profile', ['employee' => $employee])
+            ->call('setTab', 'details')
+            ->assertSee(['Personal', 'Family', 'Emergency contact', 'Bank'])
+            ->call('openDetails')
+            ->set('info.blood_group', 'Z+')
+            ->call('saveDetails')
+            ->assertHasErrors(['info.blood_group'])
+            ->set('info.blood_group', 'O+')
+            ->set('info.father_name', 'Hari Dahal')
+            ->set('info.mother_name', 'Sita Dahal')
+            ->set('info.district', 'Chitwan')
+            ->set('info.date_of_birth', '1998-05-12')
+            ->set('info.emergency_name', 'Ram Dahal')
+            ->set('info.emergency_phone', '9800000000')
+            ->call('saveDetails')
+            ->assertHasNoErrors()
+            ->assertSee(['Hari Dahal', 'Sita Dahal', 'Chitwan', 'Ram Dahal', '9800000000']);
+
+        $employee->refresh();
+        $this->assertSame('O+', $employee->blood_group);
+        $this->assertSame('1998-05-12', $employee->date_of_birth->toDateString());
+        $this->assertNull($employee->spouse_name);
+    }
 }

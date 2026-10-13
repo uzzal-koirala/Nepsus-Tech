@@ -22,6 +22,16 @@ new #[Title('Employee')] class extends Component {
 
     public const TABS = ['overview', 'work', 'salary', 'documents', 'details'];
 
+    /** Personal details edited from the Details tab. */
+    public const DETAIL_FIELDS = [
+        'date_of_birth', 'gender', 'blood_group', 'marital_status', 'father_name', 'mother_name', 'spouse_name',
+        'permanent_address', 'current_address', 'district', 'province', 'emergency_name', 'emergency_relation', 'emergency_phone',
+        'citizenship_no', 'pan_no', 'bank_name', 'bank_account_name', 'bank_account_no',
+    ];
+
+    /** @var array<string, string> */
+    public array $info = [];
+
     #[Url(except: 'overview')]
     public string $tab = 'overview';
 
@@ -332,6 +342,30 @@ new #[Title('Employee')] class extends Component {
         unset($this->thisMonth, $this->months);
         Flux::modal('employee-form')->close();
         Flux::toast(variant: 'success', text: __('Employee updated.'));
+    }
+
+    public function openDetails(): void
+    {
+        $this->info = collect(self::DETAIL_FIELDS)->mapWithKeys(fn ($f) => [
+            $f => $f === 'date_of_birth' ? (string) $this->employee->date_of_birth?->toDateString() : (string) $this->employee->{$f},
+        ])->all();
+        $this->resetErrorBag();
+        Flux::modal('employee-details')->show();
+    }
+
+    public function saveDetails(): void
+    {
+        $rules = collect(self::DETAIL_FIELDS)->mapWithKeys(fn ($f) => ["info.$f" => ['nullable', 'string', 'max:255']])->all();
+        $rules['info.date_of_birth'] = ['nullable', 'date', 'before:today'];
+        $rules['info.gender'] = ['nullable', Rule::in(['male', 'female', 'other'])];
+        $rules['info.blood_group'] = ['nullable', Rule::in(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'])];
+        $rules['info.marital_status'] = ['nullable', Rule::in(['single', 'married', 'other'])];
+        $data = $this->validate($rules, attributes: ['info.date_of_birth' => __('date of birth')])['info'] ?? [];
+
+        $this->employee->update(collect(self::DETAIL_FIELDS)->mapWithKeys(fn ($f) => [$f => filled($data[$f] ?? null) ? trim($data[$f]) : null])->all());
+
+        Flux::modal('employee-details')->close();
+        Flux::toast(variant: 'success', text: __('Details saved.'));
     }
 
     public function delete(): void
@@ -1175,44 +1209,129 @@ new #[Title('Employee')] class extends Component {
         </div>
     @elseif ($tab === 'details')
         @php
-            $groups = [
-                __('Work') => [
+            $age = $e->date_of_birth ? (int) $e->date_of_birth->diffInYears(today()) : null;
+            $filled = collect(self::DETAIL_FIELDS)->filter(fn ($f) => filled($e->{$f}))->count();
+            $completion = (int) round($filled / count(self::DETAIL_FIELDS) * 100);
+            $sections = [
+                ['title' => __('Personal'), 'icon' => 'user', 'tone' => 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300', 'rows' => [
+                    ['cake', __('Date of birth'), $e->date_of_birth ? $e->date_of_birth->toNepali().' · '.trans_choice(':count year|:count years', $age) : null],
+                    ['user', __('Gender'), $e->gender ? __(ucfirst($e->gender)) : null],
+                    ['heart', __('Blood group'), $e->blood_group],
+                    ['users', __('Marital status'), $e->marital_status ? __(ucfirst($e->marital_status)) : null],
+                ]],
+                ['title' => __('Family'), 'icon' => 'users', 'tone' => 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300', 'rows' => [
+                    ['user', __("Father's name"), $e->father_name],
+                    ['user', __("Mother's name"), $e->mother_name],
+                    ['heart', __("Spouse's name"), $e->spouse_name],
+                ]],
+                ['title' => __('Address'), 'icon' => 'map-pin', 'tone' => 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300', 'rows' => [
+                    ['home', __('Permanent address'), $e->permanent_address],
+                    ['map-pin', __('Current address'), $e->current_address],
+                    ['map', __('District'), $e->district],
+                    ['globe-asia-australia', __('Province'), $e->province],
+                ]],
+                ['title' => __('Identity'), 'icon' => 'identification', 'tone' => 'bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300', 'rows' => [
+                    ['identification', __('Citizenship no.'), $e->citizenship_no],
+                    ['document-text', __('PAN no.'), $e->pan_no],
+                ]],
+                ['title' => __('Bank'), 'icon' => 'building-library', 'tone' => 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300', 'rows' => [
+                    ['building-library', __('Bank'), $e->bank_name],
+                    ['user', __('Account name'), $e->bank_account_name],
+                    ['hashtag', __('Account no.'), $e->bank_account_no],
+                ]],
+                ['title' => __('Work & pay'), 'icon' => 'briefcase', 'tone' => 'bg-zinc-100 text-zinc-600 dark:bg-white/10 dark:text-zinc-300', 'rows' => [
                     ['briefcase', __('Role'), $e->designation],
                     [$meta['icon'], __('Department'), __($meta['label'])],
-                    ['signal', __('Status'), __(Employee::STATUSES[$e->status])],
-                    ['calendar', __('Joined'), $e->joined_on ? $e->joined_on->toNepali().' · '.$e->joined_on->format('j M Y') : null],
-                    ['clock', __('With the team'), $e->tenure()],
-                ],
-                __('Contact') => [
-                    ['phone', __('Phone'), $e->phone],
-                    ['envelope', __('Email'), $e->email],
-                ],
-                __('Pay & agreement') => [
+                    ['calendar', __('Joined'), $e->joined_on?->toNepali()],
                     ['wallet', __('Monthly salary'), $e->salary ? $money($e->salary) : null],
                     ['banknotes', __('Salary day'), $e->salary_day ? __('Day :day of each month', ['day' => $e->salary_day]) : null],
-                    ['document-check', __('Agreement starts'), $e->contract_start?->toNepali()],
-                    ['document-check', __('Agreement ends'), $e->contract_end?->toNepali()],
-                ],
+                    ['document-check', __('Agreement'), $e->contract_start || $e->contract_end ? ($e->contract_start?->toNepali() ?? '…').' → '.($e->contract_end?->toNepali() ?? '…') : null],
+                ]],
             ];
         @endphp
-        <div class="grid items-start gap-6 lg:grid-cols-2">
-            @foreach ($groups as $groupLabel => $rows)
+
+        <div class="grid items-start gap-6 xl:grid-cols-[22rem_minmax(0,1fr)]">
+            {{-- Profile summary --}}
+            <aside class="flex flex-col gap-6">
                 <section class="{{ $panel }} overflow-hidden">
-                    <div class="flex items-center justify-between border-b border-zinc-100 px-5 py-4 dark:border-white/5">
-                        <h2 class="font-semibold text-zinc-900 dark:text-white">{{ $groupLabel }}</h2>
-                        <flux:button size="sm" variant="ghost" icon="pencil-square" wire:click="edit">{{ __('Edit') }}</flux:button>
+                    <div class="{{ $look['cover'] }} h-16 bg-linear-to-r"></div>
+                    <div class="-mt-9 flex flex-col items-center px-5 pb-5 text-center">
+                        <span class="{{ $look['avatar'] }} flex size-18 items-center justify-center rounded-2xl text-2xl font-semibold shadow-md ring-4 ring-white dark:ring-zinc-950">{{ $e->initials() }}</span>
+                        <p class="mt-3 text-lg font-semibold text-zinc-900 dark:text-white">{{ $e->name }}</p>
+                        <p class="text-sm text-zinc-500">{{ $e->designation ?? __('No role set') }} · {{ __($meta['label']) }}</p>
+                        <div class="mt-3 flex flex-wrap justify-center gap-1.5">
+                            @if ($e->blood_group)
+                                <span class="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-500/10 dark:text-rose-300"><flux:icon.heart variant="micro" class="size-3" />{{ $e->blood_group }}</span>
+                            @endif
+                            @if ($age)
+                                <span class="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 dark:bg-white/10 dark:text-zinc-300">{{ trans_choice(':count year old|:count years old', $age) }}</span>
+                            @endif
+                            @if ($e->district)
+                                <span class="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 dark:bg-white/10 dark:text-zinc-300"><flux:icon.map-pin variant="micro" class="size-3" />{{ $e->district }}</span>
+                            @endif
+                        </div>
+
+                        <div class="mt-5 w-full text-start">
+                            <div class="flex justify-between text-xs"><span class="font-medium text-zinc-600 dark:text-zinc-300">{{ __('Profile complete') }}</span><span class="font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $completion }}%</span></div>
+                            <div class="mt-1.5 h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div @class(['h-full rounded-full transition-[width] duration-700', 'bg-emerald-500' => $completion >= 80, 'bg-amber-400' => $completion >= 40 && $completion < 80, 'bg-rose-500' => $completion < 40]) style="width: {{ $completion }}%"></div></div>
+                        </div>
+                        <flux:button variant="primary" icon="pencil-square" class="mt-5 w-full" wire:click="openDetails" data-test="edit-details">{{ __('Edit details') }}</flux:button>
                     </div>
-                    <dl class="divide-y divide-zinc-100 text-sm dark:divide-white/5">
-                        @foreach ($rows as [$icon, $label, $value])
-                            <div class="flex items-center gap-3 px-5 py-3.5">
-                                <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-white/5 dark:text-zinc-400"><flux:icon :icon="$icon" variant="micro" class="size-4" /></span>
-                                <dt class="w-36 shrink-0 text-zinc-500">{{ $label }}</dt>
-                                <dd @class(['min-w-0 flex-1 truncate', 'font-medium text-zinc-800 dark:text-zinc-100' => $value, 'text-zinc-400' => ! $value])>{{ $value ?: __('Not set') }}</dd>
-                            </div>
-                        @endforeach
-                    </dl>
                 </section>
-            @endforeach
+
+                {{-- Contact --}}
+                <section class="{{ $panel }} p-5">
+                    <h3 class="text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Contact') }}</h3>
+                    <div class="mt-3 flex flex-col gap-2">
+                        @foreach ([['phone', $e->phone, $e->phone ? 'tel:'.preg_replace('/[^\d+]/', '', $e->phone) : null], ['envelope', $e->email, $e->email ? 'mailto:'.$e->email : null]] as [$cIcon, $cValue, $cHref])
+                            <a @if ($cHref) href="{{ $cHref }}" @endif class="flex items-center gap-3 rounded-xl bg-zinc-50 px-3 py-2.5 text-sm transition hover:bg-zinc-100 dark:bg-white/[0.03] dark:hover:bg-white/5">
+                                <span class="flex size-8 items-center justify-center rounded-lg bg-white text-zinc-500 shadow-xs ring-1 ring-zinc-200 dark:bg-white/5 dark:ring-white/10"><flux:icon :icon="$cIcon" variant="micro" class="size-4" /></span>
+                                <span @class(['min-w-0 truncate', 'font-medium text-zinc-800 dark:text-zinc-100' => $cValue, 'text-zinc-400' => ! $cValue])>{{ $cValue ?: __('Not added') }}</span>
+                            </a>
+                        @endforeach
+                    </div>
+                </section>
+
+                {{-- Emergency --}}
+                <section class="overflow-hidden rounded-xl bg-linear-to-br from-rose-500 to-rose-600 p-5 text-white shadow-[0_18px_40px_-20px_rgb(225_29_72/0.6)]">
+                    <div class="flex items-center gap-2">
+                        <flux:icon.lifebuoy variant="mini" class="size-5" />
+                        <h3 class="text-sm font-semibold">{{ __('Emergency contact') }}</h3>
+                    </div>
+                    @if ($e->emergency_name || $e->emergency_phone)
+                        <p class="mt-3 text-lg font-semibold">{{ $e->emergency_name ?: __('No name') }}</p>
+                        <p class="text-sm text-white/80">{{ $e->emergency_relation ?: __('Relation not set') }}</p>
+                        @if ($e->emergency_phone)
+                            <a href="tel:{{ preg_replace('/[^\d+]/', '', $e->emergency_phone) }}" class="mt-4 flex items-center justify-center gap-2 rounded-lg bg-white py-2 text-sm font-semibold text-rose-600 transition hover:bg-white/90"><flux:icon.phone variant="micro" class="size-4" />{{ $e->emergency_phone }}</a>
+                        @endif
+                    @else
+                        <p class="mt-3 text-sm text-white/85">{{ __('No emergency contact yet.') }}</p>
+                        <button type="button" wire:click="openDetails" class="mt-4 w-full rounded-lg bg-white/15 py-2 text-sm font-semibold ring-1 ring-white/30 transition hover:bg-white/25">{{ __('Add emergency contact') }}</button>
+                    @endif
+                </section>
+            </aside>
+
+            {{-- Detail sections --}}
+            <div class="grid min-w-0 items-start gap-6 lg:grid-cols-2">
+                @foreach ($sections as $section)
+                    <section class="{{ $panel }} overflow-hidden">
+                        <div class="flex items-center gap-3 border-b border-zinc-100 px-5 py-3.5 dark:border-white/5">
+                            <span class="{{ $section['tone'] }} flex size-8 items-center justify-center rounded-lg"><flux:icon :icon="$section['icon']" variant="micro" class="size-4" /></span>
+                            <h3 class="flex-1 font-semibold text-zinc-900 dark:text-white">{{ $section['title'] }}</h3>
+                            <button type="button" wire:click="{{ $section['title'] === __('Work & pay') ? 'edit' : 'openDetails' }}" class="rounded-md p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-white/10" aria-label="{{ __('Edit :section', ['section' => $section['title']]) }}"><flux:icon.pencil-square variant="micro" class="size-4" /></button>
+                        </div>
+                        <dl class="divide-y divide-zinc-100 text-sm dark:divide-white/5">
+                            @foreach ($section['rows'] as [$icon, $label, $value])
+                                <div class="flex items-center gap-3 px-5 py-3">
+                                    <flux:icon :icon="$icon" variant="micro" class="size-4 shrink-0 text-zinc-400" />
+                                    <dt class="w-36 shrink-0 text-zinc-500">{{ $label }}</dt>
+                                    <dd @class(['min-w-0 flex-1 truncate text-end sm:text-start', 'font-medium text-zinc-800 dark:text-zinc-100' => $value, 'text-zinc-300 dark:text-zinc-600' => ! $value])>{{ $value ?: '—' }}</dd>
+                                </div>
+                            @endforeach
+                        </dl>
+                    </section>
+                @endforeach
+            </div>
         </div>
     @else
         {{-- Documents --}}
@@ -1318,6 +1437,105 @@ new #[Title('Employee')] class extends Component {
             </section>
         </div>
     @endif
+
+    {{-- Edit personal details --}}
+    <flux:modal name="employee-details" class="w-full max-w-3xl p-0!">
+        <form wire:submit="saveDetails" class="flex flex-col">
+            <div class="flex items-center gap-4 border-b border-zinc-100 px-6 py-5 dark:border-white/5">
+                <span class="{{ $look['avatar'] }} flex size-11 items-center justify-center rounded-xl text-sm font-semibold">{{ $e->initials() }}</span>
+                <div class="min-w-0 flex-1">
+                    <flux:heading size="lg">{{ __('Edit details') }}</flux:heading>
+                    <p class="text-sm text-zinc-500">{{ $e->name }}</p>
+                </div>
+            </div>
+
+            <div class="flex max-h-[65vh] flex-col gap-7 overflow-y-auto px-6 py-6">
+                @php
+                    $sectionTitle = 'mb-3 flex items-center gap-2 text-xs font-semibold tracking-wider text-zinc-500 uppercase';
+                @endphp
+                <div>
+                    <p class="{{ $sectionTitle }}"><flux:icon.user variant="micro" class="size-4" />{{ __('Personal') }}</p>
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <x-nepali-date wire:model="info.date_of_birth" :label="__('Date of birth')" />
+                        <flux:select wire:model="info.gender" :label="__('Gender')">
+                            <flux:select.option value="">{{ __('Not set') }}</flux:select.option>
+                            @foreach (['male' => 'Male', 'female' => 'Female', 'other' => 'Other'] as $gk => $gl)
+                                <flux:select.option :value="$gk">{{ __($gl) }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
+                        <flux:select wire:model="info.blood_group" :label="__('Blood group')">
+                            <flux:select.option value="">{{ __('Not set') }}</flux:select.option>
+                            @foreach (['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as $bg)
+                                <flux:select.option :value="$bg">{{ $bg }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
+                        <flux:select wire:model="info.marital_status" :label="__('Marital status')">
+                            <flux:select.option value="">{{ __('Not set') }}</flux:select.option>
+                            @foreach (['single' => 'Single', 'married' => 'Married', 'other' => 'Other'] as $mk => $ml)
+                                <flux:select.option :value="$mk">{{ __($ml) }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
+                    </div>
+                </div>
+
+                <div>
+                    <p class="{{ $sectionTitle }}"><flux:icon.users variant="micro" class="size-4" />{{ __('Family') }}</p>
+                    <div class="grid gap-4 sm:grid-cols-3">
+                        <flux:input wire:model="info.father_name" :label="__('Father\'s name')" />
+                        <flux:input wire:model="info.mother_name" :label="__('Mother\'s name')" />
+                        <flux:input wire:model="info.spouse_name" :label="__('Spouse\'s name')" />
+                    </div>
+                </div>
+
+                <div>
+                    <p class="{{ $sectionTitle }}"><flux:icon.map-pin variant="micro" class="size-4" />{{ __('Address') }}</p>
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <flux:input wire:model="info.permanent_address" :label="__('Permanent address')" :placeholder="__('e.g. Bharatpur-10, Chitwan')" />
+                        <flux:input wire:model="info.current_address" :label="__('Current address')" :placeholder="__('e.g. Baneshwor, Kathmandu')" />
+                        <flux:input wire:model="info.district" :label="__('District')" />
+                        <flux:select wire:model="info.province" :label="__('Province')">
+                            <flux:select.option value="">{{ __('Not set') }}</flux:select.option>
+                            @foreach (['Koshi', 'Madhesh', 'Bagmati', 'Gandaki', 'Lumbini', 'Karnali', 'Sudurpashchim'] as $pv)
+                                <flux:select.option :value="$pv">{{ $pv }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
+                    </div>
+                </div>
+
+                <div class="rounded-xl bg-rose-50/60 p-4 ring-1 ring-rose-100 dark:bg-rose-500/5 dark:ring-rose-500/20">
+                    <p class="{{ $sectionTitle }} text-rose-600! dark:text-rose-300!"><flux:icon.lifebuoy variant="micro" class="size-4" />{{ __('Emergency contact') }}</p>
+                    <div class="grid gap-4 sm:grid-cols-3">
+                        <flux:input wire:model="info.emergency_name" :label="__('Name')" />
+                        <flux:input wire:model="info.emergency_relation" :label="__('Relation')" :placeholder="__('e.g. Brother')" />
+                        <flux:input wire:model="info.emergency_phone" type="tel" :label="__('Phone')" placeholder="98XXXXXXXX" />
+                    </div>
+                </div>
+
+                <div class="grid gap-7 sm:grid-cols-2">
+                    <div>
+                        <p class="{{ $sectionTitle }}"><flux:icon.identification variant="micro" class="size-4" />{{ __('Identity') }}</p>
+                        <div class="flex flex-col gap-4">
+                            <flux:input wire:model="info.citizenship_no" :label="__('Citizenship no.')" />
+                            <flux:input wire:model="info.pan_no" :label="__('PAN no.')" />
+                        </div>
+                    </div>
+                    <div>
+                        <p class="{{ $sectionTitle }}"><flux:icon.building-library variant="micro" class="size-4" />{{ __('Bank') }}</p>
+                        <div class="flex flex-col gap-4">
+                            <flux:input wire:model="info.bank_name" :label="__('Bank name')" :placeholder="__('e.g. NIC Asia Bank')" />
+                            <flux:input wire:model="info.bank_account_name" :label="__('Account name')" />
+                            <flux:input wire:model="info.bank_account_no" :label="__('Account no.')" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 rounded-b-xl border-t border-zinc-100 bg-zinc-50/70 px-6 py-4 dark:border-white/5 dark:bg-white/[0.02]">
+                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
+                <flux:button type="submit" variant="primary" icon="check" data-test="save-details">{{ __('Save details') }}</flux:button>
+            </div>
+        </form>
+    </flux:modal>
 
     {{-- Edit --}}
     <flux:modal name="employee-form" class="w-full max-w-lg">
