@@ -236,4 +236,17 @@ class EmployeesTest extends TestCase
         $page->call('deleteDepartment', 'sales');
         $this->assertFalse(\App\Models\Department::where('slug', 'sales')->exists());
     }
+
+    public function test_profile_shows_this_months_salary_status(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $employee = Employee::factory()->create(['status' => 'active', 'salary' => 30000, 'salary_day' => 1]);
+
+        $page = Livewire::test('pages::employee-profile', ['employee' => $employee]);
+        $page->assertSee(NepaliDate::periodLabel(NepaliDate::period(today())).' salary');
+        NepaliDate::fromAd(today())[2] > 1 ? $page->assertSee('Overdue') : $page->assertSee('Unpaid');
+
+        $page->call('openPay')->set('payAmount', '10000')->call('savePay')->assertSee('Part paid');
+        $page->call('openPay')->call('savePay')->assertSee('Paid on');
+    }
 }

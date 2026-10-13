@@ -423,9 +423,71 @@ new #[Title('Employee')] class extends Component {
 
     {{-- Header --}}
     <header class="{{ $panel }} overflow-hidden">
-        <div class="{{ $look['cover'] }} relative h-28 bg-linear-to-r text-white sm:h-32">
+        <div class="{{ $look['cover'] }} relative h-28 bg-linear-to-r text-white sm:h-44">
             <div class="absolute inset-0 opacity-25 [background-image:radial-gradient(currentColor_1px,transparent_1px)] [background-size:18px_18px] [mask-image:linear-gradient(to_left,black,transparent_70%)]"></div>
             <flux:icon :icon="$meta['icon']" class="absolute -right-4 -bottom-8 size-40 opacity-20" />
+
+            {{-- This month's salary --}}
+            @if ($pay)
+                @php
+                    [$cy, $cm] = NepaliDate::fromAd(today());
+                    $salaryDate = $e->salary_day ? NepaliDate::toAd($cy, $cm, min($e->salary_day, NepaliDate::monthLength($cy, $cm))) : null;
+                    $salaryState = match (true) {
+                        $full => 'paid',
+                        $pay['paid'] > 0 => 'part',
+                        $salaryDate && $salaryDate->isBefore(today()) => 'overdue',
+                        default => 'due',
+                    };
+                    $stateLook = [
+                        'paid' => ['label' => __('Paid'), 'icon' => 'check-circle', 'pill' => 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20', 'bar' => 'bg-emerald-500'],
+                        'part' => ['label' => __('Part paid'), 'icon' => 'clock', 'pill' => 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20', 'bar' => 'bg-amber-400'],
+                        'due' => ['label' => __('Unpaid'), 'icon' => 'clock', 'pill' => 'bg-zinc-100 text-zinc-700 ring-zinc-200 dark:bg-white/10 dark:text-zinc-200 dark:ring-white/10', 'bar' => 'bg-brand-500'],
+                        'overdue' => ['label' => __('Overdue'), 'icon' => 'exclamation-circle', 'pill' => 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20', 'bar' => 'bg-rose-500'],
+                    ][$salaryState];
+                @endphp
+                <div class="absolute top-1/2 right-6 hidden w-80 -translate-y-1/2 rounded-2xl bg-white p-4 text-zinc-900 shadow-[0_18px_40px_-18px_rgb(15_23_42/0.5)] ring-1 ring-black/5 sm:block dark:bg-zinc-900 dark:text-white dark:ring-white/10" data-test="salary-status-card">
+                    <div class="flex items-center gap-2">
+                        <span class="flex size-7 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300"><flux:icon.banknotes variant="micro" class="size-4" /></span>
+                        <span class="text-xs font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">{{ __(':month salary', ['month' => $periodLabel]) }}</span>
+                        <span class="{{ $stateLook['pill'] }} ms-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold ring-1 ring-inset">
+                            <flux:icon :icon="$stateLook['icon']" variant="micro" class="size-3" />{{ $stateLook['label'] }}
+                        </span>
+                    </div>
+                    <div class="mt-2.5 flex items-end justify-between gap-3">
+                        <div>
+                            <p class="text-[0.6875rem] text-zinc-500">{{ $full ? __('Paid on') : __('Salary date') }}</p>
+                            <p class="text-lg leading-tight font-bold tracking-tight">
+                                @if ($full && $payments->where('period', $this->period)->isNotEmpty())
+                                    {{ $payments->where('period', $this->period)->first()->paid_on->toNepali(withYear: false) }}
+                                @elseif ($salaryDate)
+                                    {{ $salaryDate->toNepali(withYear: false) }}
+                                @else
+                                    <button type="button" wire:click="edit" class="text-sm font-medium text-brand-600 hover:underline dark:text-brand-300">{{ __('Set salary day') }}</button>
+                                @endif
+                            </p>
+                        </div>
+                        <p class="text-end text-sm tabular-nums">
+                            <span class="font-bold">{{ $money($pay['paid']) }}</span>
+                            <span class="text-zinc-400">/ {{ number_format($pay['salary']) }}</span>
+                        </p>
+                    </div>
+                    <div class="mt-2.5 h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div class="{{ $stateLook['bar'] }} h-full rounded-full transition-[width] duration-700" style="width: {{ $pay['percent'] }}%"></div></div>
+                    @unless ($full)
+                        <div class="mt-2.5 flex items-center justify-between gap-2">
+                            <p @class(['text-xs', 'font-medium text-rose-600 dark:text-rose-400' => $salaryDate && $salaryDate->isBefore(today()), 'text-zinc-500' => ! ($salaryDate && $salaryDate->isBefore(today()))])>
+                                @if ($salaryDate && $salaryDate->isBefore(today()))
+                                    {{ trans_choice(':count day late|:count days late', (int) $salaryDate->diffInDays(today())) }}
+                                @elseif ($salaryDate)
+                                    {{ $salaryDate->isToday() ? __('Due today') : trans_choice('Due tomorrow|Due in :count days', (int) today()->diffInDays($salaryDate)) }}
+                                @else
+                                    {{ __(':amount left', ['amount' => $money($pay['left'])]) }}
+                                @endif
+                            </p>
+                            <button type="button" wire:click="openPay" class="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-brand-600"><flux:icon.banknotes variant="micro" class="size-3.5" />{{ __('Pay :amount', ['amount' => $money($pay['left'])]) }}</button>
+                        </div>
+                    @endunless
+                </div>
+            @endif
         </div>
 
         <div class="flex flex-col gap-4 px-5 pb-5 sm:px-6">
