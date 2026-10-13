@@ -610,7 +610,14 @@ new #[Title('Finance')] class extends Component {
                     <button type="button" wire:click="$set('kind', 'expense')" class="flex items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium transition" :class="$wire.kind === 'expense' ? 'bg-white text-amber-700 shadow-sm dark:bg-zinc-800 dark:text-amber-300' : 'text-zinc-500'"><flux:icon.arrow-up-right variant="micro" class="size-4" />{{ __('Money out') }}</button>
                 </div>
 
-                <flux:input wire:model="title" :label="__('What was it for')" :placeholder="$kind === 'income' ? __('e.g. Logo design for a friend') : __('e.g. Office rent for Kartik')" required />
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <flux:input wire:model="title" :label="__('What was it for')" :placeholder="$kind === 'income' ? __('e.g. Logo design for a friend') : __('e.g. Office rent for Kartik')" required />
+                    <flux:select wire:model="category" :label="__('Category')" wire:key="category-{{ $kind }}" data-test="entry-category">
+                        @foreach (Transaction::categories($kind) as $key => $cat)
+                            <flux:select.option :value="$key">{{ __($cat['label']) }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                </div>
 
                 <div class="grid gap-4 sm:grid-cols-2">
                     <div>
@@ -624,17 +631,6 @@ new #[Title('Finance')] class extends Component {
                     <x-nepali-date wire:model="date" :label="__('Date')" />
                 </div>
 
-                <div>
-                    <span class="mb-2 block text-sm font-medium text-zinc-800 dark:text-white">{{ __('Category') }}</span>
-                    <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                        @foreach (Transaction::categories($kind) as $key => $cat)
-                            <button type="button" wire:key="cat-opt-{{ $kind }}-{{ $key }}" @click="$wire.category = '{{ $key }}'" class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-start text-xs font-medium ring-1 transition" :class="$wire.category === '{{ $key }}' ? 'bg-brand-50 text-brand-700 ring-2 ring-brand-500 dark:bg-brand-500/10 dark:text-brand-200' : 'text-zinc-600 ring-zinc-200 hover:bg-zinc-50 dark:text-zinc-300 dark:ring-white/10 dark:hover:bg-white/5'">
-                                <flux:icon :icon="$cat['icon']" variant="micro" class="size-4 shrink-0" /><span class="truncate">{{ __($cat['label']) }}</span>
-                            </button>
-                        @endforeach
-                    </div>
-                    <flux:error name="category" />
-                </div>
 
                 <div class="grid gap-4 sm:grid-cols-2">
                     <flux:select wire:model="method" :label="__('Paid with / received in')">
