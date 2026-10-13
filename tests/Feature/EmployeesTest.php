@@ -264,6 +264,11 @@ class EmployeesTest extends TestCase
 
         // The salary history lists only the payments made.
         $page->assertSee(['Salary history', 'Total paid', 'Salary for'])->assertDontSee('Months fully paid');
+
+        // A payment can carry its own title.
+        $next = \App\Models\SalaryPayment::firstOpenPeriod($employee->salaryPayments()->pluck('period')->all());
+        $page->call('openPay')->assertSet('payTitle', '')->set('payPeriod', $next)->set('payTitle', 'Dashain bonus')->set('payAmount', '5000')->call('savePay')->assertHasNoErrors()->assertSee('Dashain bonus');
+        $this->assertSame('Dashain bonus', $employee->salaryPayments()->where('period', $next)->value('title'));
     }
 
     public function test_personal_details_can_be_saved(): void

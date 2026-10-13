@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['period', 'amount', 'paid_on', 'note'])]
+#[Fillable(['period', 'title', 'amount', 'paid_on', 'note'])]
 class SalaryPayment extends Model
 {
     /** @use HasFactory<SalaryPaymentFactory> */
@@ -45,6 +45,12 @@ class SalaryPayment extends Model
         }
 
         return '';
+    }
+
+    /** The title given when paying, or "Salary for Ashoj 2083". */
+    public function label(): string
+    {
+        return $this->title ?: __('Salary for :month', ['month' => NepaliDate::periodLabel($this->period)]);
     }
 
     public function employee(): BelongsTo

@@ -65,6 +65,8 @@ new #[Title('Employee')] class extends Component {
     public string $payPeriod = '';
     public string $payAmount = '';
     public string $payDate = '';
+    public string $payTitle = '';
+
     public string $payNote = '';
 
     public function mount(Employee $employee): void
@@ -404,6 +406,7 @@ new #[Title('Employee')] class extends Component {
         $this->payPeriod = SalaryPayment::firstOpenPeriod($this->payments->pluck('period')->all(), $this->period);
         $this->payAmount = $this->payPeriod === $this->period ? (string) ($this->thisMonth['left'] ?? '') : (string) ($this->employee->salary ? (float) $this->employee->salary : '');
         $this->payDate = today()->toDateString();
+        $this->payTitle = '';
         $this->payNote = '';
         $this->resetErrorBag();
 
@@ -416,6 +419,7 @@ new #[Title('Employee')] class extends Component {
             'payPeriod' => ['required', Rule::in(SalaryPayment::periodChoices()), Rule::unique('salary_payments', 'period')->where('employee_id', $this->employee->id)],
             'payAmount' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
             'payDate' => ['required', 'date'],
+            'payTitle' => ['nullable', 'string', 'max:120'],
             'payNote' => ['nullable', 'string', 'max:255'],
         ], [
             'payPeriod.unique' => __('Salary for this month is already recorded.'),
@@ -425,6 +429,7 @@ new #[Title('Employee')] class extends Component {
             'period' => $data['payPeriod'],
             'amount' => $data['payAmount'],
             'paid_on' => $data['payDate'],
+            'title' => filled($data['payTitle']) ? trim($data['payTitle']) : null,
             'note' => $data['payNote'] ?: null,
         ]);
 
@@ -1018,7 +1023,8 @@ new #[Title('Employee')] class extends Component {
                                     <td class="px-3 py-2.5 ps-5">
                                         <div class="flex items-center gap-3">
                                             <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300"><flux:icon.arrow-up-right variant="micro" class="size-4" /></span>
-                                            <p class="font-semibold whitespace-nowrap text-zinc-900 dark:text-white">{{ __('Salary for :month', ['month' => NepaliDate::periodLabel($sp->period)]) }}</p>
+                                            <p class="font-semibold whitespace-nowrap text-zinc-900 dark:text-white">{{ $sp->label() }}</p>
+                                                @if ($sp->title)<p class="text-xs text-zinc-500">{{ __('For :month', ['month' => NepaliDate::periodLabel($sp->period)]) }}</p>@endif
                                         </div>
                                     </td>
                                     <td class="px-3 py-2.5 font-medium whitespace-nowrap text-zinc-900 dark:text-white">{{ $sp->paid_on->toNepali() }}</td>
@@ -1560,6 +1566,7 @@ new #[Title('Employee')] class extends Component {
                 <flux:text class="mt-1">{{ $e->name }}{{ $e->salary ? ' · '.$money($e->salary).__('/mo') : '' }}</flux:text>
             </div>
             <div class="grid gap-4 sm:grid-cols-2">
+                <flux:input wire:model="payTitle" icon="pencil" :label="__('Payment title')" :placeholder="__('e.g. Ashoj salary, Dashain bonus')" maxlength="120" class="sm:col-span-2" data-test="pay-title" />
                 @php $paidPeriods = $payments->pluck('period')->all(); @endphp
                 <x-salary-month-picker :paid="$paidPeriods" class="sm:col-span-2" />
                 <flux:input wire:model="payAmount" type="number" min="0" step="1" :label="__('Amount (:currency)', ['currency' => config('app.currency')])" required />
@@ -1611,7 +1618,7 @@ new #[Title('Employee')] class extends Component {
                 <div class="mt-5 flex w-full items-center gap-3 rounded-xl bg-zinc-50 p-4 text-start ring-1 ring-zinc-200/70 dark:bg-white/[0.03] dark:ring-white/10">
                     <span class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-600 shadow-xs ring-1 ring-zinc-200 dark:bg-white/5 dark:ring-white/10"><flux:icon.banknotes variant="mini" class="size-5" /></span>
                     <div class="min-w-0 flex-1">
-                        <p class="truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Salary for :month', ['month' => NepaliDate::periodLabel($deleting->period)]) }}</p>
+                        <p class="truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $deleting->label() }}</p>
                         <p class="truncate text-xs text-zinc-500">{{ __('Paid :date', ['date' => $deleting->paid_on->toNepali()]) }}@if ($deleting->note) · {{ $deleting->note }}@endif</p>
                     </div>
                     <span class="text-base font-bold text-zinc-900 tabular-nums dark:text-white">{{ $money($deleting->amount) }}</span>

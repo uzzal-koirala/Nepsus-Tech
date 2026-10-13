@@ -41,6 +41,8 @@ new #[Title('Employees')] class extends Component {
     public string $payPeriod = '';
     public string $payAmount = '';
     public string $payDate = '';
+    public string $payTitle = '';
+
     public string $payNote = '';
 
     public ?int $historyEmployeeId = null;
@@ -190,6 +192,7 @@ new #[Title('Employees')] class extends Component {
         $this->payPeriod = SalaryPayment::firstOpenPeriod($employee->salaryPayments()->pluck('period')->all(), $this->period);
         $this->payAmount = $this->payPeriod === $this->period ? (string) ($employee->salaryProgress()['left'] ?? '') : (string) ($employee->salary ? (float) $employee->salary : '');
         $this->payDate = today()->toDateString();
+        $this->payTitle = '';
         $this->payNote = '';
         $this->resetErrorBag();
 
@@ -203,6 +206,7 @@ new #[Title('Employees')] class extends Component {
             'payPeriod' => ['required', Rule::in(SalaryPayment::periodChoices()), Rule::unique('salary_payments', 'period')->where('employee_id', $this->payEmployeeId)],
             'payAmount' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
             'payDate' => ['required', 'date'],
+            'payTitle' => ['nullable', 'string', 'max:120'],
             'payNote' => ['nullable', 'string', 'max:255'],
         ], [
             'payPeriod.unique' => __('Salary for this month is already recorded.'),
@@ -212,6 +216,7 @@ new #[Title('Employees')] class extends Component {
             'period' => $data['payPeriod'],
             'amount' => $data['payAmount'],
             'paid_on' => $data['payDate'],
+            'title' => filled($data['payTitle']) ? trim($data['payTitle']) : null,
             'note' => $data['payNote'] ?: null,
         ]);
 
@@ -665,6 +670,7 @@ new #[Title('Employees')] class extends Component {
                 <flux:text class="mt-1">{{ $payEmployeeId ? \App\Models\Employee::find($payEmployeeId)?->name : '' }}</flux:text>
             </div>
             <div class="grid gap-4 sm:grid-cols-2">
+                <flux:input wire:model="payTitle" icon="pencil" :label="__('Payment title')" :placeholder="__('e.g. Ashoj salary, Dashain bonus')" maxlength="120" class="sm:col-span-2" data-test="pay-title" />
                 @php $paidPeriods = $payEmployeeId ? SalaryPayment::where('employee_id', $payEmployeeId)->pluck('period')->all() : []; @endphp
                 <x-salary-month-picker :paid="$paidPeriods" class="sm:col-span-2" />
                 <flux:input wire:model="payAmount" type="number" min="0" step="1" :label="__('Amount (:currency)', ['currency' => config('app.currency')])" required />
