@@ -160,6 +160,9 @@ class CctvTest extends TestCase
         $this->assertStringContainsString('authJWTJWKS: '.url('/api/cctv/jwks'), $yml);
         $this->assertStringContainsString('hlsAddress: 127.0.0.1:8888', $yml);
         $this->assertStringContainsString('moq: false', $yml);
+        // APP_URL and its twin address (localhost <-> 127.0.0.1) may watch; nothing else.
+        $app = rtrim(config('app.url'), '/');
+        $this->assertStringContainsString('hlsAllowOrigins: ["'.$app.'", "'.str_replace('localhost', '127.0.0.1', $app).'"', $yml);
         // Converting cameras publish to a local-only RTSP server.
         $this->assertStringContainsString("rtsp: true
 rtspAddress: 127.0.0.1:8554

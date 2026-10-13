@@ -18,8 +18,7 @@ class CctvGateway
     public static function mediamtxYml(): string
     {
         $app = CctvToken::issuer();
-        // The site address from APP_URL, plus the one this file was downloaded from (www vs non-www).
-        $origins = collect([$app, rtrim(url('/'), '/')])->unique()->map(fn ($o) => '"'.$o.'"')->join(', ');
+        $origins = collect(self::origins())->map(fn ($o) => '"'.$o.'"')->join(', ');
         $cameras = CctvCamera::orderBy('position')->orderBy('id')->get();
 
         $paths = $cameras->map(function (CctvCamera $c) {
@@ -91,6 +90,30 @@ class CctvGateway
             paths:
             {$paths}
             YML;
+    }
+
+    /**
+     * Site addresses the browser may watch from: APP_URL, the address this file was made from,
+     * and each one's twin (localhost / 127.0.0.1, www / no www). Any other site is refused.
+     *
+     * @return list<string>
+     */
+    public static function origins(): array
+    {
+        $origins = [CctvToken::issuer(), rtrim(url('/'), '/')];
+
+        foreach ($origins as $origin) {
+            $host = (string) parse_url($origin, PHP_URL_HOST);
+            $twin = match (true) {
+                $host === 'localhost' => '127.0.0.1',
+                $host === '127.0.0.1' => 'localhost',
+                str_starts_with($host, 'www.') => substr($host, 4),
+                default => 'www.'.$host,
+            };
+            $origins[] = str_replace('//'.$host, '//'.$twin, $origin);
+        }
+
+        return array_values(array_unique($origins));
     }
 
     /** ffmpeg command that reads the camera and publishes H.264 to the gateway's local RTSP server. */
