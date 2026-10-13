@@ -371,7 +371,7 @@ new #[Title('Finance')] class extends Component {
         @php
             $cards = [
                 ['label' => __('Money in'), 'value' => $sum['income'], 'icon' => 'arrow-down-left', 'tile' => 'bg-brand-500 text-white shadow-md shadow-brand-500/30', 'sub' => __(':client from clients · :other other', ['client' => $money($sum['clientIncome']), 'other' => $money($sum['otherIncome'])]), 'delta' => $change($sum['income'], $sum['prevIncome']), 'good' => 'up'],
-                ['label' => __('Money out'), 'value' => $sum['spent'], 'icon' => 'arrow-up-right', 'tile' => 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300', 'sub' => __(':exp expenses · :sal salaries', ['exp' => $money($sum['expenses']), 'sal' => $money($sum['salaries'])]), 'delta' => $change($sum['spent'], $sum['prevSpent']), 'good' => 'down'],
+                ['label' => __('Money out'), 'value' => $sum['spent'], 'icon' => 'arrow-up-right', 'tile' => 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300', 'sub' => __('Includes :sal salaries + :exp other expenses', ['sal' => $money($sum['salaries']), 'exp' => $money($sum['expenses'])]), 'delta' => $change($sum['spent'], $sum['prevSpent']), 'good' => 'down'],
             ];
         @endphp
         @foreach ($cards as $card)

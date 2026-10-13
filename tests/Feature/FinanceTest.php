@@ -62,6 +62,7 @@ class FinanceTest extends TestCase
         $sum = $page->instance()->summary;
         $this->assertSame(45000.0, $sum['income']);    // 40,000 client + 5,000 other
         $this->assertSame(27000.0, $sum['spent']);     // 12,000 rent + 15,000 salary (paid on the last day)
+        $page->assertSee('Includes NPR 15,000 salaries + NPR 12,000 other expenses');
         $this->assertSame(18000.0, $sum['net']);
         $this->assertSame(9999.0, $sum['outstanding']);
 
