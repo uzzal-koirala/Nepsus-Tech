@@ -164,7 +164,7 @@ class EmployeesTest extends TestCase
         $page->call('markDay', $day, 'present');
         $this->assertSame('present', $employee->attendances()->sole()->status);
         $this->assertSame(1, $page->instance()->calendar['counts']['present']);
-        $page->assertSee(['To pay this month', 'Total absent', 'Total leave'])->assertDontSee('Total present');
+        $page->assertSee(['To pay this month', 'Advance paid', 'No salary paid ahead yet', 'Total leave'])->assertDontSee(['Total present', 'Total absent']);
 
         $page->call('markDay', $day, '');
         $this->assertSame(0, $employee->attendances()->count());
@@ -274,7 +274,8 @@ class EmployeesTest extends TestCase
 
         // A payment can carry its own title.
         $next = \App\Models\SalaryPayment::firstOpenPeriod($employee->fullyPaidPeriods());
-        $page->call('openPay')->assertSet('payTitle', '')->set('payPeriod', $next)->set('payTitle', 'Dashain bonus')->set('payAmount', '5000')->call('savePay')->assertHasNoErrors()->assertSee('Dashain bonus');
+        $page->call('openPay')->assertSet('payTitle', '')->set('payPeriod', $next)->set('payTitle', 'Dashain bonus')->set('payAmount', '5000')->call('savePay')->assertHasNoErrors()->assertSee('Dashain bonus')
+            ->assertSee('For '.str(NepaliDate::periodLabel($next))->before(' '))->assertDontSee('No salary paid ahead yet');
         $this->assertSame('Dashain bonus', $employee->salaryPayments()->where('period', $next)->value('title'));
     }
 

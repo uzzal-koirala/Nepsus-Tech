@@ -650,7 +650,6 @@ new #[Title('Employee')] class extends Component {
         @php
             $at = $this->attendanceTotals;
             $attCards = [
-                ['label' => __('Total absent'), 'value' => $at['absent'], 'icon' => 'x-circle', 'tile' => 'bg-rose-500 text-white shadow-md shadow-rose-500/30', 'glow' => 'bg-rose-100/70 dark:bg-rose-500/10', 'sub' => __('Days missed without leave'), 'tone' => 'text-rose-700 dark:text-rose-300'],
                 ['label' => __('Total leave'), 'value' => $at['leave'], 'icon' => 'sun', 'tile' => 'bg-sky-500 text-white shadow-md shadow-sky-500/30', 'glow' => 'bg-sky-100/70 dark:bg-sky-500/10', 'sub' => __('Days on approved leave'), 'tone' => 'text-sky-700 dark:text-sky-300'],
             ];
             // Salary still to pay for this month: salary minus every payment made for it.
@@ -676,8 +675,27 @@ new #[Title('Employee')] class extends Component {
                 @endif
             </p>
         </div>
+
+        {{-- Advance: salary already paid for months after this one --}}
         @php
+            $advance = $payments->filter(fn ($sp) => $sp->period > $this->period);
+            $advanceMonths = $advance->pluck('period')->unique()->sort()->map(fn ($p) => str(NepaliDate::periodLabel($p))->before(' '));
         @endphp
+        <div class="{{ $panel }} relative flex flex-col gap-4 overflow-hidden p-5" data-test="advance-card">
+            <div class="absolute -top-12 -right-12 size-32 rounded-full bg-violet-100/70 dark:bg-violet-500/10"></div>
+            <div class="relative flex items-center gap-3">
+                <span class="{{ $iconTile }} bg-violet-500 text-white shadow-md shadow-violet-500/30"><flux:icon.forward variant="mini" class="size-4.5" /></span>
+                <p class="flex-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Advance paid') }}</p>
+                @if ($advance->isNotEmpty())
+                    <span class="rounded-md bg-violet-50 px-1.5 py-0.5 text-xs font-semibold text-violet-700 tabular-nums dark:bg-violet-500/10 dark:text-violet-300">{{ trans_choice(':count month|:count months', $advanceMonths->count()) }}</span>
+                @endif
+            </div>
+            <p @class(['relative text-[1.875rem] leading-none font-bold tracking-tight tabular-nums', 'text-violet-700 dark:text-violet-300' => $advance->isNotEmpty(), 'text-zinc-300 dark:text-zinc-600' => $advance->isEmpty()])>{{ $money($advance->sum('amount')) }}</p>
+            <p class="relative mt-auto truncate text-xs text-zinc-500">
+                {{ $advance->isNotEmpty() ? __('For :months', ['months' => $advanceMonths->join(', ')]) : __('No salary paid ahead yet') }}
+            </p>
+        </div>
+
         @foreach ($attCards as $card)
             <div class="{{ $panel }} relative flex flex-col gap-4 overflow-hidden p-5">
                 <div class="{{ $card['glow'] }} absolute -top-12 -right-12 size-32 rounded-full"></div>
