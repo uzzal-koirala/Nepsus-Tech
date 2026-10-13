@@ -42,12 +42,17 @@ class AttendanceDeviceTest extends TestCase
 
         $this->assertSame(['marked' => 1, 'kept' => 1, 'punches' => 5, 'unknown' => ['99']], $result);
         $mark = $ram->attendances()->sole();
-        $this->assertSame(['present', '09:05', 'device'], [$mark->status, $mark->check_in, $mark->source]);
+        $this->assertSame(['present', '09:05', '18:02', 'device'], [$mark->status, $mark->check_in, $mark->check_out, $mark->source]);
+        $this->assertSame(['9:05 AM', '6:02 PM', '8h 57m'], [\App\Models\Attendance::clock($mark->check_in), \App\Models\Attendance::clock($mark->check_out), $mark->worked()]);
         $this->assertSame('leave', $sita->attendances()->sole()->status);
 
-        // A later sync with a later punch keeps the earliest check-in.
+        // A later sync with a midday punch keeps the earliest check-in and latest check-out.
         AttendancePunches::apply([['user' => '7', 'time' => $this->at('2026-10-13 12:00')]]);
-        $this->assertSame('09:05', $mark->fresh()->check_in);
+        $this->assertSame(['09:05', '18:02'], [$mark->fresh()->check_in, $mark->fresh()->check_out]);
+
+        // Two quick punches on arrival are not a check-out.
+        AttendancePunches::apply([['user' => '7', 'time' => $this->at('2026-10-12 09:05')], ['user' => '7', 'time' => $this->at('2026-10-12 09:20')]]);
+        $this->assertNull($ram->attendances()->whereDate('date', '2026-10-12')->sole()->check_out);
     }
 
     public function test_sync_reads_events_from_the_device_page_by_page(): void
@@ -219,7 +224,7 @@ class AttendanceDeviceTest extends TestCase
         $day = today()->isHoliday() ? today()->subDay() : today();
         AttendancePunches::apply([['user' => '3', 'time' => $day->copy()->setTime(9, 7)]]);
 
-        $page = Livewire::test('pages::employee-profile', ['employee' => $emp])->assertSee('09:07');
+        $page = Livewire::test('pages::employee-profile', ['employee' => $emp])->assertSee('9:07 AM')->assertDontSee('09:07');
 
         $page->call('markDay', $day->toDateString(), 'half_day');
         $this->assertSame('manual', Attendance::sole()->source);

@@ -285,10 +285,10 @@ class EmployeesTest extends TestCase
         $this->actingAs(User::factory()->create());
         $employee = Employee::factory()->create(['status' => 'active']);
         $employee->attendances()->create(['date' => today()->subDays(3), 'status' => 'leave', 'note' => 'Family function', 'source' => 'manual']);
-        $employee->attendances()->create(['date' => today()->subDay(), 'status' => 'present', 'check_in' => '09:07', 'source' => 'device']);
+        $employee->attendances()->create(['date' => today()->subDay(), 'status' => 'present', 'check_in' => '09:07', 'check_out' => '17:45', 'source' => 'device']);
 
         Livewire::test('pages::employee-profile', ['employee' => $employee])
-            ->assertSeeInOrder([today()->subDay()->toNepali(), '09:07', 'Fingerprint', today()->subDays(3)->toNepali(), 'By hand', 'Family function'])
+            ->assertSeeInOrder([today()->subDay()->toNepali(), '9:07 AM', '5:45 PM', '8h 38m', 'Fingerprint', today()->subDays(3)->toNepali(), 'By hand', 'Family function'])
             ->assertDontSee('Show more');
 
         foreach (range(4, 30) as $d) {

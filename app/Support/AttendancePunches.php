@@ -25,8 +25,8 @@ class AttendancePunches
         $employees = Employee::whereNotNull('device_user_id')->pluck('id', 'device_user_id')
             ->mapWithKeys(fn ($id, $deviceId) => [self::normalise((string) $deviceId) => $id]);
 
-        // Earliest punch per person per day.
-        $first = [];
+        // Every punch time (HH:MM) per person per day.
+        $times = [];
         $unknown = [];
         $count = 0;
         foreach ($punches as $punch) {
@@ -37,14 +37,11 @@ class AttendancePunches
 
                 continue;
             }
-            $key = $employees[$user].'|'.$punch['time']->toDateString();
-            if (! isset($first[$key]) || $punch['time']->lt($first[$key])) {
-                $first[$key] = $punch['time'];
-            }
+            $times[$employees[$user].'|'.$punch['time']->toDateString()][] = $punch['time']->format('H:i');
         }
 
         $marked = $kept = 0;
-        foreach ($first as $key => $time) {
+        foreach ($times as $key => $dayTimes) {
             [$employeeId, $day] = explode('|', $key);
             $mark = Attendance::where('employee_id', $employeeId)->whereDate('date', $day)->first();
 
@@ -54,10 +51,12 @@ class AttendancePunches
                 continue;
             }
 
-            $checkIn = $mark?->check_in && $mark->check_in < $time->format('H:i') ? $mark->check_in : $time->format('H:i');
+            // First punch is check-in, last is check-out; earlier syncs of the same day are merged in.
+            $all = array_filter([...$dayTimes, $mark?->check_in, $mark?->check_out]);
+            [$in, $out] = [min($all), max($all)];
             Attendance::updateOrCreate(
                 ['employee_id' => $employeeId, 'date' => $day],
-                ['status' => 'present', 'check_in' => $checkIn, 'source' => 'device', 'note' => null],
+                ['status' => 'present', 'check_in' => $in, 'check_out' => self::minutesBetween($in, $out) >= self::MIN_SHIFT_MINUTES ? $out : null, 'source' => 'device', 'note' => null],
             );
             $marked++;
         }
@@ -85,6 +84,17 @@ class AttendancePunches
 
             throw $e;
         }
+    }
+
+    /** A second punch this soon after check-in is a double tap, not leaving. */
+    public const MIN_SHIFT_MINUTES = 30;
+
+    public static function minutesBetween(string $from, string $to): int
+    {
+        [$fh, $fm] = array_map('intval', explode(':', $from));
+        [$th, $tm] = array_map('intval', explode(':', $to));
+
+        return ($th * 60 + $tm) - ($fh * 60 + $fm);
     }
 
     /** Device IDs are compared without leading zeros, so "0007" and "7" are the same person. */

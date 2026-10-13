@@ -124,7 +124,7 @@ new #[Title('Employee')] class extends Component {
         for ($day = 1; $day <= $length; $day++) {
             $ad = $first->copy()->addDays($day - 1);
             $key = $ad->toDateString();
-            $cells[] = ['day' => $day, 'ad' => $ad, 'status' => $marks[$key]->status ?? null, 'note' => $marks[$key]->note ?? null, 'in' => $marks[$key]->check_in ?? null, 'device' => ($marks[$key]->source ?? '') === 'device', 'done' => $doneByDay[$key] ?? collect()];
+            $cells[] = ['day' => $day, 'ad' => $ad, 'status' => $marks[$key]->status ?? null, 'note' => $marks[$key]->note ?? null, 'in' => $marks[$key]->check_in ?? null, 'out' => $marks[$key]->check_out ?? null, 'device' => ($marks[$key]->source ?? '') === 'device', 'done' => $doneByDay[$key] ?? collect()];
         }
         $cells = array_pad($cells, (int) ceil(count($cells) / 7) * 7, null);
 
@@ -894,8 +894,11 @@ new #[Title('Employee')] class extends Component {
                                                             <flux:icon :icon="Attendance::STATUSES[$mark]['icon']" variant="micro" class="size-3" />{{ __(Attendance::STATUSES[$mark]['label']) }}
                                                         </span>
                                                         @if ($cell['in'])
-                                                            <span class="inline-flex w-fit items-center gap-1 text-[0.6875rem] font-medium text-zinc-600 tabular-nums dark:text-zinc-300" title="{{ $cell['device'] ? __('Check-in from the attendance device') : __('Check-in') }}">
-                                                                <flux:icon :icon="$cell['device'] ? 'finger-print' : 'clock'" variant="micro" class="size-3 text-zinc-400" />{{ $cell['in'] }}
+                                                            <span class="flex flex-col text-[0.6875rem] leading-tight font-medium text-zinc-600 tabular-nums dark:text-zinc-300" title="{{ $cell['device'] ? __('From the attendance device') : '' }}">
+                                                                <span class="inline-flex items-center gap-1"><flux:icon.arrow-right-end-on-rectangle variant="micro" class="size-3 text-emerald-500" />{{ Attendance::clock($cell['in']) }}</span>
+                                                                @if ($cell['out'])
+                                                                    <span class="inline-flex items-center gap-1"><flux:icon.arrow-right-start-on-rectangle variant="micro" class="size-3 text-rose-400" />{{ Attendance::clock($cell['out']) }}</span>
+                                                                @endif
                                                             </span>
                                                         @endif
                                                         @if ($mark === 'leave' && $cell['note'])
@@ -1059,13 +1062,15 @@ new #[Title('Employee')] class extends Component {
                 </div>
             @else
                 <div class="overflow-x-auto border-t border-zinc-100 dark:border-white/5">
-                    <table class="w-full min-w-[44rem] text-sm">
+                    <table class="w-full min-w-[56rem] text-sm">
                         <thead class="bg-zinc-50/80 dark:bg-white/[0.02]">
                             <tr>
                                 <th class="{{ $hth }} ps-5">{{ __('Date') }}</th>
                                 <th class="{{ $hth }}">{{ __('Day') }}</th>
                                 <th class="{{ $hth }}">{{ __('Status') }}</th>
                                 <th class="{{ $hth }}">{{ __('Check-in') }}</th>
+                                <th class="{{ $hth }}">{{ __('Check-out') }}</th>
+                                <th class="{{ $hth }}">{{ __('Worked') }}</th>
                                 <th class="{{ $hth }}">{{ __('Recorded') }}</th>
                                 <th class="{{ $hth }} pe-5">{{ __('Note') }}</th>
                             </tr>
@@ -1081,7 +1086,23 @@ new #[Title('Employee')] class extends Component {
                                             <flux:icon :icon="Attendance::STATUSES[$a->status]['icon'] ?? 'question-mark-circle'" variant="micro" class="size-3.5" />{{ __(Attendance::STATUSES[$a->status]['label'] ?? $a->status) }}
                                         </span>
                                     </td>
-                                    <td class="px-3 py-2.5 font-medium whitespace-nowrap text-zinc-800 tabular-nums dark:text-zinc-100">{{ $a->check_in ?: '—' }}</td>
+                                    <td class="px-3 py-2.5 whitespace-nowrap tabular-nums">
+                                        @if ($a->check_in)
+                                            <span class="inline-flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-100"><flux:icon.arrow-right-end-on-rectangle variant="micro" class="size-4 text-emerald-500" />{{ Attendance::clock($a->check_in) }}</span>
+                                        @else
+                                            <span class="text-zinc-300 dark:text-zinc-600">—</span>
+                                        @endif
+                                    </td>
+                                    <td class="px-3 py-2.5 whitespace-nowrap tabular-nums">
+                                        @if ($a->check_out)
+                                            <span class="inline-flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-100"><flux:icon.arrow-right-start-on-rectangle variant="micro" class="size-4 text-rose-400" />{{ Attendance::clock($a->check_out) }}</span>
+                                        @elseif ($a->check_in && $a->date->isToday())
+                                            <span class="text-xs font-medium text-emerald-600 dark:text-emerald-400">{{ __('Still in') }}</span>
+                                        @else
+                                            <span class="text-zinc-300 dark:text-zinc-600">—</span>
+                                        @endif
+                                    </td>
+                                    <td class="px-3 py-2.5 whitespace-nowrap text-zinc-600 tabular-nums dark:text-zinc-300">{{ $a->worked() ?? '—' }}</td>
                                     <td class="px-3 py-2.5 whitespace-nowrap">
                                         <span @class(['inline-flex items-center gap-1.5 text-xs font-medium', 'text-violet-700 dark:text-violet-300' => $fromDevice, 'text-zinc-500' => ! $fromDevice])>
                                             <flux:icon :icon="$fromDevice ? 'finger-print' : 'pencil-square'" variant="micro" class="size-4" />{{ $fromDevice ? __('Fingerprint') : __('By hand') }}

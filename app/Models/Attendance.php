@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
-#[Fillable(['employee_id', 'date', 'status', 'check_in', 'note', 'source'])]
+#[Fillable(['employee_id', 'date', 'status', 'check_in', 'check_out', 'note', 'source'])]
 class Attendance extends Model
 {
     public const STATUSES = [
@@ -25,6 +25,23 @@ class Attendance extends Model
             get: fn ($value) => Carbon::parse($value)->startOfDay(),
             set: fn ($value) => Carbon::parse($value)->toDateString(),
         );
+    }
+
+    /** "09:05" => "9:05 AM", "18:02" => "6:02 PM". */
+    public static function clock(?string $time): ?string
+    {
+        return $time ? Carbon::createFromFormat('H:i', $time)->format('g:i A') : null;
+    }
+
+    /** Time between check-in and check-out, e.g. "8h 57m"; null without both. */
+    public function worked(): ?string
+    {
+        if (! $this->check_in || ! $this->check_out) {
+            return null;
+        }
+        $minutes = \App\Support\AttendancePunches::minutesBetween($this->check_in, $this->check_out);
+
+        return intdiv($minutes, 60).'h '.str_pad((string) ($minutes % 60), 2, '0', STR_PAD_LEFT).'m';
     }
 
     public function employee(): BelongsTo
