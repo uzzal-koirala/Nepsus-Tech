@@ -269,14 +269,35 @@ class EmployeesTest extends TestCase
         $page->call('openPay')->set('payAmount', '10000')->call('savePay')->assertSee(['Part paid', 'Salary part', 'Paid NPR 10,000']);
         $page->call('openPay')->assertSet('payPeriod', NepaliDate::period(today()))->assertSet('payAmount', '20000')->call('savePay')->assertHasNoErrors()->assertSee('Paid on');
 
-        // The salary history lists only the payments made.
-        $page->assertSee(['Salary history', 'Total paid', 'Salary for'])->assertDontSee('Months fully paid');
+        // Overview shows the attendance history; the salary history (payments made) is on the Salary tab.
+        $page->assertSee('Attendance history')->assertDontSee('Salary history');
+        $page->call('setTab', 'salary')->assertSee(['Salary history', 'Total paid', 'Salary for'])->assertDontSee(['Months fully paid', 'Attendance history']);
 
         // A payment can carry its own title.
         $next = \App\Models\SalaryPayment::firstOpenPeriod($employee->fullyPaidPeriods());
         $page->call('openPay')->assertSet('payTitle', '')->set('payPeriod', $next)->set('payTitle', 'Dashain bonus')->set('payAmount', '5000')->call('savePay')->assertHasNoErrors()->assertSee('Dashain bonus')
             ->assertSee('For '.str(NepaliDate::periodLabel($next))->before(' '))->assertDontSee('No salary paid ahead yet');
         $this->assertSame('Dashain bonus', $employee->salaryPayments()->where('period', $next)->value('title'));
+    }
+
+    public function test_overview_lists_attendance_history_newest_first(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $employee = Employee::factory()->create(['status' => 'active']);
+        $employee->attendances()->create(['date' => today()->subDays(3), 'status' => 'leave', 'note' => 'Family function', 'source' => 'manual']);
+        $employee->attendances()->create(['date' => today()->subDay(), 'status' => 'present', 'check_in' => '09:07', 'source' => 'device']);
+
+        Livewire::test('pages::employee-profile', ['employee' => $employee])
+            ->assertSeeInOrder([today()->subDay()->toNepali(), '09:07', 'Fingerprint', today()->subDays(3)->toNepali(), 'By hand', 'Family function'])
+            ->assertDontSee('Show more');
+
+        foreach (range(4, 30) as $d) {
+            $employee->attendances()->create(['date' => today()->subDays($d), 'status' => 'present']);
+        }
+        Livewire::test('pages::employee-profile', ['employee' => $employee])
+            ->assertSee('Show more')
+            ->set('historyShown', 50)
+            ->assertDontSee('Show more');
     }
 
     public function test_personal_details_can_be_saved(): void

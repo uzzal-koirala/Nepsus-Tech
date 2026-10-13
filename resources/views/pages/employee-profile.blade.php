@@ -33,6 +33,9 @@ new #[Title('Employee')] class extends Component {
     /** @var array<string, string> */
     public array $info = [];
 
+    /** Rows shown in the attendance history (Show more adds 30). */
+    public int $historyShown = 20;
+
     /** New profile photo, saved as soon as it is picked. */
     public $photo = null;
 
@@ -1021,6 +1024,139 @@ new #[Title('Employee')] class extends Component {
             </aside>
         </div>
 
+        {{-- Attendance history: every marked day, newest first --}}
+        @php
+            $history = $e->attendances()->orderByDesc('date')->limit($historyShown + 1)->get();
+            $hasMore = $history->count() > $historyShown;
+            $history = $history->take($historyShown);
+            $totals = $this->attendanceTotals;
+            $hth = 'px-3 py-2.5 text-start text-xs font-semibold tracking-wide whitespace-nowrap text-zinc-500 uppercase';
+        @endphp
+        <section class="{{ $panel }} min-w-0 overflow-hidden" data-test="attendance-history">
+            <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+                <div class="flex items-center gap-3">
+                    <span class="{{ $iconTile }} bg-sky-500 text-white shadow-md shadow-sky-500/30"><flux:icon.calendar-days variant="mini" class="size-4.5" /></span>
+                    <div>
+                        <h2 class="text-lg leading-tight font-semibold tracking-tight text-zinc-900 dark:text-white">{{ __('Attendance history') }}</h2>
+                        <p class="text-xs text-zinc-500">{{ __('Every marked day, newest first') }}</p>
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                    @foreach (Attendance::STATUSES as $sk => $sv)
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-zinc-50 px-2.5 py-1 text-xs ring-1 ring-zinc-200/70 dark:bg-white/5 dark:ring-white/10">
+                            <span class="{{ $markTone[$sk]['dot'] }} size-2 rounded-full"></span>
+                            <span class="text-zinc-600 dark:text-zinc-300">{{ __($sv['label']) }}</span>
+                            <span class="font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $totals[$sk] ?? 0 }}</span>
+                        </span>
+                    @endforeach
+                </div>
+            </div>
+
+            @if ($history->isEmpty())
+                <div class="flex flex-col items-center gap-2 border-t border-zinc-100 px-5 py-10 text-center dark:border-white/5">
+                    <span class="flex size-10 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 dark:bg-white/5"><flux:icon.calendar-days variant="mini" class="size-5" /></span>
+                    <p class="text-sm text-zinc-500">{{ __('No attendance yet. Mark days on the calendar or connect the attendance device.') }}</p>
+                </div>
+            @else
+                <div class="overflow-x-auto border-t border-zinc-100 dark:border-white/5">
+                    <table class="w-full min-w-[44rem] text-sm">
+                        <thead class="bg-zinc-50/80 dark:bg-white/[0.02]">
+                            <tr>
+                                <th class="{{ $hth }} ps-5">{{ __('Date') }}</th>
+                                <th class="{{ $hth }}">{{ __('Day') }}</th>
+                                <th class="{{ $hth }}">{{ __('Status') }}</th>
+                                <th class="{{ $hth }}">{{ __('Check-in') }}</th>
+                                <th class="{{ $hth }}">{{ __('Recorded') }}</th>
+                                <th class="{{ $hth }} pe-5">{{ __('Note') }}</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-zinc-100 dark:divide-white/5">
+                            @foreach ($history as $a)
+                                @php $fromDevice = $a->source === 'device'; @endphp
+                                <tr wire:key="att-row-{{ $a->id }}" class="transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
+                                    <td class="px-3 py-2.5 ps-5 font-semibold whitespace-nowrap text-zinc-900 dark:text-white">{{ $a->date->toNepali() }}</td>
+                                    <td class="px-3 py-2.5 whitespace-nowrap text-zinc-500">{{ $a->date->translatedFormat('l') }}</td>
+                                    <td class="px-3 py-2.5">
+                                        <span class="{{ $markTone[$a->status]['pill'] ?? 'bg-zinc-200 text-zinc-700' }} inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold whitespace-nowrap">
+                                            <flux:icon :icon="Attendance::STATUSES[$a->status]['icon'] ?? 'question-mark-circle'" variant="micro" class="size-3.5" />{{ __(Attendance::STATUSES[$a->status]['label'] ?? $a->status) }}
+                                        </span>
+                                    </td>
+                                    <td class="px-3 py-2.5 font-medium whitespace-nowrap text-zinc-800 tabular-nums dark:text-zinc-100">{{ $a->check_in ?: '—' }}</td>
+                                    <td class="px-3 py-2.5 whitespace-nowrap">
+                                        <span @class(['inline-flex items-center gap-1.5 text-xs font-medium', 'text-violet-700 dark:text-violet-300' => $fromDevice, 'text-zinc-500' => ! $fromDevice])>
+                                            <flux:icon :icon="$fromDevice ? 'finger-print' : 'pencil-square'" variant="micro" class="size-4" />{{ $fromDevice ? __('Fingerprint') : __('By hand') }}
+                                        </span>
+                                    </td>
+                                    <td class="max-w-64 truncate px-3 py-2.5 pe-5 text-zinc-500" @if ($a->note) title="{{ $a->note }}" @endif>{{ $a->note ?: '—' }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                @if ($hasMore)
+                    <div class="border-t border-zinc-100 px-5 py-3 text-center dark:border-white/5">
+                        <flux:button size="sm" variant="ghost" icon="chevron-down" wire:click="$set('historyShown', {{ $historyShown + 30 }})">{{ __('Show more') }}</flux:button>
+                    </div>
+                @endif
+            @endif
+        </section>
+    @elseif ($tab === 'work')
+        @php
+            $monthStart = NepaliDate::monthRange(today())[0];
+            $doneWork = $work->whereNotNull('completed_at')->sortByDesc('completed_at');
+            $doneThisMonth = $doneWork->filter(fn ($t) => $t->completed_at->gte($monthStart))->count();
+            $lateWork = $openWork->filter->isOverdue()->count();
+        @endphp
+        <section class="grid gap-4 sm:grid-cols-3">
+            @foreach ([
+                [__('Open work'), $openWork->count(), $lateWork ? trans_choice(':count late|:count late', $lateWork) : __('Nothing late'), 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300', 'clipboard-document-list'],
+                [__('Done this month'), $doneThisMonth, $periodLabel, 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300', 'check-badge'],
+                [__('Done in total'), $doneWork->count(), trans_choice('across :count client|across :count clients', $work->pluck('client_id')->unique()->count()), 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300', 'trophy'],
+            ] as [$wlabel, $wvalue, $wsub, $wtone, $wicon])
+                <div class="{{ $panel }} flex items-center gap-4 p-5">
+                    <span class="{{ $wtone }} flex size-11 items-center justify-center rounded-xl"><flux:icon :icon="$wicon" variant="mini" class="size-5" /></span>
+                    <div>
+                        <p class="text-sm text-zinc-500">{{ $wlabel }}</p>
+                        <p class="text-2xl leading-tight font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $wvalue }}</p>
+                        <p @class(['text-xs', 'text-rose-600 dark:text-rose-400' => $wlabel === __('Open work') && $lateWork, 'text-zinc-500' => ! ($wlabel === __('Open work') && $lateWork)])>{{ $wsub }}</p>
+                    </div>
+                </div>
+            @endforeach
+        </section>
+
+        <div class="grid items-start gap-6 lg:grid-cols-2">
+            @foreach ([[__('Open work'), $openWork, 'clipboard-document-list'], [__('Completed'), $doneWork->take(30), 'check-badge']] as [$listLabel, $list, $listIcon])
+                <section class="{{ $panel }} overflow-hidden">
+                    <div class="flex items-center gap-2.5 border-b border-zinc-100 px-5 py-4 dark:border-white/5">
+                        <flux:icon :icon="$listIcon" variant="mini" class="size-4.5 text-zinc-400" />
+                        <h2 class="flex-1 font-semibold text-zinc-900 dark:text-white">{{ $listLabel }}</h2>
+                        <span class="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 tabular-nums dark:bg-white/10 dark:text-zinc-300">{{ $list->count() }}</span>
+                    </div>
+                    @forelse ($list as $t)
+                        @php
+                            $tt = \App\Models\Task::types()[$t->type] ?? \App\Models\Task::unknownType($t->type);
+                            $tDone = (bool) $t->completed_at;
+                        @endphp
+                        <a href="{{ route('clients.show', ['client' => $t->client_id, 'tab' => 'tasks']) }}" wire:navigate wire:key="work-{{ $t->id }}" class="group flex items-center gap-3 border-b border-zinc-100 px-5 py-3 transition last:border-0 hover:bg-zinc-50 dark:border-white/5 dark:hover:bg-white/[0.02]">
+                            <span @class(['flex size-5 shrink-0 items-center justify-center rounded-full border-[1.5px]', 'border-emerald-500 bg-emerald-500 text-white' => $tDone, 'border-zinc-300 text-transparent dark:border-zinc-600' => ! $tDone])><flux:icon.check variant="micro" class="size-3" /></span>
+                            <div class="min-w-0 flex-1">
+                                <p @class(['truncate text-sm', 'text-zinc-400 line-through' => $tDone, 'font-medium text-zinc-900 group-hover:text-brand-600 dark:text-white' => ! $tDone])>{{ $t->title }}</p>
+                                <p class="mt-0.5 flex items-center gap-1.5 truncate text-xs text-zinc-500">
+                                    <flux:icon :icon="$tt['icon']" variant="micro" class="size-3 shrink-0" />{{ $tt['label'] }}
+                                    · <span class="truncate">{{ $t->client?->displayName() }}</span>
+                                </p>
+                            </div>
+                            <span @class(['shrink-0 text-xs', 'font-medium text-rose-600 dark:text-rose-400' => ! $tDone && $t->isOverdue(), 'text-emerald-600 dark:text-emerald-400' => $tDone, 'text-zinc-500' => ! $tDone && ! $t->isOverdue()])>
+                                {{ $tDone ? __('Done :date', ['date' => $t->completed_at->toNepali(withYear: false)]) : ($t->due_date ? $t->due_date->toNepali(withYear: false) : __('No date')) }}
+                            </span>
+                        </a>
+                    @empty
+                        <p class="px-5 py-10 text-center text-sm text-zinc-500">{{ $listLabel === __('Open work') ? __('Nothing assigned right now.') : __('Nothing finished yet.') }}</p>
+                    @endforelse
+                </section>
+            @endforeach
+        </div>
+    @elseif ($tab === 'salary')
         {{-- Salary history: paid salary payments only, listed like the finance page --}}
         @php
             $paidList = $payments->sortByDesc(fn ($sp) => $sp->paid_on->timestamp.'-'.str_pad($sp->id, 9, '0', STR_PAD_LEFT))->values();
@@ -1093,64 +1229,6 @@ new #[Title('Employee')] class extends Component {
                 </div>
             @endif
         </section>
-    @elseif ($tab === 'work')
-        @php
-            $monthStart = NepaliDate::monthRange(today())[0];
-            $doneWork = $work->whereNotNull('completed_at')->sortByDesc('completed_at');
-            $doneThisMonth = $doneWork->filter(fn ($t) => $t->completed_at->gte($monthStart))->count();
-            $lateWork = $openWork->filter->isOverdue()->count();
-        @endphp
-        <section class="grid gap-4 sm:grid-cols-3">
-            @foreach ([
-                [__('Open work'), $openWork->count(), $lateWork ? trans_choice(':count late|:count late', $lateWork) : __('Nothing late'), 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300', 'clipboard-document-list'],
-                [__('Done this month'), $doneThisMonth, $periodLabel, 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300', 'check-badge'],
-                [__('Done in total'), $doneWork->count(), trans_choice('across :count client|across :count clients', $work->pluck('client_id')->unique()->count()), 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300', 'trophy'],
-            ] as [$wlabel, $wvalue, $wsub, $wtone, $wicon])
-                <div class="{{ $panel }} flex items-center gap-4 p-5">
-                    <span class="{{ $wtone }} flex size-11 items-center justify-center rounded-xl"><flux:icon :icon="$wicon" variant="mini" class="size-5" /></span>
-                    <div>
-                        <p class="text-sm text-zinc-500">{{ $wlabel }}</p>
-                        <p class="text-2xl leading-tight font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $wvalue }}</p>
-                        <p @class(['text-xs', 'text-rose-600 dark:text-rose-400' => $wlabel === __('Open work') && $lateWork, 'text-zinc-500' => ! ($wlabel === __('Open work') && $lateWork)])>{{ $wsub }}</p>
-                    </div>
-                </div>
-            @endforeach
-        </section>
-
-        <div class="grid items-start gap-6 lg:grid-cols-2">
-            @foreach ([[__('Open work'), $openWork, 'clipboard-document-list'], [__('Completed'), $doneWork->take(30), 'check-badge']] as [$listLabel, $list, $listIcon])
-                <section class="{{ $panel }} overflow-hidden">
-                    <div class="flex items-center gap-2.5 border-b border-zinc-100 px-5 py-4 dark:border-white/5">
-                        <flux:icon :icon="$listIcon" variant="mini" class="size-4.5 text-zinc-400" />
-                        <h2 class="flex-1 font-semibold text-zinc-900 dark:text-white">{{ $listLabel }}</h2>
-                        <span class="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 tabular-nums dark:bg-white/10 dark:text-zinc-300">{{ $list->count() }}</span>
-                    </div>
-                    @forelse ($list as $t)
-                        @php
-                            $tt = \App\Models\Task::types()[$t->type] ?? \App\Models\Task::unknownType($t->type);
-                            $tDone = (bool) $t->completed_at;
-                        @endphp
-                        <a href="{{ route('clients.show', ['client' => $t->client_id, 'tab' => 'tasks']) }}" wire:navigate wire:key="work-{{ $t->id }}" class="group flex items-center gap-3 border-b border-zinc-100 px-5 py-3 transition last:border-0 hover:bg-zinc-50 dark:border-white/5 dark:hover:bg-white/[0.02]">
-                            <span @class(['flex size-5 shrink-0 items-center justify-center rounded-full border-[1.5px]', 'border-emerald-500 bg-emerald-500 text-white' => $tDone, 'border-zinc-300 text-transparent dark:border-zinc-600' => ! $tDone])><flux:icon.check variant="micro" class="size-3" /></span>
-                            <div class="min-w-0 flex-1">
-                                <p @class(['truncate text-sm', 'text-zinc-400 line-through' => $tDone, 'font-medium text-zinc-900 group-hover:text-brand-600 dark:text-white' => ! $tDone])>{{ $t->title }}</p>
-                                <p class="mt-0.5 flex items-center gap-1.5 truncate text-xs text-zinc-500">
-                                    <flux:icon :icon="$tt['icon']" variant="micro" class="size-3 shrink-0" />{{ $tt['label'] }}
-                                    · <span class="truncate">{{ $t->client?->displayName() }}</span>
-                                </p>
-                            </div>
-                            <span @class(['shrink-0 text-xs', 'font-medium text-rose-600 dark:text-rose-400' => ! $tDone && $t->isOverdue(), 'text-emerald-600 dark:text-emerald-400' => $tDone, 'text-zinc-500' => ! $tDone && ! $t->isOverdue()])>
-                                {{ $tDone ? __('Done :date', ['date' => $t->completed_at->toNepali(withYear: false)]) : ($t->due_date ? $t->due_date->toNepali(withYear: false) : __('No date')) }}
-                            </span>
-                        </a>
-                    @empty
-                        <p class="px-5 py-10 text-center text-sm text-zinc-500">{{ $listLabel === __('Open work') ? __('Nothing assigned right now.') : __('Nothing finished yet.') }}</p>
-                    @endforelse
-                </section>
-            @endforeach
-        </div>
-    @elseif ($tab === 'salary')
-        {{-- Left blank for now. --}}
     @elseif ($tab === 'details')
         @php
             $age = $e->date_of_birth ? (int) $e->date_of_birth->diffInYears(today()) : null;
