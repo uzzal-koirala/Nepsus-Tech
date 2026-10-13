@@ -35,7 +35,7 @@ new #[Title('Vehicles')] class extends Component {
             'count' => $this->vehicles->count(),
             'month' => (float) (clone $month)->sum('amount'),
             'fuel' => (float) (clone $month)->where('category', 'fuel')->sum('amount'),
-            'total' => (float) $this->vehicles->sum('total_spent'),
+            'renewals' => $this->vehicles->sum(fn ($v) => count($v->renewalsDue())),
         ];
     }
 
@@ -82,14 +82,14 @@ new #[Title('Vehicles')] class extends Component {
             ['label' => __('Vehicles'), 'value' => $s['count'], 'image' => 'scooter', 'sub' => __('In the workspace'), 'glow' => 'bg-rose-100/70 dark:bg-rose-500/10'],
             ['label' => __('Spent this month'), 'value' => $money($s['month']), 'image' => 'other', 'sub' => NepaliDate::monthYear(today()), 'glow' => 'bg-amber-100/70 dark:bg-amber-500/10'],
             ['label' => __('Fuel this month'), 'value' => $money($s['fuel']), 'image' => 'fuel', 'sub' => $s['month'] > 0 ? __(':percent% of vehicle costs', ['percent' => (int) round($s['fuel'] / $s['month'] * 100)]) : __('No fuel yet'), 'glow' => 'bg-red-100/70 dark:bg-red-500/10'],
-            ['label' => __('Spent all time'), 'value' => $money($s['total']), 'image' => 'servicing', 'sub' => __('Across all vehicles'), 'glow' => 'bg-sky-100/70 dark:bg-sky-500/10'],
+            ['label' => __('Renewals due'), 'value' => $s['renewals'], 'image' => 'tax', 'sub' => __('Bluebook or insurance in 30 days'), 'glow' => 'bg-violet-100/70 dark:bg-violet-500/10'],
         ] as $card)
             <div class="{{ $panel }} relative flex items-center gap-4 overflow-hidden p-5">
                 <div class="{{ $card['glow'] }} absolute -top-10 -right-10 size-28 rounded-full"></div>
                 <img src="{{ asset('images/vehicles/'.$card['image'].'.png') }}" alt="" class="relative size-12 drop-shadow-sm">
                 <div class="relative min-w-0">
                     <p class="text-sm text-zinc-500">{{ $card['label'] }}</p>
-                    <p class="text-2xl leading-tight font-bold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $card['value'] }}</p>
+                    <p @class(['text-2xl leading-tight font-bold tracking-tight tabular-nums', 'text-violet-700 dark:text-violet-300' => $loop->last && $s['renewals'], 'text-zinc-900 dark:text-white' => ! ($loop->last && $s['renewals'])])>{{ $card['value'] }}</p>
                     <p class="truncate text-xs text-zinc-500">{{ $card['sub'] }}</p>
                 </div>
             </div>
@@ -113,6 +113,7 @@ new #[Title('Vehicles')] class extends Component {
     @else
         <section class="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
             @foreach ($this->vehicles as $v)
+                @php $due = $v->renewalsDue(); @endphp
                 <a href="{{ route('vehicles.show', $v) }}" wire:navigate wire:key="vehicle-{{ $v->id }}" class="{{ $panel }} group flex flex-col overflow-hidden transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_50px_-28px_rgb(15_23_42/0.45)]">
                     {{-- Picture --}}
                     <div class="{{ $v->typeMeta()['tint'] }} relative flex h-40 items-center justify-center bg-linear-to-br">
@@ -120,6 +121,9 @@ new #[Title('Vehicles')] class extends Component {
                         <div class="absolute bottom-6 h-4 w-32 rounded-[50%] bg-zinc-900/10 blur-md dark:bg-black/40"></div>
                         <img src="{{ $v->imageUrl() }}" alt="{{ __($v->typeMeta()['label']) }}" class="relative size-32 drop-shadow-xl transition duration-500 group-hover:-translate-y-1.5 group-hover:-rotate-3 group-hover:scale-105">
                         <span class="absolute top-3 left-3 rounded-full bg-white/80 px-2.5 py-1 text-xs font-semibold text-zinc-700 shadow-xs backdrop-blur dark:bg-zinc-900/70 dark:text-zinc-200">{{ __($v->typeMeta()['label']) }}</span>
+                        @if ($due)
+                            <span class="absolute top-3 right-3 inline-flex items-center gap-1 rounded-full bg-violet-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm"><flux:icon.bell-alert variant="micro" class="size-3.5" />{{ $due[0]['days'] < 0 ? __('Renewal overdue') : __('Renewal due') }}</span>
+                        @endif
                     </div>
 
                     {{-- Details --}}

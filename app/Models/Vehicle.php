@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Validation\Rule;
 
-#[Fillable(['name', 'type', 'brand', 'model', 'plate_no', 'year', 'employee_id', 'notes'])]
+#[Fillable(['name', 'type', 'brand', 'model', 'plate_no', 'year', 'employee_id', 'bluebook_expiry', 'insurance_expiry', 'notes'])]
 class Vehicle extends Model
 {
     /** Kinds of vehicle, each with a 3D picture in public/images/vehicles. */
@@ -26,6 +26,8 @@ class Vehicle extends Model
     {
         return [
             'year' => 'integer',
+            'bluebook_expiry' => 'date',
+            'insurance_expiry' => 'date',
         ];
     }
 
@@ -39,6 +41,8 @@ class Vehicle extends Model
             'plate_no' => ['nullable', 'string', 'max:40'],
             'year' => ['nullable', 'integer', 'min:1950', 'max:'.(now()->year + 1)],
             'employee_id' => ['nullable', 'exists:employees,id'],
+            'bluebook_expiry' => ['nullable', 'date'],
+            'insurance_expiry' => ['nullable', 'date'],
             'notes' => ['nullable', 'string', 'max:255'],
         ];
     }
@@ -67,5 +71,18 @@ class Vehicle extends Model
     public function subtitle(): string
     {
         return collect([trim($this->brand.' '.$this->model), $this->year])->filter()->join(' · ') ?: __($this->typeMeta()['label']);
+    }
+
+    /**
+     * Bluebook and insurance dates that are past or within 30 days.
+     *
+     * @return list<array{label: string, date: \Carbon\CarbonInterface, days: int}>
+     */
+    public function renewalsDue(): array
+    {
+        return collect(['bluebook_expiry' => __('Bluebook renewal'), 'insurance_expiry' => __('Insurance')])
+            ->filter(fn ($label, $field) => $this->{$field} && $this->{$field}->lte(today()->addDays(30)))
+            ->map(fn ($label, $field) => ['label' => $label, 'date' => $this->{$field}, 'days' => (int) today()->diffInDays($this->{$field}, false)])
+            ->values()->all();
     }
 }

@@ -174,9 +174,6 @@ new #[Title('Vehicle')] class extends Component {
                         <span class="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-semibold text-zinc-600 dark:bg-white/10 dark:text-zinc-300">{{ __($v->typeMeta()['label']) }}</span>
                         <h1 class="mt-3 text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-3xl dark:text-white">{{ $v->name }}</h1>
                         <p class="mt-1 text-sm text-zinc-500">{{ $v->subtitle() }}</p>
-                        @if ($v->notes)
-                            <p class="mt-2 max-w-lg text-sm text-zinc-600 dark:text-zinc-300">{{ $v->notes }}</p>
-                        @endif
                     </div>
                     <div class="flex items-center gap-2">
                         <flux:button icon="pencil-square" wire:click="edit">{{ __('Edit') }}</flux:button>
@@ -205,6 +202,12 @@ new #[Title('Vehicle')] class extends Component {
                     @if ($st['odometer'])
                         <span class="inline-flex items-center gap-1.5 rounded-full bg-zinc-50 px-3 py-1.5 text-sm ring-1 ring-zinc-200 dark:bg-white/5 dark:ring-white/10"><flux:icon.map variant="micro" class="size-4 text-zinc-400" /><span class="font-semibold text-zinc-900 tabular-nums dark:text-white">{{ number_format($st['odometer']) }}</span><span class="text-zinc-500">km</span></span>
                     @endif
+                    @foreach ($v->renewalsDue() as $r)
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-700 ring-1 ring-violet-200 dark:bg-violet-500/10 dark:text-violet-300 dark:ring-violet-500/20">
+                            <flux:icon.bell-alert variant="micro" class="size-4" />
+                            {{ $r['label'] }} · {{ $r['days'] < 0 ? trans_choice(':count day overdue|:count days overdue', -$r['days']) : ($r['days'] === 0 ? __('today') : trans_choice('in :count day|in :count days', $r['days'])) }}
+                        </span>
+                    @endforeach
                 </div>
             </div>
         </div>
@@ -214,7 +217,7 @@ new #[Title('Vehicle')] class extends Component {
     <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         @foreach ([
             ['label' => __('Spent all time'), 'value' => $money($st['total']), 'image' => 'other', 'sub' => trans_choice(':count expense|:count expenses', $expenses->count())],
-            ['label' => __('This month'), 'value' => $money($st['month']), 'image' => 'oil', 'sub' => NepaliDate::monthYear(today())],
+            ['label' => __('This month'), 'value' => $money($st['month']), 'image' => 'tax', 'sub' => NepaliDate::monthYear(today())],
             ['label' => __('Fuel this month'), 'value' => $money($st['fuel']), 'image' => 'fuel', 'sub' => $st['liters'] > 0 ? __(':litres litres', ['litres' => rtrim(rtrim(number_format($st['liters'], 2), '0'), '.')]) : __('No fuel yet')],
             ['label' => __('Last servicing'), 'value' => $st['lastService'] ? $st['lastService']->date->toNepali() : '—', 'image' => 'servicing', 'sub' => $st['lastService'] ? ($st['lastService']->odometer ? number_format($st['lastService']->odometer).' km · '.trans_choice(':count day ago|:count days ago', (int) $st['lastService']->date->diffInDays(today())) : trans_choice(':count day ago|:count days ago', (int) $st['lastService']->date->diffInDays(today()))) : __('Not serviced yet')],
         ] as $card)
@@ -325,6 +328,30 @@ new #[Title('Vehicle')] class extends Component {
                         <p class="py-4 text-center text-sm text-zinc-500">{{ __('Nothing spent yet.') }}</p>
                     @endforelse
                 </div>
+            </section>
+
+            <section class="{{ $panel }} p-5">
+                <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Papers') }}</h2>
+                <div class="mt-3 flex flex-col gap-2">
+                    @foreach ([['tax', __('Bluebook renewal'), $v->bluebook_expiry], ['insurance', __('Insurance'), $v->insurance_expiry]] as [$img, $paperLabel, $paperDate])
+                        @php $left = $paperDate ? (int) today()->diffInDays($paperDate, false) : null; @endphp
+                        <div class="flex items-center gap-3 rounded-lg bg-zinc-50 px-3 py-2.5 dark:bg-white/[0.03]">
+                            <img src="{{ asset('images/vehicles/'.$img.'.png') }}" alt="" class="size-8">
+                            <div class="min-w-0 flex-1">
+                                <p class="text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $paperLabel }}</p>
+                                <p class="text-xs text-zinc-500">{{ $paperDate ? $paperDate->toNepali() : __('Date not set') }}</p>
+                            </div>
+                            @if ($left !== null)
+                                <span @class(['rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums', 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300' => $left < 0, 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300' => $left >= 0 && $left <= 30, 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' => $left > 30])>
+                                    {{ $left < 0 ? __('Overdue') : trans_choice(':count day|:count days', $left) }}
+                                </span>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+                @if ($v->notes)
+                    <p class="mt-3 rounded-lg border border-dashed border-zinc-200 px-3 py-2 text-sm text-zinc-600 dark:border-white/10 dark:text-zinc-300">{{ $v->notes }}</p>
+                @endif
             </section>
         </aside>
     </div>
