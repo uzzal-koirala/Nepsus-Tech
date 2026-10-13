@@ -13,6 +13,17 @@ function Write-Log([string] $text) {
 
 try {
     $cfg = Get-Content (Join-Path $dir 'config.json') -Raw | ConvertFrom-Json
+    $site = $cfg.site.TrimEnd('/')
+    $headers = @{ Authorization = 'Bearer ' + $cfg.token; Accept = 'application/json' }
+
+    # Windows runs this every minute. Read the device every 5 minutes, or sooner
+    # when someone pressed "Sync now" on the website.
+    $state = Join-Path $dir 'last-sync.txt'
+    $due = (-not (Test-Path $state)) -or (((Get-Date) - (Get-Item $state).LastWriteTime).TotalMinutes -ge 4.5)
+    if (-not $due) {
+        $pending = Invoke-RestMethod -Uri ($site + '/api/attendance/pending') -Headers $headers -TimeoutSec 20
+        if (-not $pending.sync) { exit 0 }
+    }
 
     # The device password is stored encrypted for this computer only.
     Add-Type -AssemblyName System.Security
@@ -47,10 +58,11 @@ try {
     } while ($page.responseStatusStrg -eq 'MORE' -and $events.Count -gt 0 -and $position -lt 20000)
 
     $payload = @{ computer = $env:COMPUTERNAME; punches = @($punches) } | ConvertTo-Json -Depth 4 -Compress
-    $result = Invoke-RestMethod -Uri ($cfg.site.TrimEnd('/') + '/api/attendance/punches') -Method Post `
+    $result = Invoke-RestMethod -Uri ($site + '/api/attendance/punches') -Method Post `
         -Body ([Text.Encoding]::UTF8.GetBytes($payload)) -ContentType 'application/json; charset=utf-8' `
-        -Headers @{ Authorization = 'Bearer ' + $cfg.token; Accept = 'application/json' } -TimeoutSec 60
+        -Headers $headers -TimeoutSec 60
 
+    Set-Content -Path $state -Value (Get-Date -Format 'o')
     Write-Log ("OK  {0} punches sent, {1} days marked present" -f $punches.Count, $result.marked)
     exit 0
 }

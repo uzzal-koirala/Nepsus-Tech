@@ -195,6 +195,52 @@ class AttendanceDeviceTest extends TestCase
         $this->postJson(route('api.attendance.punches'), ['punches' => []], ['Authorization' => 'Bearer right-key'])->assertOk();
     }
 
+    public function test_sync_now_asks_the_office_pc_helper_when_the_device_is_out_of_reach(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $auth = ['Authorization' => 'Bearer right-key'];
+
+        // Nothing set up yet: explain what to do.
+        Livewire::test('pages::settings.attendance-device')->call('syncNow')->assertSet('waitingSince', null);
+
+        Setting::put(['device_push_token' => 'right-key']);
+        $this->getJson(route('api.attendance.pending'))->assertUnauthorized();
+        $this->getJson(route('api.attendance.pending'), $auth)->assertExactJson(['sync' => false]);
+
+        $page = Livewire::test('pages::settings.attendance-device')->call('syncNow');
+        $this->assertNotNull($page->get('waitingSince'));
+        $page->assertSee('Waiting for the office PC');
+        $this->getJson(route('api.attendance.pending'), $auth)->assertExactJson(['sync' => true]);
+
+        // Still waiting until the helper sends punches.
+        $page->call('checkHelper');
+        $this->assertNotNull($page->get('waitingSince'));
+
+        $this->travel(5)->seconds();
+        $this->postJson(route('api.attendance.punches'), ['punches' => []], $auth)->assertOk();
+        $this->getJson(route('api.attendance.pending'), $auth)->assertExactJson(['sync' => false]);
+        $page->call('checkHelper')->assertSet('waitingSince', null);
+
+        // Gives up when the office PC never answers.
+        $page->call('syncNow');
+        $this->travel(3)->minutes();
+        $page->call('checkHelper')->assertSet('waitingSince', null);
+    }
+
+    public function test_sync_now_reads_the_device_directly_when_it_can(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $emp = Employee::factory()->create(['device_user_id' => '1', 'status' => 'active']);
+        Setting::put(['device_host' => '10.0.0.5', 'device_password' => Crypt::encryptString('secret'), 'device_push_token' => 'k']);
+        Http::fake(['10.0.0.5/ISAPI/AccessControl/AcsEvent*' => fn (Request $r) => $r->hasHeader('Authorization')
+            ? Http::response(['AcsEvent' => ['responseStatusStrg' => 'OK', 'InfoList' => [['time' => now()->format('Y-m-d\TH:i:s').'+08:00', 'employeeNoString' => '1']]]])
+            : Http::response('', 401, ['WWW-Authenticate' => 'Digest realm="DS", qop="auth", nonce="n1", opaque="o"'])]);
+
+        Livewire::test('pages::settings.attendance-device')->call('syncNow')->assertSet('waitingSince', null);
+
+        $this->assertSame(1, $emp->attendances()->count());
+    }
+
     public function test_helper_download_is_set_up_for_this_site(): void
     {
         $this->actingAs(User::factory()->create());

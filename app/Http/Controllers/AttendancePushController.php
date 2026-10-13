@@ -9,15 +9,15 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
 /**
- * Receives punches from the office PC helper (when the app is hosted online and
- * cannot reach the attendance device on the office network itself).
+ * Talks to the office PC helper (when the app is hosted online and cannot reach
+ * the attendance device on the office network itself).
  */
 class AttendancePushController extends Controller
 {
-    public function __invoke(Request $request): JsonResponse
+    /** The helper sends the punches it read from the device. */
+    public function store(Request $request): JsonResponse
     {
-        $key = (string) Setting::get('device_push_token');
-        abort_unless($key !== '' && hash_equals($key, (string) $request->bearerToken()), 401, 'Wrong or missing key.');
+        $this->checkKey($request);
 
         $data = $request->validate([
             'computer' => ['nullable', 'string', 'max:64'],
@@ -40,5 +40,23 @@ class AttendancePushController extends Controller
         ]);
 
         return response()->json($result);
+    }
+
+    /** The helper asks every minute whether someone pressed "Sync now". */
+    public function pending(Request $request): JsonResponse
+    {
+        $this->checkKey($request);
+
+        $requested = Setting::get('device_sync_requested');
+        $seen = Setting::get('device_helper_seen');
+        Setting::put(['device_helper_ping' => now()->toIso8601String()]);
+
+        return response()->json(['sync' => $requested && (! $seen || Carbon::parse($requested)->gt(Carbon::parse($seen)))]);
+    }
+
+    private function checkKey(Request $request): void
+    {
+        $key = (string) Setting::get('device_push_token');
+        abort_unless($key !== '' && hash_equals($key, (string) $request->bearerToken()), 401, 'Wrong or missing key.');
     }
 }

@@ -34,21 +34,22 @@ $cfg | ConvertTo-Json | Set-Content (Join-Path $target 'config.json') -Encoding 
 
 Write-Host ''
 Write-Host '  Testing: reading the device and sending to the website...'
+Remove-Item (Join-Path $target 'last-sync.txt') -ErrorAction SilentlyContinue  # force a full read now
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $target 'sync.ps1')
 $ok = $LASTEXITCODE -eq 0
 $last = Get-Content (Join-Path $target 'sync.log') -Tail 1
 if ($ok) { Write-Host ('  ' + $last) -ForegroundColor Green } else { Write-Host ('  ' + $last) -ForegroundColor Red }
 
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}"' -f (Join-Path $target 'sync.ps1'))
-$every5 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)
+$everyMinute = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Days 3650)
 $atStart = New-ScheduledTaskTrigger -AtStartup
 $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 4) -MultipleInstances IgnoreNew
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $every5, $atStart -Principal $principal -Settings $settings -Force | Out-Null
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $everyMinute, $atStart -Principal $principal -Settings $settings -Force | Out-Null
 
 Write-Host ''
 if ($ok) {
-    Write-Host '  Done. Punches will now reach the website every 5 minutes while this PC is on.' -ForegroundColor Green
+    Write-Host '  Done. Punches reach the website every 5 minutes, or within a minute after Sync now.' -ForegroundColor Green
 } else {
     Write-Host '  Installed, but the test failed (see the message above). Fix it and run Install.bat again.' -ForegroundColor Yellow
 }

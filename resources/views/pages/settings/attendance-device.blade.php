@@ -105,13 +105,59 @@ new #[Title('Attendance device')] class extends Component {
         }
     }
 
+    /** Set while waiting for the office PC helper to answer a "Sync now". */
+    public ?string $waitingSince = null;
+
+    /**
+     * Sync right away: read the device directly when this app can reach it,
+     * otherwise ask the office PC helper (hosted site) and wait for it.
+     */
     public function syncNow(): void
     {
-        try {
-            $r = AttendancePunches::syncFromDevice(7);
-            Flux::toast(variant: 'success', text: trans_choice(':count day marked present from the device.|:count days marked present from the device.', $r['marked']));
-        } catch (\Throwable $e) {
-            Flux::toast(variant: 'danger', text: __('Sync failed: :error', ['error' => Str::limit($e->getMessage(), 120)]));
+        $this->waitingSince = null;
+
+        if (AttendanceDevice::fromSettings()) {
+            try {
+                $r = AttendancePunches::syncFromDevice(7);
+                Flux::toast(variant: 'success', text: trans_choice(':count day marked present from the device.|:count days marked present from the device.', $r['marked']));
+
+                return;
+            } catch (\Throwable $e) {
+                if (! $this->hasKey) {
+                    Flux::toast(variant: 'danger', text: __('Sync failed: :error', ['error' => Str::limit($e->getMessage(), 120)]));
+
+                    return;
+                }
+            }
+        }
+
+        if (! $this->hasKey) {
+            Flux::toast(variant: 'warning', text: __('Connect the device in step 1, or set up the office PC helper in step 4.'));
+
+            return;
+        }
+
+        $this->waitingSince = now()->toIso8601String();
+        Setting::put(['device_sync_requested' => $this->waitingSince]);
+    }
+
+    /** Polled while waiting: done once the helper has sent punches after the request. */
+    public function checkHelper(): void
+    {
+        if (! $this->waitingSince) {
+            return;
+        }
+
+        $since = Carbon::parse($this->waitingSince);
+        $seen = Setting::get('device_helper_seen');
+
+        if ($seen && Carbon::parse($seen)->gte($since)) {
+            $this->waitingSince = null;
+            $r = json_decode((string) Setting::get('device_last_result'), true) ?? ['marked' => 0];
+            Flux::toast(variant: 'success', text: trans_choice(':count day marked present from the office PC.|:count days marked present from the office PC.', $r['marked']));
+        } elseif ($since->diffInSeconds(now()) > 150) {
+            $this->waitingSince = null;
+            Flux::toast(variant: 'danger', text: __('The office PC did not answer. Check that it is on and the helper is installed.'));
         }
     }
 
@@ -173,15 +219,42 @@ new #[Title('Attendance device')] class extends Component {
     <x-pages::settings.layout :heading="__('Attendance device')" :subheading="__('Connect the Hikvision fingerprint machine so punches mark attendance automatically.')" :wide="true">
         <div class="flex flex-col gap-8">
             {{-- How it works --}}
-            <div class="flex flex-col gap-4 rounded-2xl bg-linear-to-br from-brand-500 to-brand-600 p-5 text-white sm:flex-row sm:items-center">
-                <span class="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25"><flux:icon.finger-print class="size-8" /></span>
-                <div class="flex-1">
-                    <p class="font-semibold">{{ __('DS-K1A8603EF-B · Hikvision attendance terminal') }}</p>
-                    <p class="mt-0.5 text-sm text-brand-100">{{ __('When someone punches in, their day turns Present with the check-in time. Days you mark by hand (leave, absent) are never changed.') }}</p>
+            <div class="flex flex-col gap-5 rounded-2xl bg-linear-to-br from-brand-500 to-brand-600 p-5 text-white">
+                <div class="flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <span class="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25"><flux:icon.finger-print class="size-8" /></span>
+                    <div class="flex-1">
+                        <p class="font-semibold">{{ __('Hikvision attendance terminal') }}</p>
+                        <p class="mt-0.5 text-sm text-brand-100">{{ __('When someone punches in, their day turns Present with the check-in time. Days you mark by hand (leave, absent) are never changed.') }}</p>
+                    </div>
+                    <div class="flex shrink-0 gap-2 text-center text-xs">
+                        <div class="rounded-xl bg-white/15 px-3 py-2 ring-1 ring-white/20"><p class="text-lg font-bold tabular-nums">{{ $linked }}/{{ count($ids) }}</p><p class="text-brand-100">{{ __('linked') }}</p></div>
+                        <div class="rounded-xl bg-white/15 px-3 py-2 ring-1 ring-white/20"><p class="text-lg font-bold">{{ ($autoSync && $this->hasPassword) || $helperSeen ? __('On') : __('Off') }}</p><p class="text-brand-100">{{ __('auto sync') }}</p></div>
+                    </div>
                 </div>
-                <div class="flex shrink-0 gap-2 text-center text-xs">
-                    <div class="rounded-xl bg-white/15 px-3 py-2 ring-1 ring-white/20"><p class="text-lg font-bold tabular-nums">{{ $linked }}/{{ count($ids) }}</p><p class="text-brand-100">{{ __('linked') }}</p></div>
-                    <div class="rounded-xl bg-white/15 px-3 py-2 ring-1 ring-white/20"><p class="text-lg font-bold">{{ $autoSync && $this->hasPassword ? __('On') : __('Off') }}</p><p class="text-brand-100">{{ __('auto sync') }}</p></div>
+
+                {{-- Sync right now --}}
+                <div class="flex flex-col gap-3 rounded-xl bg-white/10 p-3 ring-1 ring-white/20 sm:flex-row sm:items-center">
+                    <div class="flex flex-1 items-center gap-2.5 text-sm">
+                        @if ($waitingSince)
+                            <div wire:poll.3s="checkHelper"></div>
+                            <flux:icon.loading class="size-5" />
+                            <span>{{ __('Waiting for the office PC to send punches (up to a minute)...') }}</span>
+                        @else
+                            <flux:icon.clock variant="mini" class="size-5 text-brand-100" />
+                            <span>
+                                {{ $lastSync ? __('Last synced :time', ['time' => Carbon::parse($lastSync)->diffForHumans()]) : __('Not synced yet') }}
+                                @if ($lastResult && ! $lastError)
+                                    <span class="text-brand-100">· {{ __(':punches punches', ['punches' => $lastResult['punches']]) }}</span>
+                                @endif
+                            </span>
+                        @endif
+                    </div>
+                    <button type="button" wire:click="syncNow" wire:loading.attr="disabled" wire:target="syncNow" @disabled($waitingSince) data-test="sync-now-top"
+                        class="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:bg-brand-50 disabled:cursor-wait disabled:opacity-70">
+                        <flux:icon.arrow-path variant="micro" class="size-4" wire:loading.class="animate-spin" wire:target="syncNow" />
+                        <span wire:loading.remove wire:target="syncNow">{{ $waitingSince ? __('Syncing...') : __('Sync now') }}</span>
+                        <span wire:loading wire:target="syncNow">{{ __('Syncing...') }}</span>
+                    </button>
                 </div>
             </div>
 
@@ -290,7 +363,7 @@ new #[Title('Attendance device')] class extends Component {
                                 <p class="text-zinc-500">{{ __('Not synced yet.') }}</p>
                             @endif
                         </div>
-                        <flux:button icon="arrow-path" wire:click="syncNow" wire:target="syncNow" :disabled="! $this->hasPassword" class="mt-auto" data-test="sync-now">{{ __('Sync now') }}</flux:button>
+                        <flux:button icon="arrow-path" wire:click="syncNow" wire:target="syncNow" :disabled="(bool) $waitingSince" class="mt-auto" data-test="sync-now">{{ __('Sync now') }}</flux:button>
                     </div>
 
                     {{-- File import --}}
