@@ -85,6 +85,8 @@ class EmployeesTest extends TestCase
         $page->call('openPay', $ram->id)->set('payPeriod', $ahead)->call('savePay')->assertHasNoErrors();
         $tooFar = \App\Support\NepaliDate::period(\App\Support\NepaliDate::addMonths(today(), 7));
         $page->call('openPay', $ram->id)->set('payPeriod', $tooFar)->call('savePay')->assertHasErrors(['payPeriod']);
+        $lastMonth = \App\Support\NepaliDate::recentPeriods(2)[1];
+        $page->call('openPay', $ram->id)->set('payPeriod', $lastMonth)->call('savePay')->assertHasErrors(['payPeriod']);
 
         $page->set('payPeriod', '1990-01')->set('payAmount', '100')->call('savePay')->assertHasErrors(['payPeriod']);
 

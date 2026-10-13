@@ -658,7 +658,7 @@ new #[Title('Employees')] class extends Component {
     </flux:modal>
 
     {{-- Pay salary --}}
-    <flux:modal name="pay-salary" class="w-full max-w-md">
+    <flux:modal name="pay-salary" class="w-full max-w-lg overflow-visible!">
         <form wire:submit="savePay" class="flex flex-col gap-5">
             <div>
                 <flux:heading size="lg">{{ __('Pay salary') }}</flux:heading>
@@ -666,15 +666,9 @@ new #[Title('Employees')] class extends Component {
             </div>
             <div class="grid gap-4 sm:grid-cols-2">
                 @php $paidPeriods = $payEmployeeId ? SalaryPayment::where('employee_id', $payEmployeeId)->pluck('period')->all() : []; @endphp
-                <flux:select wire:model="payPeriod" :label="__('For month')">
-                    <flux:select.option value="" disabled>{{ __('Choose a month') }}</flux:select.option>
-                    @foreach (SalaryPayment::periodChoices() as $p)
-                        @php $isPaid = in_array($p, $paidPeriods, true); @endphp
-                        <flux:select.option :value="$p" :disabled="$isPaid">{{ NepaliDate::periodLabel($p) }}{{ $isPaid ? ' · '.__('Paid') : ($p === NepaliDate::period(today()) ? ' · '.__('This month') : '') }}</flux:select.option>
-                    @endforeach
-                </flux:select>
+                <x-salary-month-picker :paid="$paidPeriods" class="sm:col-span-2" />
                 <flux:input wire:model="payAmount" type="number" min="0" step="1" :label="__('Amount (:currency)', ['currency' => config('app.currency')])" required />
-                <x-nepali-date wire:model="payDate" :label="__('Paid date')" class="sm:col-span-2" />
+                <x-nepali-date wire:model="payDate" :label="__('Paid date')" />
                 <flux:input wire:model="payNote" :label="__('Note')" :placeholder="__('e.g. Advance, bonus, bank transfer')" class="sm:col-span-2" />
             </div>
             <div class="flex justify-end gap-2">
