@@ -149,7 +149,7 @@ class CctvTest extends TestCase
     {
         $this->actingAs($this->admin());
         $this->camera();
-        $this->camera(['name' => 'Reception', 'stream_path' => 'reception', 'camera_ip' => '192.168.1.65', 'rtsp_path' => '/h264/ch1/sub/av_stream']);
+        $this->camera(['name' => 'Reception', 'stream_path' => 'reception', 'camera_ip' => '192.168.1.65', 'rtsp_path' => '/h264/ch1/sub/av_stream', 'transcode' => false]);
 
         $response = $this->get(route('cctv.gateway-setup'))->assertOk();
         $zip = new ZipArchive;
@@ -159,13 +159,20 @@ class CctvTest extends TestCase
         $this->assertStringContainsString('authMethod: jwt', $yml);
         $this->assertStringContainsString('authJWTJWKS: '.url('/api/cctv/jwks'), $yml);
         $this->assertStringContainsString('hlsAddress: 127.0.0.1:8888', $yml);
-        $this->assertStringContainsString('rtsp: false', $yml);
         $this->assertStringContainsString('moq: false', $yml);
+        // Converting cameras publish to a local-only RTSP server.
+        $this->assertStringContainsString("rtsp: true
+rtspAddress: 127.0.0.1:8554
+rtspTransports: [tcp]", $yml);
         $this->assertStringContainsString('authJWTIssuer: '.rtrim(config('app.url'), '/'), $yml);
-        $this->assertStringContainsString('source: rtsp://admin:'.CctvGateway::PASSWORD_PLACEHOLDER.'@192.168.1.64:554/h264/ch1/main/av_stream', $yml);
+        // H.265 camera (default): converted by ffmpeg on demand. H.264 camera: passed through.
+        $this->assertStringContainsString('runOnDemand: ffmpeg.exe -hide_banner -loglevel error -rtsp_transport tcp -i rtsp://admin:'.CctvGateway::PASSWORD_PLACEHOLDER.'@192.168.1.64:554/h264/ch1/main/av_stream', $yml);
+        $this->assertStringContainsString('-c:v libx264', $yml);
+        $this->assertStringContainsString('source: rtsp://admin:'.CctvGateway::PASSWORD_PLACEHOLDER.'@192.168.1.65:554/h264/ch1/sub/av_stream', $yml);
         $this->assertStringContainsString("  reception:\n", $yml);
         $this->assertStringContainsString("\r\n", $zip->getFromName('start-gateway.bat'));
         $this->assertNotFalse($zip->getFromName('README.txt'));
+        $this->assertStringContainsString('gateway-service.bat', $zip->getFromName('install-autostart.bat'));
         $zip->close();
     }
 

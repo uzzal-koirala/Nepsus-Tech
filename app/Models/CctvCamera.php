@@ -7,13 +7,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Validation\Rule;
 
-#[Fillable(['name', 'location', 'stream_path', 'camera_ip', 'rtsp_path', 'enabled', 'position', 'last_online_at'])]
+#[Fillable(['name', 'location', 'stream_path', 'camera_ip', 'rtsp_path', 'transcode', 'enabled', 'position', 'last_online_at'])]
 class CctvCamera extends Model
 {
     protected function casts(): array
     {
         return [
             'enabled' => 'boolean',
+            'transcode' => 'boolean',
             'position' => 'integer',
             'last_online_at' => 'datetime',
         ];
@@ -27,6 +28,7 @@ class CctvCamera extends Model
             'stream_path' => ['required', 'string', 'max:64', 'regex:/^[a-z0-9][a-z0-9_-]*$/', Rule::unique('cctv_cameras', 'stream_path')->ignore($ignoreId)],
             'camera_ip' => ['nullable', 'ip'],
             'rtsp_path' => ['required', 'string', 'max:120', 'regex:/^\/[^\s@]*$/'],
+            'transcode' => ['boolean'],
             'enabled' => ['boolean'],
         ];
     }

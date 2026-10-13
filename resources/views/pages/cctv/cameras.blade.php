@@ -49,7 +49,7 @@ new #[Title('CCTV cameras')] class extends Component {
     {
         Gate::authorize('manage-cctv');
         $this->editingId = null;
-        $this->form = ['name' => '', 'location' => '', 'stream_path' => '', 'camera_ip' => '', 'rtsp_path' => '/h264/ch1/main/av_stream', 'enabled' => true];
+        $this->form = ['name' => '', 'location' => '', 'stream_path' => '', 'camera_ip' => '', 'rtsp_path' => '/h264/ch1/main/av_stream', 'transcode' => true, 'enabled' => true];
         $this->resetErrorBag();
         Flux::modal('cctv-camera')->show();
     }
@@ -59,7 +59,7 @@ new #[Title('CCTV cameras')] class extends Component {
         Gate::authorize('manage-cctv');
         $camera = CctvCamera::findOrFail($id);
         $this->editingId = $camera->id;
-        $this->form = $camera->only(['name', 'stream_path', 'rtsp_path', 'enabled']) + ['location' => (string) $camera->location, 'camera_ip' => (string) $camera->camera_ip];
+        $this->form = $camera->only(['name', 'stream_path', 'rtsp_path', 'transcode', 'enabled']) + ['location' => (string) $camera->location, 'camera_ip' => (string) $camera->camera_ip];
         $this->resetErrorBag();
         Flux::modal('cctv-camera')->show();
     }
@@ -285,6 +285,9 @@ new #[Title('CCTV cameras')] class extends Component {
                 <flux:input wire:model="form.camera_ip" :label="__('Camera IP (office network)')" placeholder="192.168.1.64" class:input="font-mono" />
                 <div class="sm:col-span-2">
                     <flux:input wire:model="form.rtsp_path" :label="__('RTSP path')" placeholder="/h264/ch1/main/av_stream" class:input="font-mono" :description="__('The part after :554 in the address that works in VLC. Leave the password out: it goes in the gateway file on the office PC.')" />
+                </div>
+                <div class="sm:col-span-2">
+                    <flux:switch wire:model="form.transcode" :label="__('Convert video so every browser can play it')" align="left" :description="__('Needed for EZVIZ cameras that send H.265 (like the H6c). Uses the office PC's CPU while someone watches. Turn off only if the camera already sends H.264.')" />
                 </div>
                 <div class="sm:col-span-2">
                     <flux:switch wire:model="form.enabled" :label="__('Show on the live dashboard')" align="left" />

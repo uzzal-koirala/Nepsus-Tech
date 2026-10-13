@@ -22,15 +22,30 @@ class CctvGateway
         $origins = collect([$app, rtrim(url('/'), '/')])->unique()->map(fn ($o) => '"'.$o.'"')->join(', ');
         $cameras = CctvCamera::orderBy('position')->orderBy('id')->get();
 
-        $paths = $cameras->map(fn (CctvCamera $c) => implode("\n", [
-            "  # {$c->name}".($c->location ? " ({$c->location})" : '').($c->enabled ? '' : ' - disabled in Nepsus'),
-            "  {$c->stream_path}:",
-            '    source: rtsp://admin:'.self::PASSWORD_PLACEHOLDER.'@'.($c->camera_ip ?: 'CAMERA-IP').':554'.$c->rtsp_path,
-            '    rtspTransport: tcp',
-            '    sourceOnDemand: true           # only connect to the camera while someone is watching',
-            '    sourceOnDemandStartTimeout: 15s',
-            '    sourceOnDemandCloseAfter: 15s',
-        ]))->join("\n\n");
+        $paths = $cameras->map(function (CctvCamera $c) {
+            $camera = 'rtsp://admin:'.self::PASSWORD_PLACEHOLDER.'@'.($c->camera_ip ?: 'CAMERA-IP').':554'.$c->rtsp_path;
+            $head = ["  # {$c->name}".($c->location ? " ({$c->location})" : '').($c->enabled ? '' : ' - disabled in Nepsus'), "  {$c->stream_path}:"];
+
+            return implode("\n", $c->transcode ? [...$head,
+                '    # H.265 -> H.264 (720p) with ffmpeg.exe from this folder, only while someone is watching.',
+                '    runOnDemand: '.self::ffmpeg($camera),
+                '    runOnDemandRestart: true',
+                '    runOnDemandStartTimeout: 20s',
+                '    runOnDemandCloseAfter: 15s',
+            ] : [...$head,
+                '    source: '.$camera,
+                '    rtspTransport: tcp',
+                '    sourceOnDemand: true           # only connect to the camera while someone is watching',
+                '    sourceOnDemandStartTimeout: 15s',
+                '    sourceOnDemandCloseAfter: 15s',
+            ]);
+        })->join("\n\n");
+
+        // ffmpeg hands the converted video to a local RTSP server that only this PC can reach,
+        // so publishing to it needs no token. Viewers always need one.
+        $rtsp = $cameras->contains('transcode', true)
+            ? "rtsp: true\nrtspAddress: 127.0.0.1:8554\nrtspTransports: [tcp]\nauthJWTExclude: [{action: publish}]"
+            : 'rtsp: false';
 
         $generated = now()->format('Y-m-d H:i');
         $version = self::MEDIAMTX_VERSION;
@@ -41,6 +56,8 @@ class CctvGateway
             #
             # 1. Replace every PUT-CAMERA-PASSWORD-HERE below with that camera's password
             #    (EZVIZ: the verification code on the camera label). Keep this file private.
+            #    Special characters must be written as codes: @ = %40  : = %3A  # = %23  / = %2F  % = %25
+            #    e.g. password "@Office5" is written %40Office5
             # 2. Video is only served to people signed in to Nepsus with CCTV access:
             #    every request needs a short-lived token signed by Nepsus.
 
@@ -57,7 +74,7 @@ class CctvGateway
             metrics: false
             pprof: false
             playback: false
-            rtsp: false
+            {$rtsp}
             rtmp: false
             srt: false
             webrtc: false
@@ -74,6 +91,14 @@ class CctvGateway
             paths:
             {$paths}
             YML;
+    }
+
+    /** ffmpeg command that reads the camera and publishes H.264 to the gateway's local RTSP server. */
+    private static function ffmpeg(string $camera): string
+    {
+        return 'ffmpeg.exe -hide_banner -loglevel error -rtsp_transport tcp -i '.$camera
+            .' -map 0:v:0 -map 0:a:0? -c:v libx264 -preset veryfast -tune zerolatency -vf scale=-2:720 -g 50 -bf 0'
+            .' -c:a aac -b:a 64k -ar 44100 -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH';
     }
 
     /** Zip with mediamtx.yml, start and auto-start scripts and a README. Returns the temp path. */
@@ -93,14 +118,26 @@ class CctvGateway
               pause
               exit /b 1
             )
+            findstr /c:"runOnDemand: ffmpeg.exe" mediamtx.yml >nul && if not exist ffmpeg.exe (
+              echo ffmpeg.exe is missing. It converts the camera video so browsers can play it.
+              echo Download FFmpeg for Windows and put ffmpeg.exe in this folder. See README.txt.
+              pause
+              exit /b 1
+            )
             mediamtx.exe mediamtx.yml
             pause
+            BAT));
+        $zip->addFromString('gateway-service.bat', self::crlf(<<<'BAT'
+            @echo off
+            rem Used by the Windows startup task: runs the gateway from this folder (so it finds ffmpeg.exe).
+            cd /d "%~dp0"
+            mediamtx.exe mediamtx.yml
             BAT));
         $zip->addFromString('install-autostart.bat', self::crlf(<<<'BAT'
             @echo off
             rem Starts the gateway in the background every time Windows starts (run as administrator).
             cd /d "%~dp0"
-            schtasks /Create /TN "Nepsus CCTV Gateway" /TR "\"%~dp0mediamtx.exe\" \"%~dp0mediamtx.yml\"" /SC ONSTART /RU SYSTEM /RL HIGHEST /F
+            schtasks /Create /TN "Nepsus CCTV Gateway" /TR "\"%~dp0gateway-service.bat\"" /SC ONSTART /RU SYSTEM /RL HIGHEST /F
             schtasks /Run /TN "Nepsus CCTV Gateway"
             echo The CCTV gateway now starts with Windows.
             pause
@@ -138,10 +175,16 @@ class CctvGateway
                https://github.com/bluenviron/mediamtx/releases
                and copy mediamtx.exe into this folder (keep the mediamtx.yml from Nepsus).
 
+               Also put ffmpeg.exe in this folder (needed when "Convert video" is on for a camera,
+               which EZVIZ H.265 cameras such as the H6c need). Download the Windows "essentials"
+               build from https://www.gyan.dev/ffmpeg/builds/ and copy binfmpeg.exe here.
+
             2. Add the camera passwords
                Open mediamtx.yml in Notepad and replace every PUT-CAMERA-PASSWORD-HERE with
                the camera password (EZVIZ: the verification code on the camera label).
                Use the same RTSP address that works in VLC.
+               Special characters must be written as codes:
+                 @ = %40   : = %3A   # = %23   / = %2F   % = %25   (e.g. @Office5 -> %40Office5)
 
             3. Test it
                Double-click start-gateway.bat. Leave the window open.
