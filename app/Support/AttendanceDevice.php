@@ -58,7 +58,7 @@ class AttendanceDevice
      */
     public function punches(CarbonInterface $from, CarbonInterface $to): array
     {
-        $searchId = (string) Str::uuid();
+        $searchId = substr(str_replace('-', '', (string) Str::uuid()), 0, 16); // the K1A85 rejects IDs of 24+ characters
         $position = 0;
         $punches = [];
 
@@ -70,16 +70,23 @@ class AttendanceDevice
                     'maxResults' => 30,
                     'major' => 0, // all event kinds; only ones with an employee number are kept
                     'minor' => 0,
-                    'startTime' => $from->toIso8601String(),
-                    'endTime' => $to->toIso8601String(),
+                    // A day either side, in case the device's time zone is set wrong; trimmed below.
+                    'startTime' => $from->copy()->subDay()->toIso8601String(),
+                    'endTime' => $to->copy()->addDay()->toIso8601String(),
                 ],
             ])->throw()->json('AcsEvent') ?? [];
 
             $events = $page['InfoList'] ?? [];
             foreach ($events as $event) {
                 $user = trim((string) ($event['employeeNoString'] ?? $event['employeeNo'] ?? ''));
-                if ($user !== '' && ! empty($event['time'])) {
-                    $punches[] = ['user' => $user, 'time' => Carbon::parse($event['time'])->setTimezone(config('app.timezone'))];
+                if ($user === '' || empty($event['time'])) {
+                    continue;
+                }
+                // Use the clock time shown on the device and ignore its zone label: these
+                // devices often ship set to GMT+8 while showing the right local time.
+                $time = Carbon::parse(substr($event['time'], 0, 19), config('app.timezone'));
+                if ($time->between($from, $to)) {
+                    $punches[] = ['user' => $user, 'time' => $time];
                 }
             }
             $position += count($events);

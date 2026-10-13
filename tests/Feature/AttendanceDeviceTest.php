@@ -62,7 +62,9 @@ class AttendanceDeviceTest extends TestCase
                 ['major' => 2, 'minor' => 1024, 'time' => '2026-10-14T09:00:00+05:45'], // door event, no person
             ]]],
             ['AcsEvent' => ['responseStatusStrg' => 'OK', 'InfoList' => [
-                ['major' => 5, 'minor' => 38, 'time' => '2026-10-13T08:58:10+05:45', 'employeeNoString' => '12'],
+                // Device left on GMT+8: the clock time it shows is still Nepal time.
+                ['major' => 5, 'minor' => 38, 'time' => '2026-10-13T08:58:10+08:00', 'employeeNoString' => '12'],
+                ['major' => 5, 'minor' => 38, 'time' => '2026-10-11T09:00:00+05:45', 'employeeNoString' => '12'], // outside the 2 days asked for
             ]]],
         ];
 
@@ -80,6 +82,7 @@ class AttendanceDeviceTest extends TestCase
         $this->assertSame(2, $result['marked']);
         $this->assertSame(['2026-10-13' => '08:58', '2026-10-14' => '09:12'], $emp->attendances()->orderBy('date')->get()->mapWithKeys(fn ($a) => [$a->date->toDateString() => $a->check_in])->all());
         Http::assertSent(fn (Request $r) => str_starts_with($r->url(), 'http://192.168.1.64/ISAPI/AccessControl/AcsEvent') && $r['AcsEventCond']['searchResultPosition'] === 2);
+        Http::assertSent(fn (Request $r) => isset($r['AcsEventCond']) && strlen($r['AcsEventCond']['searchID']) <= 20);
         $this->assertNotEmpty(Setting::get('device_last_sync'));
         $this->assertSame('', Setting::get('device_last_error'));
     }
