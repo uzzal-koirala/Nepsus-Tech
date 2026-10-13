@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Storage;
 Route::view('/', 'welcome')->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::view('dashboard', 'dashboard')->name('dashboard');
+    Route::livewire('dashboard', 'pages::dashboard')->name('dashboard');
     Route::livewire('clients', 'pages::clients')->name('clients.index');
     Route::livewire('clients/{client}', 'pages::client-profile')->name('clients.show');
     Route::livewire('packages', 'pages::packages')->name('packages.index');
