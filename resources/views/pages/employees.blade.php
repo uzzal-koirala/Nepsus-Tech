@@ -583,7 +583,7 @@ new #[Title('Employees')] class extends Component {
     @endif
 
     {{-- Add / edit --}}
-    <flux:modal name="employee-form" class="w-full max-w-lg">
+    <flux:modal name="employee-form" class="w-full max-w-lg overflow-visible!">
         <form wire:submit="save" class="flex flex-col gap-5">
             <div>
                 <flux:heading size="lg">{{ $editingId ? __('Edit employee') : __('Add employee') }}</flux:heading>
