@@ -109,8 +109,11 @@ document.addEventListener('alpine:init', () => {
         },
 
         get cells() {
+            // Nothing to draw until the picker has been opened on a supported year.
+            const length = calendar[this.viewY]?.[this.viewM];
+            if (!length) return [];
+
             const offset = new Date(bsToAd(this.viewY, this.viewM, 1) + 'T00:00:00Z').getUTCDay();
-            const length = calendar[this.viewY][this.viewM];
 
             return [...Array(offset).fill(null), ...Array.from({ length }, (_, i) => i + 1)];
         },
