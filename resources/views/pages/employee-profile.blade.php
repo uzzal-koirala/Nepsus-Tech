@@ -664,157 +664,296 @@ new #[Title('Employee')] class extends Component {
             $isThisMonth = [$this->calYear, $this->calMonth] === array_slice(NepaliDate::fromAd(today()), 0, 2);
         @endphp
         <div class="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
-            {{-- Attendance calendar --}}
-            <section class="{{ $panel }} min-w-0 overflow-hidden">
-                <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-                    <div class="flex items-center gap-3">
-                        <span class="{{ $iconTile }} bg-brand-500 text-white shadow-md shadow-brand-500/30"><flux:icon.calendar-days variant="mini" class="size-4.5" /></span>
-                        <div>
-                            <h2 class="text-lg leading-tight font-semibold tracking-tight text-zinc-900 dark:text-white">{{ $cal['label'] }}</h2>
-                            <p class="text-xs text-zinc-500">{{ __('Attendance') }} · {{ $cal['range'] }}</p>
+            <div class="flex min-w-0 flex-col gap-6">
+                {{-- Attendance calendar --}}
+                <section class="{{ $panel }} min-w-0 overflow-hidden">
+                    <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+                        <div class="flex items-center gap-3">
+                            <span class="{{ $iconTile }} bg-brand-500 text-white shadow-md shadow-brand-500/30"><flux:icon.calendar-days variant="mini" class="size-4.5" /></span>
+                            <div>
+                                <h2 class="text-lg leading-tight font-semibold tracking-tight text-zinc-900 dark:text-white">{{ $cal['label'] }}</h2>
+                                <p class="text-xs text-zinc-500">{{ __('Attendance') }} · {{ $cal['range'] }}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="flex items-center rounded-lg ring-1 ring-zinc-200 dark:ring-white/10">
+                                <button type="button" wire:click="shiftMonth(-1)" class="flex size-9 items-center justify-center rounded-s-lg text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:hover:bg-white/5 dark:hover:text-white" aria-label="{{ __('Previous month') }}"><flux:icon.chevron-left variant="mini" class="size-4" /></button>
+                                <button type="button" wire:click="goToday" @class(['h-9 border-x border-zinc-200 px-3 text-sm font-medium dark:border-white/10', 'text-brand-600 dark:text-brand-300' => $isThisMonth, 'text-zinc-600 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-white/5' => ! $isThisMonth])>{{ __('Today') }}</button>
+                                <button type="button" wire:click="shiftMonth(1)" class="flex size-9 items-center justify-center rounded-e-lg text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:hover:bg-white/5 dark:hover:text-white" aria-label="{{ __('Next month') }}"><flux:icon.chevron-right variant="mini" class="size-4" /></button>
+                            </div>
+                            <flux:button size="sm" icon="check-circle" wire:click="markWorkdaysPresent" wire:confirm="{{ __('Mark every unmarked working day this month (up to today) as present?') }}">{{ __('Mark workdays present') }}</flux:button>
                         </div>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <div class="flex items-center rounded-lg ring-1 ring-zinc-200 dark:ring-white/10">
-                            <button type="button" wire:click="shiftMonth(-1)" class="flex size-9 items-center justify-center rounded-s-lg text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:hover:bg-white/5 dark:hover:text-white" aria-label="{{ __('Previous month') }}"><flux:icon.chevron-left variant="mini" class="size-4" /></button>
-                            <button type="button" wire:click="goToday" @class(['h-9 border-x border-zinc-200 px-3 text-sm font-medium dark:border-white/10', 'text-brand-600 dark:text-brand-300' => $isThisMonth, 'text-zinc-600 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-white/5' => ! $isThisMonth])>{{ __('Today') }}</button>
-                            <button type="button" wire:click="shiftMonth(1)" class="flex size-9 items-center justify-center rounded-e-lg text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:hover:bg-white/5 dark:hover:text-white" aria-label="{{ __('Next month') }}"><flux:icon.chevron-right variant="mini" class="size-4" /></button>
-                        </div>
-                        <flux:button size="sm" icon="check-circle" wire:click="markWorkdaysPresent" wire:confirm="{{ __('Mark every unmarked working day this month (up to today) as present?') }}">{{ __('Mark workdays present') }}</flux:button>
-                    </div>
-                </div>
 
-                {{-- Month summary --}}
-                <div class="grid grid-cols-3 gap-2 border-y border-zinc-100 bg-zinc-50/60 px-5 py-3 sm:grid-cols-6 dark:border-white/5 dark:bg-white/[0.02]">
-                    @foreach (Attendance::STATUSES as $key => $st)
+                    {{-- Month summary --}}
+                    <div class="grid grid-cols-3 gap-2 border-y border-zinc-100 bg-zinc-50/60 px-5 py-3 sm:grid-cols-6 dark:border-white/5 dark:bg-white/[0.02]">
+                        @foreach (Attendance::STATUSES as $key => $st)
+                            <div class="flex items-center gap-2 rounded-lg bg-white px-2.5 py-2 ring-1 ring-zinc-200/70 dark:bg-zinc-950 dark:ring-white/10">
+                                <span class="{{ $markTone[$key]['dot'] }} size-2 shrink-0 rounded-full"></span>
+                                <span class="min-w-0 flex-1 truncate text-xs text-zinc-500">{{ __($st['label']) }}</span>
+                                <span class="text-sm font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $cal['counts'][$key] }}</span>
+                            </div>
+                        @endforeach
                         <div class="flex items-center gap-2 rounded-lg bg-white px-2.5 py-2 ring-1 ring-zinc-200/70 dark:bg-zinc-950 dark:ring-white/10">
-                            <span class="{{ $markTone[$key]['dot'] }} size-2 shrink-0 rounded-full"></span>
-                            <span class="min-w-0 flex-1 truncate text-xs text-zinc-500">{{ __($st['label']) }}</span>
-                            <span class="text-sm font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $cal['counts'][$key] }}</span>
+                            <flux:icon.chart-pie variant="micro" class="size-3.5 shrink-0 text-brand-500" />
+                            <span class="min-w-0 flex-1 truncate text-xs text-zinc-500">{{ __('Attendance') }}</span>
+                            <span class="text-sm font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $cal['rate'] !== null ? $cal['rate'].'%' : '–' }}</span>
                         </div>
-                    @endforeach
-                    <div class="flex items-center gap-2 rounded-lg bg-white px-2.5 py-2 ring-1 ring-zinc-200/70 dark:bg-zinc-950 dark:ring-white/10">
-                        <flux:icon.chart-pie variant="micro" class="size-3.5 shrink-0 text-brand-500" />
-                        <span class="min-w-0 flex-1 truncate text-xs text-zinc-500">{{ __('Attendance') }}</span>
-                        <span class="text-sm font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $cal['rate'] !== null ? $cal['rate'].'%' : '–' }}</span>
+                        <div class="flex items-center gap-2 rounded-lg bg-white px-2.5 py-2 ring-1 ring-zinc-200/70 dark:bg-zinc-950 dark:ring-white/10">
+                            <flux:icon.check-badge variant="micro" class="size-3.5 shrink-0 text-violet-500" />
+                            <span class="min-w-0 flex-1 truncate text-xs text-zinc-500">{{ __('Work done') }}</span>
+                            <span class="text-sm font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $cal['done'] }}</span>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2 rounded-lg bg-white px-2.5 py-2 ring-1 ring-zinc-200/70 dark:bg-zinc-950 dark:ring-white/10">
-                        <flux:icon.check-badge variant="micro" class="size-3.5 shrink-0 text-violet-500" />
-                        <span class="min-w-0 flex-1 truncate text-xs text-zinc-500">{{ __('Work done') }}</span>
-                        <span class="text-sm font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $cal['done'] }}</span>
-                    </div>
-                </div>
 
-                {{-- Grid --}}
-                <div class="overflow-x-auto">
-                    <div class="min-w-[42rem]">
-                        <div class="grid grid-cols-7 border-b border-zinc-100 dark:border-white/5">
-                            @foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $i => $wd)
-                                <div @class(['px-2 py-2 text-center text-[0.6875rem] font-semibold tracking-wider uppercase', 'text-rose-500' => $i === 6, 'text-zinc-400' => $i !== 6])>{{ __($wd) }}</div>
+                    {{-- Grid --}}
+                    <div class="overflow-x-auto">
+                        <div class="min-w-[42rem]">
+                            <div class="grid grid-cols-7 border-b border-zinc-100 dark:border-white/5">
+                                @foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $i => $wd)
+                                    <div @class(['px-2 py-2 text-center text-[0.6875rem] font-semibold tracking-wider uppercase', 'text-rose-500' => $i === 6, 'text-zinc-400' => $i !== 6])>{{ __($wd) }}</div>
+                                @endforeach
+                            </div>
+                            @foreach ($cal['weeks'] as $week)
+                                <div class="grid grid-cols-7 border-b border-zinc-100 last:border-0 dark:border-white/5">
+                                    @foreach ($week as $i => $cell)
+                                        @if ($cell === null)
+                                            <div class="min-h-24 border-e border-zinc-100 bg-zinc-50/50 last:border-e-0 dark:border-white/5 dark:bg-white/[0.01]"></div>
+                                        @else
+                                            @php
+                                                $key = $cell['ad']->toDateString();
+                                                $isToday = $key === $todayKey;
+                                                $isFuture = $cell['ad']->isAfter(today());
+                                                $mark = $cell['status'];
+                                                $isSalaryDay = $salaryDayNum === $cell['day'] && $e->status !== 'inactive';
+                                            @endphp
+                                            @if ($cell['ad']->isHoliday())
+                                                <div wire:key="att-{{ $key }}" @class(['relative flex min-h-24 flex-col gap-1.5 border-e border-zinc-100 p-2 last:border-e-0 dark:border-white/5', $salaryCell['cell'] => $isSalaryDay, 'bg-rose-50/40 dark:bg-rose-500/[0.04]' => ! $isSalaryDay])>
+                                                    <span class="flex items-center justify-between">
+                                                        <span @class(['flex size-6 items-center justify-center rounded-full text-xs font-semibold tabular-nums', 'bg-brand-500 text-white' => $isToday, 'text-rose-500' => ! $isToday])>{{ $cell['day'] }}</span>
+                                                        @if ($isSalaryDay)
+                                                            <span class="{{ $salaryCell['badge'] }} flex size-6 items-center justify-center rounded-full text-white shadow-md ring-2 ring-white dark:ring-zinc-900" title="{{ __('Salary day') }}"><flux:icon.banknotes variant="micro" class="size-3.5" /></span>
+                                                        @else
+                                                            <span class="text-[0.625rem] text-zinc-300 tabular-nums dark:text-zinc-600">{{ $cell['ad']->format('j') }}</span>
+                                                        @endif
+                                                    </span>
+                                                    <span class="inline-flex w-fit items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"><flux:icon.sparkles variant="micro" class="size-3" />{{ __('Holiday') }}</span>
+                                                    @if ($isSalaryDay)
+                                                        <span class="{{ $salaryCell['tag'] }} inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-bold whitespace-nowrap shadow-sm">{{ $salaryTag[1] }}</span>
+                                                        @if ($salaryOf)
+                                                            <span class="text-[0.6875rem] font-semibold text-zinc-700 tabular-nums dark:text-zinc-200">{{ $money($periodPaid) }} <span class="font-normal text-zinc-400">/ {{ number_format($salaryOf) }}</span></span>
+                                                        @endif
+                                                    @endif
+                                                    @if (isset($paidOn[$cell['ad']->toDateString()]))
+                                                        <span class="inline-flex w-fit items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.arrow-up-right variant="micro" class="size-3" />{{ __('Paid :amount', ['amount' => $money($paidOn[$cell['ad']->toDateString()]->sum('amount'))]) }}</span>
+                                                    @endif
+                                                    @if ($cell['done']->isNotEmpty())
+                                                        <span class="mt-auto inline-flex w-fit items-center gap-1 rounded-md bg-violet-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-violet-700 dark:bg-violet-500/10 dark:text-violet-300" title="{{ $cell['done']->pluck('title')->implode(', ') }}"><flux:icon.check variant="micro" class="size-3" />{{ trans_choice(':count task done|:count tasks done', $cell['done']->count()) }}</span>
+                                                    @endif
+                                                </div>
+                                            @else
+                                            <flux:dropdown wire:key="att-{{ $key }}" class="contents">
+                                                <button type="button" @class([
+                                                    'group relative flex min-h-24 w-full flex-col gap-1.5 border-e border-zinc-100 p-2 text-start transition last:border-e-0 hover:ring-2 hover:ring-brand-300 hover:ring-inset dark:border-white/5',
+                                                    $salaryCell['cell'] => $isSalaryDay,
+                                                    $markTone[$mark]['cell'] ?? '' => $mark && ! $isSalaryDay,
+                                                    'bg-rose-50/30 dark:bg-rose-500/[0.03]' => ! $mark && ! $isSalaryDay && $i === 6,
+                                                ]) aria-label="{{ __(':date, :status. Click to change.', ['date' => $cell['day'].' '.$cal['label'], 'status' => $mark ? __(Attendance::STATUSES[$mark]['label']) : __('not marked')]) }}">
+                                                    <span class="flex items-center justify-between">
+                                                        <span @class([
+                                                            'flex size-6 items-center justify-center rounded-full text-xs font-semibold tabular-nums',
+                                                            'bg-brand-500 text-white shadow-sm shadow-brand-500/40' => $isToday,
+                                                            'text-zinc-400' => ! $isToday && $isFuture,
+                                                            'text-zinc-800 dark:text-zinc-100' => ! $isToday && ! $isFuture,
+                                                        ])>{{ $cell['day'] }}</span>
+                                                        @if ($isSalaryDay)
+                                                            <span class="{{ $salaryCell['badge'] }} flex size-6 items-center justify-center rounded-full text-white shadow-md ring-2 ring-white dark:ring-zinc-900" title="{{ __('Salary day') }}"><flux:icon.banknotes variant="micro" class="size-3.5" /></span>
+                                                        @else
+                                                            <span class="text-[0.625rem] text-zinc-300 tabular-nums dark:text-zinc-600">{{ $cell['ad']->format('j') }}</span>
+                                                        @endif
+                                                    </span>
+                                                    @if ($mark)
+                                                        <span class="{{ $markTone[$mark]['pill'] }} inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-semibold" @if ($cell['note']) title="{{ $cell['note'] }}" @endif>
+                                                            <flux:icon :icon="Attendance::STATUSES[$mark]['icon']" variant="micro" class="size-3" />{{ __(Attendance::STATUSES[$mark]['label']) }}
+                                                        </span>
+                                                        @if ($mark === 'leave' && $cell['note'])
+                                                            <span class="line-clamp-2 text-[0.6875rem] leading-snug text-sky-800 dark:text-sky-200" title="{{ $cell['note'] }}">{{ $cell['note'] }}</span>
+                                                        @endif
+                                                    @elseif (! $isFuture && $i !== 6)
+                                                        <span class="text-[0.6875rem] text-zinc-300 opacity-0 transition group-hover:opacity-100 dark:text-zinc-600">{{ __('Mark') }}</span>
+                                                    @endif
+                                                    @if ($isSalaryDay)
+                                                        <span class="{{ $salaryCell['tag'] }} inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-bold whitespace-nowrap shadow-sm">{{ $salaryTag[1] }}</span>
+                                                        @if ($salaryOf)
+                                                            <span class="text-[0.6875rem] font-semibold text-zinc-700 tabular-nums dark:text-zinc-200">{{ $money($periodPaid) }} <span class="font-normal text-zinc-400">/ {{ number_format($salaryOf) }}</span></span>
+                                                        @endif
+                                                    @endif
+                                                    @if (isset($paidOn[$cell['ad']->toDateString()]))
+                                                        <span class="inline-flex w-fit items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.arrow-up-right variant="micro" class="size-3" />{{ __('Paid :amount', ['amount' => $money($paidOn[$cell['ad']->toDateString()]->sum('amount'))]) }}</span>
+                                                    @endif
+                                                    @if ($cell['done']->isNotEmpty())
+                                                        <span class="mt-auto inline-flex w-fit items-center gap-1 rounded-md bg-violet-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-violet-700 dark:bg-violet-500/10 dark:text-violet-300" title="{{ $cell['done']->pluck('title')->implode(', ') }}">
+                                                            <flux:icon.check variant="micro" class="size-3" />{{ trans_choice(':count task done|:count tasks done', $cell['done']->count()) }}
+                                                        </span>
+                                                    @endif
+                                                </button>
+                                                <flux:menu>
+                                                    <flux:menu.heading>{{ $cell['day'] }} {{ $cal['label'] }}</flux:menu.heading>
+                                                    @foreach (Attendance::STATUSES as $sk => $sv)
+                                                        <flux:menu.item :icon="$sv['icon']" wire:click="markDay('{{ $key }}', '{{ $sk }}')">{{ __($sv['label']) }}</flux:menu.item>
+                                                    @endforeach
+                                                    @if ($mark)
+                                                        <flux:menu.separator />
+                                                        <flux:menu.item icon="x-mark" wire:click="markDay('{{ $key }}', '')">{{ __('Clear') }}</flux:menu.item>
+                                                    @endif
+                                                </flux:menu>
+                                            </flux:dropdown>
+                                            @endif
+                                        @endif
+                                    @endforeach
+                                </div>
                             @endforeach
                         </div>
-                        @foreach ($cal['weeks'] as $week)
-                            <div class="grid grid-cols-7 border-b border-zinc-100 last:border-0 dark:border-white/5">
-                                @foreach ($week as $i => $cell)
-                                    @if ($cell === null)
-                                        <div class="min-h-24 border-e border-zinc-100 bg-zinc-50/50 last:border-e-0 dark:border-white/5 dark:bg-white/[0.01]"></div>
-                                    @else
-                                        @php
-                                            $key = $cell['ad']->toDateString();
-                                            $isToday = $key === $todayKey;
-                                            $isFuture = $cell['ad']->isAfter(today());
-                                            $mark = $cell['status'];
-                                            $isSalaryDay = $salaryDayNum === $cell['day'] && $e->status !== 'inactive';
-                                        @endphp
-                                        @if ($cell['ad']->isHoliday())
-                                            <div wire:key="att-{{ $key }}" @class(['relative flex min-h-24 flex-col gap-1.5 border-e border-zinc-100 p-2 last:border-e-0 dark:border-white/5', $salaryCell['cell'] => $isSalaryDay, 'bg-rose-50/40 dark:bg-rose-500/[0.04]' => ! $isSalaryDay])>
-                                                <span class="flex items-center justify-between">
-                                                    <span @class(['flex size-6 items-center justify-center rounded-full text-xs font-semibold tabular-nums', 'bg-brand-500 text-white' => $isToday, 'text-rose-500' => ! $isToday])>{{ $cell['day'] }}</span>
-                                                    @if ($isSalaryDay)
-                                                        <span class="{{ $salaryCell['badge'] }} flex size-6 items-center justify-center rounded-full text-white shadow-md ring-2 ring-white dark:ring-zinc-900" title="{{ __('Salary day') }}"><flux:icon.banknotes variant="micro" class="size-3.5" /></span>
-                                                    @else
-                                                        <span class="text-[0.625rem] text-zinc-300 tabular-nums dark:text-zinc-600">{{ $cell['ad']->format('j') }}</span>
-                                                    @endif
-                                                </span>
-                                                <span class="inline-flex w-fit items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"><flux:icon.sparkles variant="micro" class="size-3" />{{ __('Holiday') }}</span>
-                                                @if ($isSalaryDay)
-                                                    <span class="{{ $salaryCell['tag'] }} inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-bold whitespace-nowrap shadow-sm">{{ $salaryTag[1] }}</span>
-                                                    @if ($salaryOf)
-                                                        <span class="text-[0.6875rem] font-semibold text-zinc-700 tabular-nums dark:text-zinc-200">{{ $money($periodPaid) }} <span class="font-normal text-zinc-400">/ {{ number_format($salaryOf) }}</span></span>
-                                                    @endif
-                                                @endif
-                                                @if (isset($paidOn[$cell['ad']->toDateString()]))
-                                                    <span class="inline-flex w-fit items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.arrow-up-right variant="micro" class="size-3" />{{ __('Paid :amount', ['amount' => $money($paidOn[$cell['ad']->toDateString()]->sum('amount'))]) }}</span>
-                                                @endif
-                                                @if ($cell['done']->isNotEmpty())
-                                                    <span class="mt-auto inline-flex w-fit items-center gap-1 rounded-md bg-violet-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-violet-700 dark:bg-violet-500/10 dark:text-violet-300" title="{{ $cell['done']->pluck('title')->implode(', ') }}"><flux:icon.check variant="micro" class="size-3" />{{ trans_choice(':count task done|:count tasks done', $cell['done']->count()) }}</span>
-                                                @endif
-                                            </div>
-                                        @else
-                                        <flux:dropdown wire:key="att-{{ $key }}" class="contents">
-                                            <button type="button" @class([
-                                                'group relative flex min-h-24 w-full flex-col gap-1.5 border-e border-zinc-100 p-2 text-start transition last:border-e-0 hover:ring-2 hover:ring-brand-300 hover:ring-inset dark:border-white/5',
-                                                $salaryCell['cell'] => $isSalaryDay,
-                                                $markTone[$mark]['cell'] ?? '' => $mark && ! $isSalaryDay,
-                                                'bg-rose-50/30 dark:bg-rose-500/[0.03]' => ! $mark && ! $isSalaryDay && $i === 6,
-                                            ]) aria-label="{{ __(':date, :status. Click to change.', ['date' => $cell['day'].' '.$cal['label'], 'status' => $mark ? __(Attendance::STATUSES[$mark]['label']) : __('not marked')]) }}">
-                                                <span class="flex items-center justify-between">
-                                                    <span @class([
-                                                        'flex size-6 items-center justify-center rounded-full text-xs font-semibold tabular-nums',
-                                                        'bg-brand-500 text-white shadow-sm shadow-brand-500/40' => $isToday,
-                                                        'text-zinc-400' => ! $isToday && $isFuture,
-                                                        'text-zinc-800 dark:text-zinc-100' => ! $isToday && ! $isFuture,
-                                                    ])>{{ $cell['day'] }}</span>
-                                                    @if ($isSalaryDay)
-                                                        <span class="{{ $salaryCell['badge'] }} flex size-6 items-center justify-center rounded-full text-white shadow-md ring-2 ring-white dark:ring-zinc-900" title="{{ __('Salary day') }}"><flux:icon.banknotes variant="micro" class="size-3.5" /></span>
-                                                    @else
-                                                        <span class="text-[0.625rem] text-zinc-300 tabular-nums dark:text-zinc-600">{{ $cell['ad']->format('j') }}</span>
-                                                    @endif
-                                                </span>
-                                                @if ($mark)
-                                                    <span class="{{ $markTone[$mark]['pill'] }} inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-semibold" @if ($cell['note']) title="{{ $cell['note'] }}" @endif>
-                                                        <flux:icon :icon="Attendance::STATUSES[$mark]['icon']" variant="micro" class="size-3" />{{ __(Attendance::STATUSES[$mark]['label']) }}
-                                                    </span>
-                                                    @if ($mark === 'leave' && $cell['note'])
-                                                        <span class="line-clamp-2 text-[0.6875rem] leading-snug text-sky-800 dark:text-sky-200" title="{{ $cell['note'] }}">{{ $cell['note'] }}</span>
-                                                    @endif
-                                                @elseif (! $isFuture && $i !== 6)
-                                                    <span class="text-[0.6875rem] text-zinc-300 opacity-0 transition group-hover:opacity-100 dark:text-zinc-600">{{ __('Mark') }}</span>
-                                                @endif
-                                                @if ($isSalaryDay)
-                                                    <span class="{{ $salaryCell['tag'] }} inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-bold whitespace-nowrap shadow-sm">{{ $salaryTag[1] }}</span>
-                                                    @if ($salaryOf)
-                                                        <span class="text-[0.6875rem] font-semibold text-zinc-700 tabular-nums dark:text-zinc-200">{{ $money($periodPaid) }} <span class="font-normal text-zinc-400">/ {{ number_format($salaryOf) }}</span></span>
-                                                    @endif
-                                                @endif
-                                                @if (isset($paidOn[$cell['ad']->toDateString()]))
-                                                    <span class="inline-flex w-fit items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.arrow-up-right variant="micro" class="size-3" />{{ __('Paid :amount', ['amount' => $money($paidOn[$cell['ad']->toDateString()]->sum('amount'))]) }}</span>
-                                                @endif
-                                                @if ($cell['done']->isNotEmpty())
-                                                    <span class="mt-auto inline-flex w-fit items-center gap-1 rounded-md bg-violet-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-violet-700 dark:bg-violet-500/10 dark:text-violet-300" title="{{ $cell['done']->pluck('title')->implode(', ') }}">
-                                                        <flux:icon.check variant="micro" class="size-3" />{{ trans_choice(':count task done|:count tasks done', $cell['done']->count()) }}
-                                                    </span>
-                                                @endif
-                                            </button>
-                                            <flux:menu>
-                                                <flux:menu.heading>{{ $cell['day'] }} {{ $cal['label'] }}</flux:menu.heading>
-                                                @foreach (Attendance::STATUSES as $sk => $sv)
-                                                    <flux:menu.item :icon="$sv['icon']" wire:click="markDay('{{ $key }}', '{{ $sk }}')">{{ __($sv['label']) }}</flux:menu.item>
-                                                @endforeach
-                                                @if ($mark)
-                                                    <flux:menu.separator />
-                                                    <flux:menu.item icon="x-mark" wire:click="markDay('{{ $key }}', '')">{{ __('Clear') }}</flux:menu.item>
-                                                @endif
-                                            </flux:menu>
-                                        </flux:dropdown>
-                                        @endif
-                                    @endif
-                                @endforeach
+                    </div>
+                </section>
+
+                {{-- Salary history --}}
+                @php
+                    $salaryOf = (float) $e->salary;
+                    $byPeriod = $payments->groupBy('period');
+                    $historyRows = collect($months)->reverse()->values()->map(function ($m) use ($byPeriod, $salaryOf, $e) {
+                        [$y, $mo] = array_map('intval', explode('-', $m['period']));
+                        $rows = ($byPeriod[$m['period']] ?? collect())->sortBy('paid_on')->values();
+                        $dueDay = $e->salary_day ? NepaliDate::toAd($y, $mo, min($e->salary_day, NepaliDate::monthLength($y, $mo))) : NepaliDate::toAd($y, $mo, NepaliDate::monthLength($y, $mo));
+                        $state = match (true) {
+                            $salaryOf > 0 && $m['paid'] >= $salaryOf => 'paid',
+                            $m['paid'] > 0 => 'part',
+                            $dueDay->isAfter(today()) => 'upcoming',
+                            default => 'unpaid',
+                        };
+
+                        return $m + ['rows' => $rows, 'due' => $dueDay, 'state' => $state, 'balance' => max(0, $salaryOf - $m['paid'])];
+                    });
+                    $paidYear = (float) collect($months)->sum('paid');
+                    $owed = (float) $historyRows->whereIn('state', ['part', 'unpaid'])->sum('balance');
+                    $avg = count($months) ? $paidYear / count($months) : 0;
+                    $states = [
+                        'paid' => ['label' => __('Paid'), 'icon' => 'check-circle', 'pill' => 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20', 'bar' => 'bg-emerald-500', 'tile' => 'bg-emerald-500 text-white'],
+                        'part' => ['label' => __('Part paid'), 'icon' => 'clock', 'pill' => 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20', 'bar' => 'bg-amber-400', 'tile' => 'bg-amber-400 text-amber-950'],
+                        'unpaid' => ['label' => __('Unpaid'), 'icon' => 'exclamation-circle', 'pill' => 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20', 'bar' => 'bg-rose-500', 'tile' => 'bg-rose-500 text-white'],
+                        'upcoming' => ['label' => __('Upcoming'), 'icon' => 'calendar', 'pill' => 'bg-zinc-100 text-zinc-600 ring-zinc-200 dark:bg-white/10 dark:text-zinc-300 dark:ring-white/10', 'bar' => 'bg-brand-500', 'tile' => 'bg-zinc-200 text-zinc-600 dark:bg-white/10 dark:text-zinc-300'],
+                    ];
+                @endphp
+                <section class="{{ $panel }} min-w-0 overflow-hidden" data-test="salary-history">
+                    <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+                        <div class="flex items-center gap-3">
+                            <span class="{{ $iconTile }} bg-emerald-500 text-white shadow-md shadow-emerald-500/30"><flux:icon.banknotes variant="mini" class="size-4.5" /></span>
+                            <div>
+                                <h2 class="text-lg leading-tight font-semibold tracking-tight text-zinc-900 dark:text-white">{{ __('Salary history') }}</h2>
+                                <p class="text-xs text-zinc-500">{{ __('Last :count months', ['count' => count($months)]) }}@if ($e->salary) · {{ __(':amount a month', ['amount' => $money($e->salary)]) }}@endif</p>
+                            </div>
+                        </div>
+                        <flux:button size="sm" variant="primary" icon="plus" wire:click="openPay">{{ __('Record payment') }}</flux:button>
+                    </div>
+
+                    {{-- Summary --}}
+                    <div class="grid grid-cols-2 gap-px border-y border-zinc-100 bg-zinc-100 sm:grid-cols-4 dark:border-white/5 dark:bg-white/5">
+                        @foreach ([
+                            [__('Paid'), $money($paidYear), 'text-zinc-900 dark:text-white'],
+                            [__('Months fully paid'), $paidMonths.' / '.count($months), 'text-emerald-700 dark:text-emerald-300'],
+                            [__('Still owed'), $money($owed), $owed > 0 ? 'text-rose-700 dark:text-rose-300' : 'text-zinc-900 dark:text-white'],
+                            [__('Average a month'), $money(round($avg)), 'text-zinc-900 dark:text-white'],
+                        ] as [$sLabel, $sValue, $sTone])
+                            <div class="bg-white px-5 py-3.5 dark:bg-zinc-950">
+                                <p class="text-xs text-zinc-500">{{ $sLabel }}</p>
+                                <p class="{{ $sTone }} mt-0.5 text-lg font-semibold tracking-tight tabular-nums">{{ $sValue }}</p>
                             </div>
                         @endforeach
                     </div>
-                </div>
-            </section>
+
+                    @if ($historyRows->isEmpty())
+                        <p class="px-5 py-10 text-center text-sm text-zinc-500">{{ __('Their first salary month has not started yet.') }}</p>
+                    @else
+                        <ul class="divide-y divide-zinc-100 dark:divide-white/5">
+                            @foreach ($historyRows as $h)
+                                @php
+                                    $st = $states[$h['state']];
+                                    [, $hm] = explode('-', $h['period']);
+                                    $isCurrent = $h['period'] === $this->period;
+                                @endphp
+                                <li wire:key="history-{{ $h['period'] }}" x-data="{ open: {{ $isCurrent ? 'true' : 'false' }} }">
+                                    <button type="button" @click="open = ! open" class="flex w-full items-center gap-4 px-5 py-3.5 text-start transition hover:bg-zinc-50/70 dark:hover:bg-white/[0.02]" :aria-expanded="open">
+                                        {{-- Month tile --}}
+                                        <span class="{{ $st['tile'] }} flex size-11 shrink-0 flex-col items-center justify-center rounded-xl leading-none shadow-sm">
+                                            <span class="text-[0.625rem] font-semibold uppercase opacity-80">{{ mb_substr(NepaliDate::MONTHS[(int) $hm - 1], 0, 3) }}</span>
+                                            <flux:icon :icon="$st['icon']" variant="micro" class="mt-1 size-3.5" />
+                                        </span>
+
+                                        <div class="min-w-0 flex-1">
+                                            <p class="flex items-center gap-2 text-sm font-semibold text-zinc-900 dark:text-white">
+                                                {{ NepaliDate::periodLabel($h['period']) }}
+                                                @if ($isCurrent)
+                                                    <span class="rounded bg-brand-50 px-1.5 py-px text-[0.625rem] font-semibold text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">{{ __('This month') }}</span>
+                                                @endif
+                                            </p>
+                                            <p class="mt-0.5 text-xs text-zinc-500">
+                                                {{ trans_choice(':count payment|:count payments', $h['rows']->count()) }}
+                                                · {{ $h['state'] === 'paid' && $h['rows']->isNotEmpty() ? __('Paid :date', ['date' => $h['rows']->last()->paid_on->toNepali(withYear: false)]) : __('Due :date', ['date' => $h['due']->toNepali(withYear: false)]) }}
+                                            </p>
+                                            @if ($salaryOf > 0)
+                                                <div class="mt-2 h-1.5 max-w-xs overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div class="{{ $st['bar'] }} h-full rounded-full" style="width: {{ $h['percent'] }}%"></div></div>
+                                            @endif
+                                        </div>
+
+                                        <div class="hidden w-28 shrink-0 text-end sm:block">
+                                            <p class="text-[0.6875rem] text-zinc-500">{{ __('Paid') }}</p>
+                                            <p class="text-sm font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $money($h['paid']) }}</p>
+                                        </div>
+                                        <div class="hidden w-28 shrink-0 text-end md:block">
+                                            <p class="text-[0.6875rem] text-zinc-500">{{ __('Balance') }}</p>
+                                            <p @class(['text-sm font-semibold tabular-nums', 'text-rose-600 dark:text-rose-400' => $h['balance'] > 0 && $h['state'] !== 'upcoming', 'text-zinc-400' => $h['balance'] == 0 || $h['state'] === 'upcoming'])>{{ $money($h['balance']) }}</p>
+                                        </div>
+                                        <span class="{{ $st['pill'] }} inline-flex w-24 shrink-0 items-center justify-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ring-1 ring-inset">
+                                            <flux:icon :icon="$st['icon']" variant="micro" class="size-3.5" />{{ $st['label'] }}
+                                        </span>
+                                        <flux:icon.chevron-down variant="micro" class="size-4 shrink-0 text-zinc-400 transition" ::class="open && 'rotate-180'" />
+                                    </button>
+
+                                    {{-- Payments in this month --}}
+                                    <div x-show="open" x-collapse>
+                                        <div class="bg-zinc-50/70 px-5 py-3 sm:ps-20 dark:bg-white/[0.02]">
+                                            @forelse ($h['rows'] as $sp)
+                                                <div wire:key="history-sp-{{ $sp->id }}" class="group flex items-center gap-3 py-2 text-sm">
+                                                    <span class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"><flux:icon.arrow-up-right variant="micro" class="size-3.5" /></span>
+                                                    <div class="min-w-0 flex-1">
+                                                        <p class="font-medium text-zinc-800 dark:text-zinc-100">{{ $sp->paid_on->toNepali() }}</p>
+                                                        <p class="truncate text-xs text-zinc-500">{{ $sp->note ?: __('Salary payment') }}</p>
+                                                    </div>
+                                                    <span class="font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $money($sp->amount) }}</span>
+                                                    <button type="button" wire:click="deleteSalaryPayment({{ $sp->id }})" wire:confirm="{{ __('Delete this salary payment?') }}" class="rounded-md p-1 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 focus:opacity-100 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete payment') }}"><flux:icon.trash variant="micro" class="size-4" /></button>
+                                                </div>
+                                            @empty
+                                                <div class="flex items-center justify-between gap-3 py-2">
+                                                    <p class="text-sm text-zinc-500">{{ __('No payment recorded for this month.') }}</p>
+                                                    @if ($h['state'] !== 'upcoming')
+                                                        <button type="button" wire:click="openPay" class="text-sm font-medium text-brand-600 hover:underline dark:text-brand-300">{{ __('Record payment') }}</button>
+                                                    @endif
+                                                </div>
+                                            @endforelse
+                                            @if ($h['rows']->count() > 1)
+                                                <div class="mt-1 flex justify-between border-t border-dashed border-zinc-200 pt-2 text-sm dark:border-white/10">
+                                                    <span class="text-zinc-500">{{ __('Total for :month', ['month' => NepaliDate::periodLabel($h['period'])]) }}</span>
+                                                    <span class="font-bold text-zinc-900 tabular-nums dark:text-white">{{ $money($h['paid']) }}</span>
+                                                </div>
+                                            @endif
+                                        </div>
+                                    </div>
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
+                </section>
+            </div>
 
             {{-- Side --}}
             <aside class="flex flex-col gap-6">

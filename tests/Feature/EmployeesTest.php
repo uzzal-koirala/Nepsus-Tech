@@ -250,5 +250,8 @@ class EmployeesTest extends TestCase
         $page->assertSee(NepaliDate::fromAd(today())[2] > 1 ? 'Salary unpaid' : 'Salary day');
         $page->call('openPay')->set('payAmount', '10000')->call('savePay')->assertSee(['Part paid', 'Salary part', 'Paid NPR 10,000']);
         $page->call('openPay')->call('savePay')->assertSee('Paid on');
+
+        // The salary history lists this month as paid with both payments.
+        $page->assertSee(['Salary history', 'Months fully paid', 'Total for']);
     }
 }
