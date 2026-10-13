@@ -95,7 +95,7 @@ new #[Title('Employee')] class extends Component {
         $last = NepaliDate::toAd($this->calYear, $this->calMonth, $length);
 
         $marks = $this->employee->attendances()->whereBetween('date', [$first->toDateString(), $last->toDateString()])->get()
-            ->reject(fn ($a) => $a->date->isSaturday())
+            ->reject(fn ($a) => $a->date->isHoliday())
             ->keyBy(fn ($a) => $a->date->toDateString());
         $doneByDay = $this->work->whereNotNull('completed_at')
             ->filter(fn ($t) => $t->completed_at->between($first, $last->copy()->endOfDay()))
@@ -127,7 +127,7 @@ new #[Title('Employee')] class extends Component {
     #[Computed]
     public function attendanceTotals(): array
     {
-        $counts = $this->employee->attendances()->get(['date', 'status'])->reject(fn ($a) => $a->date->isSaturday())->countBy('status');
+        $counts = $this->employee->attendances()->get(['date', 'status'])->reject(fn ($a) => $a->date->isHoliday())->countBy('status');
         $totals = collect(Attendance::STATUSES)->map(fn ($v, $k) => (int) ($counts[$k] ?? 0))->all();
         $marked = array_sum($totals);
 
@@ -139,8 +139,8 @@ new #[Title('Employee')] class extends Component {
 
     public function markDay(string $date, string $status): void
     {
-        // Saturday is the weekly holiday.
-        abort_if(Carbon::parse($date)->isSaturday(), 422);
+        // The weekly holiday (Saturday unless changed in Settings).
+        abort_if(Carbon::parse($date)->isHoliday(), 422);
         $day = Carbon::parse($date)->toDateString();
 
         if ($status === 'leave') {
@@ -169,7 +169,7 @@ new #[Title('Employee')] class extends Component {
             'leaveDate' => ['required', 'date'],
             'leaveReason' => ['required', 'string', 'min:3', 'max:255'],
         ], attributes: ['leaveReason' => __('reason')]);
-        abort_if(Carbon::parse($data['leaveDate'])->isSaturday(), 422);
+        abort_if(Carbon::parse($data['leaveDate'])->isHoliday(), 422);
 
         $this->employee->attendances()->updateOrCreate(['date' => Carbon::parse($data['leaveDate'])->toDateString()], ['status' => 'leave', 'note' => trim($data['leaveReason'])]);
 
@@ -187,7 +187,7 @@ new #[Title('Employee')] class extends Component {
 
         for ($day = 1; $day <= $length; $day++) {
             $ad = NepaliDate::toAd($this->calYear, $this->calMonth, $day);
-            if ($ad->isAfter(today()) || $ad->isSaturday()) {
+            if ($ad->isAfter(today()) || $ad->isHoliday()) {
                 continue;
             }
             $mark = $this->employee->attendances()->firstOrCreate(['date' => $ad->toDateString()], ['status' => 'present']);
@@ -639,7 +639,7 @@ new #[Title('Employee')] class extends Component {
                                             $isFuture = $cell['ad']->isAfter(today());
                                             $mark = $cell['status'];
                                         @endphp
-                                        @if ($cell['ad']->isSaturday())
+                                        @if ($cell['ad']->isHoliday())
                                             <div wire:key="att-{{ $key }}" class="flex min-h-24 flex-col gap-1.5 border-e border-zinc-100 bg-rose-50/40 p-2 last:border-e-0 dark:border-white/5 dark:bg-rose-500/[0.04]">
                                                 <span class="flex items-center justify-between">
                                                     <span @class(['flex size-6 items-center justify-center rounded-full text-xs font-semibold tabular-nums', 'bg-brand-500 text-white' => $isToday, 'text-rose-500' => ! $isToday])>{{ $cell['day'] }}</span>

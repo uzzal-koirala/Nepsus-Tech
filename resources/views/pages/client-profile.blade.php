@@ -1507,7 +1507,7 @@ new #[Title('Client profile')] class extends Component {
                             @php
                                 $ps = $payment->status();
                                 $inDays = $payment->dueInDays();
-                                $soon = $ps === 'pending' && $inDays !== null && $inDays <= Payment::REMIND_DAYS;
+                                $soon = $ps === 'pending' && $inDays !== null && $inDays <= Payment::remindDays();
                                 $shownDate = $payment->paid_at ?? $payment->due_date;
                                 $bs = $shownDate ? NepaliDate::fromAd($shownDate) : null;
                                 $look = $methodLook[$payment->method] ?? ($payment->method ? ['icon' => 'credit-card', 'tile' => 'bg-zinc-100 text-zinc-600 dark:bg-white/10 dark:text-zinc-300'] : null);

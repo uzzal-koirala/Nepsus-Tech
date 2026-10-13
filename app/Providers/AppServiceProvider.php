@@ -27,7 +27,14 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
 
+        // Currency and app name follow the workspace settings.
+        config([
+            'app.currency' => \App\Models\Setting::get('currency'),
+            'app.name' => \App\Models\Setting::get('business_name'),
+        ]);
+
         foreach ([Carbon::class, CarbonImmutable::class] as $class) {
+            $class::macro('isHoliday', fn (): bool => $this->dayOfWeek === \App\Models\Setting::weeklyHoliday());
             $class::macro('toNepali', fn (bool $withYear = true): string => NepaliDate::format($this, $withYear));
             $class::macro('toNepaliMonth', fn (): string => NepaliDate::monthYear($this));
         }

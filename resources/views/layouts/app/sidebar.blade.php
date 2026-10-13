@@ -68,7 +68,7 @@
             </div>
 
             <flux:sidebar.nav>
-                <flux:sidebar.item icon="cog-6-tooth" :href="route('profile.edit')" :current="request()->routeIs('profile.edit', 'security.edit', 'appearance.edit')" wire:navigate>
+                <flux:sidebar.item icon="cog-6-tooth" :href="route('settings.business')" :current="request()->routeIs('profile.edit', 'security.edit', 'appearance.edit', 'settings.*')" wire:navigate>
                     {{ __('Settings') }}
                 </flux:sidebar.item>
             </flux:sidebar.nav>

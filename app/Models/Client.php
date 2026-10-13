@@ -116,7 +116,7 @@ class Client extends Model
     }
 
     /**
-     * Reminder for the next unpaid payment when it is late or due within Payment::REMIND_DAYS.
+     * Reminder for the next unpaid payment when it is late or due within Payment::remindDays().
      * Needs the withNextPayment scope.
      *
      * @return array{tone: 'overdue'|'today'|'soon', days: int, date: CarbonInterface, amount: string}|null
@@ -133,7 +133,7 @@ class Client extends Model
         $tone = match (true) {
             $days < 0 => 'overdue',
             $days === 0 => 'today',
-            $days <= Payment::REMIND_DAYS => 'soon',
+            $days <= Payment::remindDays() => 'soon',
             default => null,
         };
 

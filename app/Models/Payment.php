@@ -59,8 +59,11 @@ class Payment extends Model
         return $this->belongsTo(Client::class);
     }
 
-    /** Show a reminder this many days before a payment is due. */
-    public const REMIND_DAYS = 7;
+    /** Show a reminder this many days before a payment is due (set in Settings). */
+    public static function remindDays(): int
+    {
+        return (int) Setting::get('remind_days');
+    }
 
     /**
      * Days until the due date: negative when late, null when paid or undated.
