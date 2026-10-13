@@ -75,8 +75,16 @@ class EmployeesTest extends TestCase
 
         $this->assertSame(['paid' => 15000.0, 'salary' => 40000.0, 'left' => 25000.0, 'percent' => 38], Employee::withSalaryPaid()->find($ram->id)->salaryProgress());
 
-        $page->call('openPay', $ram->id)->assertSet('payAmount', '25000')->call('savePay');
-        $this->assertSame(0.0, Employee::withSalaryPaid()->find($ram->id)->salaryProgress()['left']);
+        // The same month cannot be paid twice; the popup moves on to next month.
+        $page->call('openPay', $ram->id)->assertNotSet('payPeriod', $period)->assertSet('payAmount', '40000');
+        $page->set('payPeriod', $period)->call('savePay')->assertHasErrors(['payPeriod' => 'unique']);
+        $this->assertSame(1, $ram->salaryPayments()->count());
+
+        // Future months (up to 6 ahead) can be paid in advance.
+        $ahead = \App\Support\NepaliDate::period(\App\Support\NepaliDate::addMonths(today(), 6));
+        $page->call('openPay', $ram->id)->set('payPeriod', $ahead)->call('savePay')->assertHasNoErrors();
+        $tooFar = \App\Support\NepaliDate::period(\App\Support\NepaliDate::addMonths(today(), 7));
+        $page->call('openPay', $ram->id)->set('payPeriod', $tooFar)->call('savePay')->assertHasErrors(['payPeriod']);
 
         $page->set('payPeriod', '1990-01')->set('payAmount', '100')->call('savePay')->assertHasErrors(['payPeriod']);
 
@@ -250,7 +258,7 @@ class EmployeesTest extends TestCase
         // Salary day 1 has passed unless today is the 1st, so the calendar marks it unpaid.
         $page->assertSee(NepaliDate::fromAd(today())[2] > 1 ? 'Salary unpaid' : 'Salary day');
         $page->call('openPay')->set('payAmount', '10000')->call('savePay')->assertSee(['Part paid', 'Salary part', 'Paid NPR 10,000']);
-        $page->call('openPay')->call('savePay')->assertSee('Paid on');
+        $page->call('openPay')->assertNotSet('payPeriod', NepaliDate::period(today()))->set('payPeriod', NepaliDate::period(today()))->call('savePay')->assertHasErrors(['payPeriod' => 'unique'])->assertSee('Salary for this month is already recorded.');
 
         // The salary history lists only the payments made.
         $page->assertSee(['Salary history', 'Total paid', 'Salary for'])->assertDontSee('Months fully paid');

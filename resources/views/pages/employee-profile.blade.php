@@ -400,8 +400,9 @@ new #[Title('Employee')] class extends Component {
 
     public function openPay(): void
     {
-        $this->payPeriod = $this->period;
-        $this->payAmount = (string) ($this->thisMonth['left'] ?? '');
+        // Start on this month, or the first later month not paid yet.
+        $this->payPeriod = SalaryPayment::firstOpenPeriod($this->payments->pluck('period')->all(), $this->period);
+        $this->payAmount = $this->payPeriod === $this->period ? (string) ($this->thisMonth['left'] ?? '') : (string) ($this->employee->salary ? (float) $this->employee->salary : '');
         $this->payDate = today()->toDateString();
         $this->payNote = '';
         $this->resetErrorBag();
@@ -412,11 +413,13 @@ new #[Title('Employee')] class extends Component {
     public function savePay(): void
     {
         $data = $this->validate([
-            'payPeriod' => ['required', Rule::in(NepaliDate::recentPeriods(6))],
+            'payPeriod' => ['required', Rule::in(SalaryPayment::periodChoices()), Rule::unique('salary_payments', 'period')->where('employee_id', $this->employee->id)],
             'payAmount' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
             'payDate' => ['required', 'date'],
             'payNote' => ['nullable', 'string', 'max:255'],
-        ]);
+        ], [
+            'payPeriod.unique' => __('Salary for this month is already recorded.'),
+        ], ['payPeriod' => __('month'), 'payDate' => __('paid date')]);
 
         $this->employee->salaryPayments()->create([
             'period' => $data['payPeriod'],
@@ -1002,7 +1005,7 @@ new #[Title('Employee')] class extends Component {
                         <thead class="bg-zinc-50/80 dark:bg-white/[0.02]">
                             <tr>
                                 <th class="{{ $hth }} ps-5">{{ __('Title') }}</th>
-                                <th class="{{ $hth }}">{{ __('Date') }}</th>
+                                <th class="{{ $hth }}">{{ __('Paid date') }}</th>
                                 <th class="{{ $hth }}">{{ __('Category') }}</th>
                                 <th class="{{ $hth }}">{{ __('Note') }}</th>
                                 <th class="{{ str_replace('text-start', 'text-end', $hth) }}">{{ __('Amount') }}</th>
@@ -1557,13 +1560,16 @@ new #[Title('Employee')] class extends Component {
                 <flux:text class="mt-1">{{ $e->name }}{{ $e->salary ? ' · '.$money($e->salary).__('/mo') : '' }}</flux:text>
             </div>
             <div class="grid gap-4 sm:grid-cols-2">
+                @php $paidPeriods = $payments->pluck('period')->all(); @endphp
                 <flux:select wire:model="payPeriod" :label="__('For month')">
-                    @foreach (NepaliDate::recentPeriods(6) as $p)
-                        <flux:select.option :value="$p">{{ NepaliDate::periodLabel($p) }}</flux:select.option>
+                    <flux:select.option value="" disabled>{{ __('Choose a month') }}</flux:select.option>
+                    @foreach (SalaryPayment::periodChoices() as $p)
+                        @php $isPaid = in_array($p, $paidPeriods, true); @endphp
+                        <flux:select.option :value="$p" :disabled="$isPaid">{{ NepaliDate::periodLabel($p) }}{{ $isPaid ? ' · '.__('Paid') : ($p === $this->period ? ' · '.__('This month') : '') }}</flux:select.option>
                     @endforeach
                 </flux:select>
                 <flux:input wire:model="payAmount" type="number" min="0" step="1" :label="__('Amount (:currency)', ['currency' => config('app.currency')])" required />
-                <x-nepali-date wire:model="payDate" :label="__('Paid on')" class="sm:col-span-2" />
+                <x-nepali-date wire:model="payDate" :label="__('Paid date')" class="sm:col-span-2" />
                 <flux:input wire:model="payNote" :label="__('Note')" :placeholder="__('e.g. Advance, bonus, bank transfer')" class="sm:col-span-2" />
             </div>
             <div class="flex justify-end gap-2">

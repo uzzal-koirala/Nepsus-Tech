@@ -186,8 +186,9 @@ new #[Title('Employees')] class extends Component {
         $employee = Employee::withSalaryPaid($this->period)->findOrFail($id);
 
         $this->payEmployeeId = $employee->id;
-        $this->payPeriod = $this->period;
-        $this->payAmount = (string) ($employee->salaryProgress()['left'] ?? '');
+        // Start on the shown month, or the first later month not paid yet.
+        $this->payPeriod = SalaryPayment::firstOpenPeriod($employee->salaryPayments()->pluck('period')->all(), $this->period);
+        $this->payAmount = $this->payPeriod === $this->period ? (string) ($employee->salaryProgress()['left'] ?? '') : (string) ($employee->salary ? (float) $employee->salary : '');
         $this->payDate = today()->toDateString();
         $this->payNote = '';
         $this->resetErrorBag();
@@ -199,11 +200,13 @@ new #[Title('Employees')] class extends Component {
     {
         $data = $this->validate([
             'payEmployeeId' => ['required', 'exists:employees,id'],
-            'payPeriod' => ['required', Rule::in(NepaliDate::recentPeriods(6))],
+            'payPeriod' => ['required', Rule::in(SalaryPayment::periodChoices()), Rule::unique('salary_payments', 'period')->where('employee_id', $this->payEmployeeId)],
             'payAmount' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
             'payDate' => ['required', 'date'],
             'payNote' => ['nullable', 'string', 'max:255'],
-        ]);
+        ], [
+            'payPeriod.unique' => __('Salary for this month is already recorded.'),
+        ], ['payPeriod' => __('month'), 'payDate' => __('paid date')]);
 
         Employee::findOrFail($data['payEmployeeId'])->salaryPayments()->create([
             'period' => $data['payPeriod'],
@@ -662,13 +665,16 @@ new #[Title('Employees')] class extends Component {
                 <flux:text class="mt-1">{{ $payEmployeeId ? \App\Models\Employee::find($payEmployeeId)?->name : '' }}</flux:text>
             </div>
             <div class="grid gap-4 sm:grid-cols-2">
+                @php $paidPeriods = $payEmployeeId ? SalaryPayment::where('employee_id', $payEmployeeId)->pluck('period')->all() : []; @endphp
                 <flux:select wire:model="payPeriod" :label="__('For month')">
-                    @foreach (NepaliDate::recentPeriods(6) as $p)
-                        <flux:select.option :value="$p">{{ NepaliDate::periodLabel($p) }}</flux:select.option>
+                    <flux:select.option value="" disabled>{{ __('Choose a month') }}</flux:select.option>
+                    @foreach (SalaryPayment::periodChoices() as $p)
+                        @php $isPaid = in_array($p, $paidPeriods, true); @endphp
+                        <flux:select.option :value="$p" :disabled="$isPaid">{{ NepaliDate::periodLabel($p) }}{{ $isPaid ? ' · '.__('Paid') : ($p === NepaliDate::period(today()) ? ' · '.__('This month') : '') }}</flux:select.option>
                     @endforeach
                 </flux:select>
                 <flux:input wire:model="payAmount" type="number" min="0" step="1" :label="__('Amount (:currency)', ['currency' => config('app.currency')])" required />
-                <x-nepali-date wire:model="payDate" :label="__('Paid on')" class="sm:col-span-2" />
+                <x-nepali-date wire:model="payDate" :label="__('Paid date')" class="sm:col-span-2" />
                 <flux:input wire:model="payNote" :label="__('Note')" :placeholder="__('e.g. Advance, bonus, bank transfer')" class="sm:col-span-2" />
             </div>
             <div class="flex justify-end gap-2">
