@@ -113,7 +113,7 @@ class EmployeesTest extends TestCase
             ->assertSee('Pay NPR 25,000');
 
         $payment = $employee->salaryPayments()->sole();
-        $page->call('deleteSalaryPayment', $payment->id);
+        $page->call('confirmDeleteSalaryPayment', $payment->id)->assertSee('Delete this salary payment?')->call('deleteSalaryPayment', $payment->id);
         $this->assertSame(0, $employee->salaryPayments()->count());
 
         $page->call('edit')->set('salary', '45000')->call('save')->assertHasNoErrors();

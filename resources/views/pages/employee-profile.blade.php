@@ -430,10 +430,21 @@ new #[Title('Employee')] class extends Component {
         Flux::toast(variant: 'success', text: __('Salary payment saved.'));
     }
 
+    /** Salary payment waiting for delete confirmation. */
+    public ?int $deletingPaymentId = null;
+
+    public function confirmDeleteSalaryPayment(int $id): void
+    {
+        $this->deletingPaymentId = $id;
+        Flux::modal('salary-payment-delete')->show();
+    }
+
     public function deleteSalaryPayment(int $id): void
     {
         SalaryPayment::where('employee_id', $this->employee->id)->findOrFail($id)->delete();
         unset($this->payments, $this->thisMonth, $this->months);
+        $this->deletingPaymentId = null;
+        Flux::modal('salary-payment-delete')->close();
         Flux::toast(text: __('Salary payment deleted.'));
     }
 }; ?>
@@ -1016,7 +1027,7 @@ new #[Title('Employee')] class extends Component {
                                         <span class="inline-flex items-center rounded-lg bg-emerald-50 px-2.5 py-1 text-sm font-bold text-emerald-700 tabular-nums ring-1 ring-emerald-200 ring-inset dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20">{{ $money($sp->amount) }}</span>
                                     </td>
                                     <td class="px-3 py-2.5 pe-5 text-end">
-                                        <button type="button" wire:click="deleteSalaryPayment({{ $sp->id }})" wire:confirm="{{ __('Delete this salary payment?') }}" class="rounded-md p-1 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 focus:opacity-100 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete payment') }}"><flux:icon.trash variant="micro" class="size-4" /></button>
+                                        <button type="button" wire:click="confirmDeleteSalaryPayment({{ $sp->id }})" class="rounded-md p-1 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 focus:opacity-100 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete payment') }}"><flux:icon.trash variant="micro" class="size-4" /></button>
                                     </td>
                                 </tr>
                             @endforeach
@@ -1157,7 +1168,7 @@ new #[Title('Employee')] class extends Component {
                                 @endif
                             </div>
                             <span class="font-semibold text-zinc-800 tabular-nums dark:text-zinc-100">{{ $money($sp->amount) }}</span>
-                            <button type="button" wire:click="deleteSalaryPayment({{ $sp->id }})" wire:confirm="{{ __('Delete this salary payment?') }}" class="text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:text-rose-500 focus:opacity-100" aria-label="{{ __('Delete payment') }}">
+                            <button type="button" wire:click="confirmDeleteSalaryPayment({{ $sp->id }})" class="text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:text-rose-500 focus:opacity-100" aria-label="{{ __('Delete payment') }}">
                                 <flux:icon.trash variant="micro" class="size-4" />
                             </button>
                         </div>
@@ -1586,6 +1597,33 @@ new #[Title('Employee')] class extends Component {
     </flux:modal>
 
     {{-- Remove --}}
+    {{-- Delete salary payment --}}
+    <flux:modal name="salary-payment-delete" class="w-full max-w-md p-0!">
+        @php $deleting = $deletingPaymentId ? $payments->firstWhere('id', $deletingPaymentId) : null; @endphp
+        <div class="flex flex-col items-center px-6 pt-8 pb-6 text-center">
+            <span class="relative flex size-14 items-center justify-center rounded-full bg-rose-50 text-rose-600 ring-8 ring-rose-50/50 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/5">
+                <flux:icon.trash class="size-6" />
+            </span>
+            <flux:heading size="lg" class="mt-5">{{ __('Delete this salary payment?') }}</flux:heading>
+            <flux:text class="mt-1 max-w-xs">{{ __('It will be removed from :name\'s salary history and from Finance. This cannot be undone.', ['name' => $e->name]) }}</flux:text>
+
+            @if ($deleting)
+                <div class="mt-5 flex w-full items-center gap-3 rounded-xl bg-zinc-50 p-4 text-start ring-1 ring-zinc-200/70 dark:bg-white/[0.03] dark:ring-white/10">
+                    <span class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-600 shadow-xs ring-1 ring-zinc-200 dark:bg-white/5 dark:ring-white/10"><flux:icon.banknotes variant="mini" class="size-5" /></span>
+                    <div class="min-w-0 flex-1">
+                        <p class="truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Salary for :month', ['month' => NepaliDate::periodLabel($deleting->period)]) }}</p>
+                        <p class="truncate text-xs text-zinc-500">{{ __('Paid :date', ['date' => $deleting->paid_on->toNepali()]) }}@if ($deleting->note) · {{ $deleting->note }}@endif</p>
+                    </div>
+                    <span class="text-base font-bold text-zinc-900 tabular-nums dark:text-white">{{ $money($deleting->amount) }}</span>
+                </div>
+            @endif
+        </div>
+        <div class="grid grid-cols-2 gap-2 rounded-b-xl border-t border-zinc-100 bg-zinc-50/70 px-6 py-4 dark:border-white/5 dark:bg-white/[0.02]">
+            <flux:modal.close><flux:button variant="ghost" class="w-full">{{ __('Keep it') }}</flux:button></flux:modal.close>
+            <flux:button variant="danger" icon="trash" class="w-full" wire:click="deleteSalaryPayment({{ (int) $deletingPaymentId }})" :disabled="! $deleting" data-test="confirm-delete-salary">{{ __('Delete payment') }}</flux:button>
+        </div>
+    </flux:modal>
+
     <flux:modal name="employee-delete" class="w-full max-w-sm">
         <div class="flex flex-col gap-5">
             <div>
