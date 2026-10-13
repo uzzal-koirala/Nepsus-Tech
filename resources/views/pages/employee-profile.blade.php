@@ -559,43 +559,31 @@ new #[Title('Employee')] class extends Component {
             <p class="relative mt-auto text-xs text-zinc-500">{{ $e->salary ? __(':amount a year', ['amount' => $money($e->salary * 12)]) : __('Add it with Edit') }}</p>
         </div>
 
-        <div class="{{ $panel }} flex flex-col gap-4 p-5">
-            <div class="flex items-center gap-3">
-                <span @class([$iconTile, 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300' => $full, 'bg-amber-100 text-amber-600 dark:bg-amber-400/15 dark:text-amber-300' => ! $full])><flux:icon.banknotes variant="mini" class="size-4.5" /></span>
-                <p class="flex-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __(':month salary', ['month' => $periodLabel]) }}</p>
-                @if ($pay)
-                    <span @class(['text-xs font-semibold tabular-nums', 'text-emerald-600 dark:text-emerald-400' => $full, 'text-amber-600 dark:text-amber-400' => ! $full])>{{ $pay['percent'] }}%</span>
-                @endif
-            </div>
-            @if ($pay)
-                <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $money($pay['paid']) }}</p>
-                <div class="mt-auto flex flex-col gap-1.5">
-                    <div class="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div @class(['h-full rounded-full transition-[width] duration-700', 'bg-emerald-500' => $full, 'bg-amber-400' => ! $full]) style="width: {{ $pay['percent'] }}%"></div></div>
-                    <p class="text-xs text-zinc-500">{{ $full ? __('Fully paid') : __(':amount still to pay', ['amount' => $money($pay['left'])]) }}</p>
+        @php
+            $at = $this->attendanceTotals;
+            $attCards = [
+                ['label' => __('Total present'), 'value' => $at['present'], 'icon' => 'check-circle', 'tile' => 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30', 'glow' => 'bg-emerald-100/70 dark:bg-emerald-500/10', 'sub' => $at['half_day'] ? trans_choice('+ :count half day|+ :count half days', $at['half_day']) : __('Days at work'), 'tone' => 'text-emerald-700 dark:text-emerald-300'],
+                ['label' => __('Total absent'), 'value' => $at['absent'], 'icon' => 'x-circle', 'tile' => 'bg-rose-500 text-white shadow-md shadow-rose-500/30', 'glow' => 'bg-rose-100/70 dark:bg-rose-500/10', 'sub' => __('Days missed without leave'), 'tone' => 'text-rose-700 dark:text-rose-300'],
+                ['label' => __('Total leave'), 'value' => $at['leave'], 'icon' => 'sun', 'tile' => 'bg-sky-500 text-white shadow-md shadow-sky-500/30', 'glow' => 'bg-sky-100/70 dark:bg-sky-500/10', 'sub' => __('Days on approved leave'), 'tone' => 'text-sky-700 dark:text-sky-300'],
+            ];
+        @endphp
+        @foreach ($attCards as $card)
+            <div class="{{ $panel }} relative flex flex-col gap-4 overflow-hidden p-5">
+                <div class="{{ $card['glow'] }} absolute -top-12 -right-12 size-32 rounded-full"></div>
+                <div class="relative flex items-center gap-3">
+                    <span class="{{ $iconTile }} {{ $card['tile'] }}"><flux:icon :icon="$card['icon']" variant="mini" class="size-4.5" /></span>
+                    <p class="flex-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ $card['label'] }}</p>
+                    @if ($at['rate'] !== null && $loop->first)
+                        <span class="rounded-md bg-emerald-50 px-1.5 py-0.5 text-xs font-semibold text-emerald-700 tabular-nums dark:bg-emerald-500/10 dark:text-emerald-300" title="{{ __('Attendance rate') }}">{{ $at['rate'] }}%</span>
+                    @endif
                 </div>
-            @else
-                <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-300 dark:text-zinc-600">—</p>
-                <p class="mt-auto text-xs text-zinc-500">{{ $e->status === 'inactive' ? __('Not on payroll') : __('Salary not set') }}</p>
-            @endif
-        </div>
-
-        <div class="{{ $panel }} flex flex-col gap-4 p-5">
-            <div class="flex items-center gap-3">
-                <span class="{{ $iconTile }} bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300"><flux:icon.chart-bar variant="mini" class="size-4.5" /></span>
-                <p class="text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Paid in total') }}</p>
+                <p class="relative flex items-baseline gap-1.5 leading-none">
+                    <span class="{{ $card['tone'] }} text-[1.875rem] font-bold tracking-tight tabular-nums">{{ $card['value'] }}</span>
+                    <span class="text-sm text-zinc-400">{{ trans_choice('day|days', $card['value']) }}</span>
+                </p>
+                <p class="relative mt-auto text-xs text-zinc-500">{{ $card['sub'] }} · {{ __('all time') }}</p>
             </div>
-            <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $money($payments->sum('amount')) }}</p>
-            <p class="mt-auto text-xs text-zinc-500">{{ trans_choice(':count payment|:count payments', $payments->count()) }} · {{ trans_choice(':count month fully paid|:count months fully paid', $paidMonths) }}</p>
-        </div>
-
-        <div class="{{ $panel }} flex flex-col gap-4 p-5">
-            <div class="flex items-center gap-3">
-                <span class="{{ $iconTile }} bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300"><flux:icon.calendar-days variant="mini" class="size-4.5" /></span>
-                <p class="text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('With the team') }}</p>
-            </div>
-            <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $e->tenure() ?? '—' }}</p>
-            <p class="mt-auto text-xs text-zinc-500">{{ $e->joined_on ? __('Since :date', ['date' => NepaliDate::monthYear($e->joined_on)]) : __('Joining date not set') }}</p>
-        </div>
+        @endforeach
     </section>
 
     {{-- Tabs --}}
