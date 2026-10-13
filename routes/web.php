@@ -16,6 +16,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('employees', 'pages::employees')->name('employees.index');
     Route::livewire('finance', 'pages::finance')->name('finance.index');
     Route::livewire('employees/{employee}', 'pages::employee-profile')->name('employees.show');
+    Route::livewire('cameras', 'pages::cameras')->name('cameras.index');
 
     Route::get('documents/{document}', fn (Document $document) => Storage::disk('local')->download($document->path, $document->name))
         ->name('documents.download');
