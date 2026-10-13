@@ -29,16 +29,7 @@
                             ['icon' => 'user-group', 'label' => __('Employees'), 'route' => 'employees.index'],
                             ['icon' => 'clock', 'label' => __('Activity log')],
                         ],
-                        __('Office Management') => [
-                            ['icon' => 'video-camera', 'label' => __('CCTV Monitoring'), 'route' => 'cctv.index', 'can' => 'view-cctv'],
-                        ],
                     ];
-
-                    // Leave out links the signed-in user may not open (and sections left empty).
-                    $sections = array_filter(array_map(
-                        fn ($items) => array_values(array_filter($items, fn ($item) => ! isset($item['can']) || auth()->user()?->can($item['can']))),
-                        $sections,
-                    ));
                 @endphp
 
                 @foreach ($sections as $heading => $items)

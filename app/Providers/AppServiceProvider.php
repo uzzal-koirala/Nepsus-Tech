@@ -2,13 +2,11 @@
 
 namespace App\Providers;
 
-use App\Models\User;
 use App\Support\NepaliDate;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
@@ -34,10 +32,6 @@ class AppServiceProvider extends ServiceProvider
             'app.currency' => \App\Models\Setting::get('currency'),
             'app.name' => \App\Models\Setting::get('business_name'),
         ]);
-
-        // CCTV: admins manage cameras and read the logs; watching needs admin or the CCTV permission.
-        Gate::define('manage-cctv', fn (User $user) => $user->is_admin);
-        Gate::define('view-cctv', fn (User $user) => $user->is_admin || $user->can_view_cctv);
 
         // `php artisan dev` also runs the scheduler, which syncs the attendance device every 5 minutes.
         \Illuminate\Foundation\DevCommands::artisan('schedule:work', 'scheduler');

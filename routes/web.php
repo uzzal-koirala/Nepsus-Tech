@@ -17,15 +17,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('finance', 'pages::finance')->name('finance.index');
     Route::livewire('employees/{employee}', 'pages::employee-profile')->name('employees.show');
 
-    // CCTV Monitoring: watching needs admin or the CCTV permission; managing needs admin.
-    Route::livewire('cctv', 'pages::cctv.index')->middleware('can:view-cctv')->name('cctv.index');
-    Route::middleware('can:manage-cctv')->group(function () {
-        Route::livewire('cctv/cameras', 'pages::cctv.cameras')->name('cctv.cameras');
-        Route::livewire('cctv/logs', 'pages::cctv.logs')->name('cctv.logs');
-        Route::get('cctv/gateway-setup', fn () => response()->download(\App\Support\CctvGateway::zip(), 'nepsus-cctv-gateway.zip')->deleteFileAfterSend())
-            ->name('cctv.gateway-setup');
-    });
-
     Route::get('documents/{document}', fn (Document $document) => Storage::disk('local')->download($document->path, $document->name))
         ->name('documents.download');
 
