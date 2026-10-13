@@ -1312,9 +1312,9 @@ new #[Title('Employee')] class extends Component {
             </aside>
 
             {{-- Detail sections --}}
-            <div class="grid min-w-0 items-start gap-6 lg:grid-cols-2">
+            <div class="min-w-0 gap-6 lg:columns-2">
                 @foreach ($sections as $section)
-                    <section class="{{ $panel }} overflow-hidden">
+                    <section class="{{ $panel }} mb-6 break-inside-avoid overflow-hidden">
                         <div class="flex items-center gap-3 border-b border-zinc-100 px-5 py-3.5 dark:border-white/5">
                             <span class="{{ $section['tone'] }} flex size-8 items-center justify-center rounded-lg"><flux:icon :icon="$section['icon']" variant="micro" class="size-4" /></span>
                             <h3 class="flex-1 font-semibold text-zinc-900 dark:text-white">{{ $section['title'] }}</h3>
