@@ -616,7 +616,7 @@ new #[Title('Employees')] class extends Component {
                         <flux:icon.chevron-up-down variant="mini" class="ms-auto size-4 shrink-0 text-zinc-400" />
                     </button>
                     <div x-show="open" x-transition.origin.top x-cloak class="absolute inset-x-0 top-full z-40 mt-1.5 overflow-hidden rounded-xl bg-white shadow-[0_20px_50px_-12px_rgb(15_23_42/0.35)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10" role="listbox">
-                        <div class="max-h-60 overflow-y-auto p-1.5">
+                        <div class="max-h-72 overflow-y-auto p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                             @foreach ($deptOptions as $key => $d)
                                 <div wire:key="dept-opt-{{ $key }}" class="group flex items-center rounded-lg transition hover:bg-zinc-50 dark:hover:bg-white/5" :class="$wire.dept === @js($key) && 'bg-brand-50/70 dark:bg-brand-500/10'">
                                     <button type="button" role="option" @click="$wire.dept = @js($key); open = false" class="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-start">
