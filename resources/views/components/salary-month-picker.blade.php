@@ -1,16 +1,19 @@
-@props(['paid' => []])
+@props(['employee'])
 
 @php
     $current = \App\Support\NepaliDate::period(today());
-    $choices = collect(\App\Models\SalaryPayment::periodChoices())->map(function ($p, $i) use ($paid, $current) {
+    $salary = (float) $employee->salary;
+    $paidBy = $employee->paidByPeriod();
+    $choices = collect(\App\Models\SalaryPayment::periodChoices())->map(function ($p, $i) use ($paidBy, $salary, $current) {
         [$y, $m] = array_map('intval', explode('-', $p));
 
         return [
             'key' => $p,
             'month' => \App\Support\NepaliDate::MONTHS[$m - 1],
             'year' => $y,
-            'paid' => in_array($p, $paid, true),
+            'paid' => $salary > 0 && ($paidBy[$p] ?? 0) >= $salary,
             'hint' => $p === $current ? __('This month') : trans_choice('In :count month|In :count months', $i),
+            'left' => $salary > 0 && ($paidBy[$p] ?? 0) > 0 ? $salary - $paidBy[$p] : null,
         ];
     });
 @endphp
@@ -34,7 +37,7 @@
                 </span>
                 <span>
                     <span class="block text-sm font-semibold text-zinc-900 dark:text-white">{{ $c['month'] }} {{ $c['year'] }}</span>
-                    <span class="block text-xs text-zinc-500">{{ $c['hint'] }}</span>
+                    <span class="block text-xs text-zinc-500">{{ $c['hint'] }}@if ($c['left'] !== null) · <span class="font-medium text-amber-600 dark:text-amber-400">{{ __(':amount left', ['amount' => \App\Models\Client::money($c['left'])]) }}</span>@endif</span>
                 </span>
             </span>
         @endforeach
@@ -57,15 +60,20 @@
                     class="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-start transition hover:bg-zinc-50 dark:hover:bg-white/5"
                     :class="$wire.payPeriod === @js($c['key']) && 'bg-brand-50 ring-1 ring-brand-200 dark:bg-brand-500/10 dark:ring-brand-500/30'">
                     <span @class([
-                        'flex size-8 shrink-0 flex-col items-center justify-center rounded-lg leading-none',
+                        'flex size-9 shrink-0 flex-col items-center justify-center rounded-lg leading-none',
                         'bg-brand-500 text-white' => $loop->first,
                         'bg-zinc-100 text-zinc-600 dark:bg-white/10 dark:text-zinc-300' => ! $loop->first,
                     ])>
                         <span class="text-[0.6rem] font-semibold uppercase">{{ mb_substr($c['month'], 0, 3) }}</span>
+                        <span class="mt-0.5 text-[0.6rem] font-bold opacity-70">{{ substr($c['year'], -2) }}</span>
                     </span>
                     <span class="min-w-0 flex-1">
                         <span class="block truncate text-sm font-medium text-zinc-900 dark:text-white">{{ $c['month'] }}</span>
-                        <span class="block truncate text-[0.6875rem] text-zinc-500">{{ $c['year'] }} · {{ $c['hint'] }}</span>
+                        @if ($c['left'] !== null)
+                            <span class="block truncate text-[0.6875rem] font-medium text-amber-600 dark:text-amber-400">{{ __(':amount left', ['amount' => \App\Models\Client::money($c['left'])]) }}</span>
+                        @else
+                            <span class="block truncate text-[0.6875rem] text-zinc-500">{{ $c['hint'] }}</span>
+                        @endif
                     </span>
                 </button>
             @endif

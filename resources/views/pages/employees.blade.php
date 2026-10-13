@@ -188,9 +188,9 @@ new #[Title('Employees')] class extends Component {
         $employee = Employee::withSalaryPaid($this->period)->findOrFail($id);
 
         $this->payEmployeeId = $employee->id;
-        // Start on the shown month, or the first later month not paid yet.
-        $this->payPeriod = SalaryPayment::firstOpenPeriod($employee->salaryPayments()->pluck('period')->all(), $this->period);
-        $this->payAmount = $this->payPeriod === $this->period ? (string) ($employee->salaryProgress()['left'] ?? '') : (string) ($employee->salary ? (float) $employee->salary : '');
+        // Start on the shown month, or the first later month not fully paid; suggest what is left.
+        $this->payPeriod = SalaryPayment::firstOpenPeriod($employee->fullyPaidPeriods(), $this->period);
+        $this->updatedPayPeriod();
         $this->payDate = today()->toDateString();
         $this->payTitle = '';
         $this->payNote = '';
@@ -199,18 +199,24 @@ new #[Title('Employees')] class extends Component {
         Flux::modal('pay-salary')->show();
     }
 
+    /** Picking a month fills in what is still owed for it. */
+    public function updatedPayPeriod(): void
+    {
+        $left = $this->payPeriod && $this->payEmployeeId ? Employee::find($this->payEmployeeId)?->salaryLeftFor($this->payPeriod) : null;
+        $this->payAmount = $left ? (string) $left : '';
+        $this->resetErrorBag(['payPeriod', 'payAmount']);
+    }
+
     public function savePay(): void
     {
+        $payee = Employee::findOrFail($this->payEmployeeId);
         $data = $this->validate([
             'payEmployeeId' => ['required', 'exists:employees,id'],
-            'payPeriod' => ['required', Rule::in(SalaryPayment::periodChoices()), Rule::unique('salary_payments', 'period')->where('employee_id', $this->payEmployeeId)],
-            'payAmount' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
+            ...SalaryPayment::payRules($payee, $this->payPeriod),
             'payDate' => ['required', 'date'],
             'payTitle' => ['nullable', 'string', 'max:120'],
             'payNote' => ['nullable', 'string', 'max:255'],
-        ], [
-            'payPeriod.unique' => __('Salary for this month is already recorded.'),
-        ], ['payPeriod' => __('month'), 'payDate' => __('paid date')]);
+        ], attributes: ['payPeriod' => __('month'), 'payAmount' => __('amount'), 'payDate' => __('paid date')]);
 
         Employee::findOrFail($data['payEmployeeId'])->salaryPayments()->create([
             'period' => $data['payPeriod'],
@@ -670,9 +676,12 @@ new #[Title('Employees')] class extends Component {
                 <flux:text class="mt-1">{{ $payEmployeeId ? \App\Models\Employee::find($payEmployeeId)?->name : '' }}</flux:text>
             </div>
             <div class="grid gap-4 sm:grid-cols-2">
-                <flux:input wire:model="payTitle" icon="pencil" :label="__('Payment title')" :placeholder="__('e.g. Ashoj salary, Dashain bonus')" maxlength="120" class="sm:col-span-2" data-test="pay-title" />
-                @php $paidPeriods = $payEmployeeId ? SalaryPayment::where('employee_id', $payEmployeeId)->pluck('period')->all() : []; @endphp
-                <x-salary-month-picker :paid="$paidPeriods" class="sm:col-span-2" />
+                <div class="sm:col-span-2">
+                    <flux:input wire:model="payTitle" icon="pencil" :label="__('Payment title')" :placeholder="__('e.g. Ashoj salary, Dashain bonus')" maxlength="120" data-test="pay-title" />
+                </div>
+                @if ($payEmployeeId && $payee = Employee::find($payEmployeeId))
+                    <x-salary-month-picker :employee="$payee" class="sm:col-span-2" />
+                @endif
                 <flux:input wire:model="payAmount" type="number" min="0" step="1" :label="__('Amount (:currency)', ['currency' => config('app.currency')])" required />
                 <x-nepali-date wire:model="payDate" :label="__('Paid date')" />
                 <flux:input wire:model="payNote" :label="__('Note')" :placeholder="__('e.g. Advance, bonus, bank transfer')" class="sm:col-span-2" />

@@ -98,6 +98,35 @@ class Employee extends Model
      *
      * @return array{paid: float, salary: float, left: float, percent: int}|null
      */
+    /**
+     * Salary paid for each BS month.
+     *
+     * @return array<string, float>
+     */
+    public function paidByPeriod(): array
+    {
+        return $this->salaryPayments()->selectRaw('period, sum(amount) as total')->groupBy('period')
+            ->pluck('total', 'period')->map(fn ($v) => (float) $v)->all();
+    }
+
+    /**
+     * BS months whose salary is paid in full.
+     *
+     * @return list<string>
+     */
+    public function fullyPaidPeriods(): array
+    {
+        $salary = (float) $this->salary;
+
+        return $salary > 0 ? array_keys(array_filter($this->paidByPeriod(), fn ($paid) => $paid >= $salary)) : [];
+    }
+
+    /** What is still owed for a BS month; null when no salary is set. */
+    public function salaryLeftFor(string $period): ?float
+    {
+        return (float) $this->salary > 0 ? max(0.0, (float) $this->salary - ($this->paidByPeriod()[$period] ?? 0)) : null;
+    }
+
     public function salaryProgress(): ?array
     {
         if (! $this->salary || (float) $this->salary <= 0) {
