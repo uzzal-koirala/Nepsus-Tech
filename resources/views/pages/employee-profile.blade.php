@@ -636,6 +636,24 @@ new #[Title('Employee')] class extends Component {
     @if ($tab === 'overview')
         @php
             $cal = $this->calendar;
+            // Salary on this calendar: the salary day of the shown month and the days payments were made.
+            $calPeriod = sprintf('%d-%02d', $this->calYear, $this->calMonth);
+            $salaryDayNum = $e->salary_day ? min($e->salary_day, NepaliDate::monthLength($this->calYear, $this->calMonth)) : null;
+            $periodPaid = (float) $payments->where('period', $calPeriod)->sum('amount');
+            $salaryOf = (float) $e->salary;
+            $paidOn = $payments->groupBy(fn ($sp) => $sp->paid_on->toDateString());
+            $salaryTagState = match (true) {
+                $salaryOf > 0 && $periodPaid >= $salaryOf => 'paid',
+                $periodPaid > 0 => 'part',
+                $salaryDayNum && NepaliDate::toAd($this->calYear, $this->calMonth, $salaryDayNum)->isBefore(today()) => 'late',
+                default => 'due',
+            };
+            $salaryTag = [
+                'paid' => ['bg-emerald-100 text-emerald-800 ring-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-200', __('Salary paid')],
+                'part' => ['bg-amber-100 text-amber-800 ring-amber-300 dark:bg-amber-500/15 dark:text-amber-200', __('Salary part')],
+                'late' => ['bg-rose-100 text-rose-800 ring-rose-300 dark:bg-rose-500/15 dark:text-rose-200', __('Salary unpaid')],
+                'due' => ['bg-brand-100 text-brand-800 ring-brand-300 dark:bg-brand-500/20 dark:text-brand-100', __('Salary day')],
+            ][$salaryTagState];
             $todayKey = today()->toDateString();
             $isThisMonth = [$this->calYear, $this->calMonth] === array_slice(NepaliDate::fromAd(today()), 0, 2);
         @endphp
@@ -708,6 +726,12 @@ new #[Title('Employee')] class extends Component {
                                                     <span class="text-[0.625rem] text-zinc-300 tabular-nums dark:text-zinc-600">{{ $cell['ad']->format('j') }}</span>
                                                 </span>
                                                 <span class="inline-flex w-fit items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"><flux:icon.sparkles variant="micro" class="size-3" />{{ __('Holiday') }}</span>
+                                                @if ($salaryDayNum === $cell['day'] && $e->status !== 'inactive')
+                                                    <span class="{{ $salaryTag[0] }} inline-flex w-fit items-center gap-1 rounded-md whitespace-nowrap px-1.5 py-0.5 text-[0.6875rem] font-semibold ring-1 ring-inset" title="{{ $salaryOf ? $money($periodPaid).' / '.$money($salaryOf) : '' }}"><flux:icon.banknotes variant="micro" class="size-3" />{{ $salaryTag[1] }}</span>
+                                                @endif
+                                                @if (isset($paidOn[$cell['ad']->toDateString()]))
+                                                    <span class="inline-flex w-fit items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.arrow-up-right variant="micro" class="size-3" />{{ __('Paid :amount', ['amount' => $money($paidOn[$cell['ad']->toDateString()]->sum('amount'))]) }}</span>
+                                                @endif
                                                 @if ($cell['done']->isNotEmpty())
                                                     <span class="mt-auto inline-flex w-fit items-center gap-1 rounded-md bg-violet-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-violet-700 dark:bg-violet-500/10 dark:text-violet-300" title="{{ $cell['done']->pluck('title')->implode(', ') }}"><flux:icon.check variant="micro" class="size-3" />{{ trans_choice(':count task done|:count tasks done', $cell['done']->count()) }}</span>
                                                 @endif
@@ -737,6 +761,12 @@ new #[Title('Employee')] class extends Component {
                                                     @endif
                                                 @elseif (! $isFuture && $i !== 6)
                                                     <span class="text-[0.6875rem] text-zinc-300 opacity-0 transition group-hover:opacity-100 dark:text-zinc-600">{{ __('Mark') }}</span>
+                                                @endif
+                                                @if ($salaryDayNum === $cell['day'] && $e->status !== 'inactive')
+                                                    <span class="{{ $salaryTag[0] }} inline-flex w-fit items-center gap-1 rounded-md whitespace-nowrap px-1.5 py-0.5 text-[0.6875rem] font-semibold ring-1 ring-inset" title="{{ $salaryOf ? $money($periodPaid).' / '.$money($salaryOf) : '' }}"><flux:icon.banknotes variant="micro" class="size-3" />{{ $salaryTag[1] }}</span>
+                                                @endif
+                                                @if (isset($paidOn[$cell['ad']->toDateString()]))
+                                                    <span class="inline-flex w-fit items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.arrow-up-right variant="micro" class="size-3" />{{ __('Paid :amount', ['amount' => $money($paidOn[$cell['ad']->toDateString()]->sum('amount'))]) }}</span>
                                                 @endif
                                                 @if ($cell['done']->isNotEmpty())
                                                     <span class="mt-auto inline-flex w-fit items-center gap-1 rounded-md bg-violet-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-violet-700 dark:bg-violet-500/10 dark:text-violet-300" title="{{ $cell['done']->pluck('title')->implode(', ') }}">

@@ -246,7 +246,9 @@ class EmployeesTest extends TestCase
         $page->assertSee(NepaliDate::periodLabel(NepaliDate::period(today())).' salary');
         NepaliDate::fromAd(today())[2] > 1 ? $page->assertSee('Overdue') : $page->assertSee('Unpaid');
 
-        $page->call('openPay')->set('payAmount', '10000')->call('savePay')->assertSee('Part paid');
+        // Salary day 1 has passed unless today is the 1st, so the calendar marks it unpaid.
+        $page->assertSee(NepaliDate::fromAd(today())[2] > 1 ? 'Salary unpaid' : 'Salary day');
+        $page->call('openPay')->set('payAmount', '10000')->call('savePay')->assertSee(['Part paid', 'Salary part', 'Paid NPR 10,000']);
         $page->call('openPay')->call('savePay')->assertSee('Paid on');
     }
 }
