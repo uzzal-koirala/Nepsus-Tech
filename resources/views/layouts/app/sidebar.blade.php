@@ -27,6 +27,7 @@
                         ],
                         __('Team') => [
                             ['icon' => 'user-group', 'label' => __('Employees'), 'route' => 'employees.index'],
+                            ['icon' => 'truck', 'label' => __('Vehicles'), 'route' => 'vehicles.index'],
                             ['icon' => 'clock', 'label' => __('Activity log')],
                         ],
                     ];

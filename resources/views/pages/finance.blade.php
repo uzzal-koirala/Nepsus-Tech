@@ -4,6 +4,7 @@ use App\Models\Client;
 use App\Models\Payment;
 use App\Models\SalaryPayment;
 use App\Models\Transaction;
+use App\Models\VehicleExpense;
 use App\Support\NepaliDate;
 use Flux\Flux;
 use Illuminate\Support\Carbon;
@@ -131,6 +132,7 @@ new #[Title('Finance')] class extends Component {
         $otherIncome = (float) Transaction::where('kind', 'income')->whereBetween('date', [$from->toDateString(), $to->toDateString()])->sum('amount');
         $expenses = (float) Transaction::where('kind', 'expense')->whereBetween('date', [$from->toDateString(), $to->toDateString()])->sum('amount');
         $salaries = (float) SalaryPayment::whereBetween('paid_on', [$from, $to])->sum('amount');
+        $vehicles = (float) VehicleExpense::whereBetween('date', [$from->toDateString(), $to->toDateString()])->sum('amount');
 
         return [
             'clientIncome' => $clientIncome,
@@ -138,7 +140,8 @@ new #[Title('Finance')] class extends Component {
             'income' => $clientIncome + $otherIncome,
             'expenses' => $expenses,
             'salaries' => $salaries,
-            'spent' => $expenses + $salaries,
+            'vehicles' => $vehicles,
+            'spent' => $expenses + $salaries + $vehicles,
         ];
     }
 
@@ -194,7 +197,15 @@ new #[Title('Finance')] class extends Component {
                 'proof' => $t->receipt_path ? route('transactions.receipt', $t) : null, 'id' => $t->id,
             ]);
 
-        return $payments->concat($salaries)->concat($manual)->sortByDesc(fn ($e) => $e['date']->timestamp.$e['key'])->values();
+        $vehicles = VehicleExpense::with('vehicle')->whereBetween('date', [$from->toDateString(), $to->toDateString()])->get()
+            ->map(fn ($x) => [
+                'key' => 'v'.$x->id, 'kind' => 'expense', 'source' => 'vehicle', 'date' => $x->date,
+                'title' => $x->vehicle?->name ?? __('Vehicle'), 'category' => __($x->categoryMeta()['label']), 'icon' => 'truck',
+                'amount' => (float) $x->amount, 'method' => $x->method, 'reference' => null, 'note' => $x->title ?: $x->note, 'recorded' => $x->created_at->toNepali(), 'link' => $x->vehicle ? route('vehicles.show', $x->vehicle_id) : null,
+                'proof' => null, 'id' => null,
+            ]);
+
+        return $payments->concat($salaries)->concat($vehicles)->concat($manual)->sortByDesc(fn ($e) => $e['date']->timestamp.$e['key'])->values();
     }
 
     /** Entries after the In/Out filter and search. */
@@ -303,6 +314,7 @@ new #[Title('Finance')] class extends Component {
             'p' => Payment::findOrFail($id)->delete(),
             's' => SalaryPayment::findOrFail($id)->delete(),
             't' => Transaction::findOrFail($id)->delete(),
+            'v' => VehicleExpense::findOrFail($id)->delete(),
             default => abort(404),
         };
 
@@ -371,7 +383,7 @@ new #[Title('Finance')] class extends Component {
         @php
             $cards = [
                 ['label' => __('Money in'), 'value' => $sum['income'], 'icon' => 'arrow-down-left', 'tile' => 'bg-brand-500 text-white shadow-md shadow-brand-500/30', 'sub' => __(':client from clients · :other other', ['client' => $money($sum['clientIncome']), 'other' => $money($sum['otherIncome'])]), 'delta' => $change($sum['income'], $sum['prevIncome']), 'good' => 'up'],
-                ['label' => __('Money out'), 'value' => $sum['spent'], 'icon' => 'arrow-up-right', 'tile' => 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300', 'sub' => __('Includes :sal salaries + :exp other expenses', ['sal' => $money($sum['salaries']), 'exp' => $money($sum['expenses'])]), 'delta' => $change($sum['spent'], $sum['prevSpent']), 'good' => 'down'],
+                ['label' => __('Money out'), 'value' => $sum['spent'], 'icon' => 'arrow-up-right', 'tile' => 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300', 'sub' => ($sum['vehicles'] > 0 ? __('Includes :sal salaries + :veh vehicles + :exp other', ['sal' => $money($sum['salaries']), 'veh' => $money($sum['vehicles']), 'exp' => $money($sum['expenses'])]) : __('Includes :sal salaries + :exp other expenses', ['sal' => $money($sum['salaries']), 'exp' => $money($sum['expenses'])])), 'delta' => $change($sum['spent'], $sum['prevSpent']), 'good' => 'down'],
             ];
         @endphp
         @foreach ($cards as $card)
@@ -425,7 +437,7 @@ new #[Title('Finance')] class extends Component {
 
     {{-- Transactions --}}
     @php
-        $sourceLabels = ['client' => __('Client payment'), 'salary' => __('Salary'), 'manual' => __('Manual entry')];
+        $sourceLabels = ['client' => __('Client payment'), 'salary' => __('Salary'), 'vehicle' => __('Vehicle'), 'manual' => __('Manual entry')];
         $visible = $this->visible;
         $th = 'px-3 py-2.5 text-start text-[0.6875rem] font-semibold tracking-wide text-zinc-500 uppercase whitespace-nowrap';
         $detailData = $visible->mapWithKeys(fn ($e) => [$e['key'] => [
@@ -443,7 +455,7 @@ new #[Title('Finance')] class extends Component {
             'proof' => $e['proof'],
             'id' => $e['id'],
             'key' => $e['key'],
-            'warn' => ['client' => __('This also removes it from the client\'s payments.'), 'salary' => __('This also removes it from the employee\'s salary history.')][$e['source']] ?? '',
+            'warn' => ['client' => __('This also removes it from the client\'s payments.'), 'salary' => __('This also removes it from the employee\'s salary history.'), 'vehicle' => __('This also removes it from the vehicle\'s expenses.')][$e['source']] ?? '',
             'recorded' => $e['recorded'],
         ]]);
     @endphp
@@ -557,7 +569,7 @@ new #[Title('Finance')] class extends Component {
                                     ])>{{ $in ? '+' : '−' }} {{ $money($e['amount']) }}</span>
                                 </td>
                                 <td class="px-3 py-2.5 pe-5 text-end">
-                                    @php $warn = ['client' => __('This also removes it from the client\'s payments.'), 'salary' => __('This also removes it from the employee\'s salary history.')][$e['source']] ?? ''; @endphp
+                                    @php $warn = ['client' => __('This also removes it from the client\'s payments.'), 'salary' => __('This also removes it from the employee\'s salary history.'), 'vehicle' => __('This also removes it from the vehicle\'s expenses.')][$e['source']] ?? ''; @endphp
                                     <button type="button" @click.stop wire:click="deleteEntry('{{ $e['key'] }}')" wire:confirm="{{ __('Delete this transaction?') }}{{ $warn ? ' '.$warn : '' }}" class="rounded-lg p-1.5 text-zinc-300 transition hover:bg-rose-50 hover:text-rose-500 dark:text-zinc-600 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete :title', ['title' => $e['title']]) }}" data-test="delete-{{ $e['key'] }}">
                                         <flux:icon.trash variant="micro" class="size-4" />
                                     </button>
