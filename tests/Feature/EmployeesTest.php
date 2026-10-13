@@ -164,7 +164,7 @@ class EmployeesTest extends TestCase
         $page->call('markDay', $day, 'present');
         $this->assertSame('present', $employee->attendances()->sole()->status);
         $this->assertSame(1, $page->instance()->calendar['counts']['present']);
-        $page->assertSee(['To pay this month', 'Advance paid', 'No salary paid ahead yet', 'Total leave'])->assertDontSee(['Total present', 'Total absent']);
+        $page->assertSee(['To pay this month', 'Advance paid', 'No salary paid ahead yet', 'Total absent'])->assertDontSee(['Total present', 'Total leave']);
 
         $page->call('markDay', $day, '');
         $this->assertSame(0, $employee->attendances()->count());

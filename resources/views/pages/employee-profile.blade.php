@@ -650,7 +650,7 @@ new #[Title('Employee')] class extends Component {
         @php
             $at = $this->attendanceTotals;
             $attCards = [
-                ['label' => __('Total leave'), 'value' => $at['leave'], 'icon' => 'sun', 'tile' => 'bg-sky-500 text-white shadow-md shadow-sky-500/30', 'glow' => 'bg-sky-100/70 dark:bg-sky-500/10', 'sub' => __('Days on approved leave'), 'tone' => 'text-sky-700 dark:text-sky-300'],
+                ['label' => __('Total absent'), 'value' => $at['absent'], 'icon' => 'x-circle', 'tile' => 'bg-rose-500 text-white shadow-md shadow-rose-500/30', 'glow' => 'bg-rose-100/70 dark:bg-rose-500/10', 'sub' => __('Days missed without leave'), 'tone' => 'text-rose-700 dark:text-rose-300'],
             ];
             // Salary still to pay for this month: salary minus every payment made for it.
             $due = $this->thisMonth;
