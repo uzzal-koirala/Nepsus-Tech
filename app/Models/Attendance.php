@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 #[Fillable(['employee_id', 'date', 'status', 'check_in', 'check_out', 'note', 'source'])]
 class Attendance extends Model
@@ -25,6 +26,22 @@ class Attendance extends Model
             get: fn ($value) => Carbon::parse($value)->startOfDay(),
             set: fn ($value) => Carbon::parse($value)->toDateString(),
         );
+    }
+
+    /**
+     * Deletes a day's attendance for good: the day is remembered so a later
+     * device sync does not bring it back.
+     */
+    public static function forgetDay(int $employeeId, string $date): void
+    {
+        $date = Carbon::parse($date)->toDateString();
+        static::where('employee_id', $employeeId)->whereDate('date', $date)->delete();
+        DB::table('attendance_exclusions')->insertOrIgnore(['employee_id' => $employeeId, 'date' => $date, 'created_at' => now(), 'updated_at' => now()]);
+    }
+
+    public static function isForgotten(int $employeeId, string $date): bool
+    {
+        return DB::table('attendance_exclusions')->where('employee_id', $employeeId)->whereDate('date', $date)->exists();
     }
 
     /** "09:05" => "9:05 AM", "18:02" => "6:02 PM". */

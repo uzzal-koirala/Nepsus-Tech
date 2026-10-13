@@ -33,6 +33,14 @@ new #[Title('Employee')] class extends Component {
     /** @var array<string, string> */
     public array $info = [];
 
+    // Edit / delete one attendance day from the history
+    public ?int $attId = null;
+    public string $attStatus = 'present';
+    public string $attIn = '';
+    public string $attOut = '';
+    public string $attNote = '';
+    public ?int $deletingAttId = null;
+
     /** Rows shown in the attendance history (Show more adds 30). */
     public int $historyShown = 20;
 
@@ -173,7 +181,7 @@ new #[Title('Employee')] class extends Component {
         }
 
         if ($status === '') {
-            $this->employee->attendances()->whereDate('date', $day)->delete();
+            Attendance::forgetDay($this->employee->id, $day);
         } else {
             abort_unless(array_key_exists($status, Attendance::STATUSES), 422);
             $this->employee->attendances()->updateOrCreate(['date' => $day], ['status' => $status, 'note' => null, 'source' => 'manual']);
@@ -196,6 +204,55 @@ new #[Title('Employee')] class extends Component {
         $this->reset('leaveDate', 'leaveReason');
         Flux::modal('leave-reason')->close();
         Flux::toast(variant: 'success', text: __('Leave marked.'));
+    }
+
+    public function editAttendance(int $id): void
+    {
+        $a = $this->employee->attendances()->findOrFail($id);
+        [$this->attId, $this->attStatus, $this->attIn, $this->attOut, $this->attNote] = [$a->id, $a->status, (string) $a->check_in, (string) $a->check_out, (string) $a->note];
+        $this->resetErrorBag();
+        Flux::modal('attendance-edit')->show();
+    }
+
+    public function saveAttendance(): void
+    {
+        $data = $this->validate([
+            'attStatus' => ['required', Rule::in(array_keys(Attendance::STATUSES))],
+            'attIn' => ['nullable', 'date_format:H:i'],
+            'attOut' => array_filter(['nullable', 'date_format:H:i', $this->attIn !== '' ? 'after:attIn' : null]),
+            'attNote' => [$this->attStatus === 'leave' ? 'required' : 'nullable', 'string', 'max:255'],
+        ], ['attOut.after' => __('Check-out must be after check-in.'), 'attNote.required' => __('Add the reason for the leave.')],
+            ['attIn' => __('check-in'), 'attOut' => __('check-out'), 'attNote' => __('note')]);
+
+        $working = in_array($data['attStatus'], ['present', 'half_day'], true);
+        $this->employee->attendances()->findOrFail($this->attId)->update([
+            'status' => $data['attStatus'],
+            'check_in' => $working ? ($data['attIn'] ?: null) : null,
+            'check_out' => $working ? ($data['attOut'] ?: null) : null,
+            'note' => filled($data['attNote']) ? trim($data['attNote']) : null,
+            'source' => 'edited', // the device never overwrites an edited day
+        ]);
+
+        unset($this->calendar, $this->attendanceTotals);
+        Flux::modal('attendance-edit')->close();
+        Flux::toast(variant: 'success', text: __('Attendance updated.'));
+    }
+
+    public function confirmDeleteAttendance(int $id): void
+    {
+        $this->deletingAttId = $this->employee->attendances()->findOrFail($id)->id;
+        Flux::modal('attendance-delete')->show();
+    }
+
+    public function deleteAttendance(int $id): void
+    {
+        $a = $this->employee->attendances()->findOrFail($id);
+        Attendance::forgetDay($this->employee->id, $a->date->toDateString());
+
+        $this->deletingAttId = null;
+        unset($this->calendar, $this->attendanceTotals);
+        Flux::modal('attendance-delete')->close();
+        Flux::toast(text: __('Attendance deleted. The device will not add it back.'));
     }
 
     /** Marks every unmarked working day (not Saturday) of the shown month, up to today, as present. */
@@ -1072,13 +1129,21 @@ new #[Title('Employee')] class extends Component {
                                 <th class="{{ $hth }}">{{ __('Check-out') }}</th>
                                 <th class="{{ $hth }}">{{ __('Worked') }}</th>
                                 <th class="{{ $hth }}">{{ __('Recorded') }}</th>
-                                <th class="{{ $hth }} pe-5">{{ __('Note') }}</th>
+                                <th class="{{ $hth }}">{{ __('Note') }}</th>
+                                <th class="{{ $hth }} w-20 pe-5"><span class="sr-only">{{ __('Actions') }}</span></th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-zinc-100 dark:divide-white/5">
                             @foreach ($history as $a)
-                                @php $fromDevice = $a->source === 'device'; @endphp
-                                <tr wire:key="att-row-{{ $a->id }}" class="transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
+                                @php
+                                    $fromDevice = $a->source === 'device';
+                                    $recorded = match ($a->source) {
+                                        'device' => ['finger-print', __('Fingerprint'), 'text-violet-700 dark:text-violet-300'],
+                                        'edited' => ['pencil', __('Edited'), 'text-amber-700 dark:text-amber-300'],
+                                        default => ['pencil-square', __('By hand'), 'text-zinc-500'],
+                                    };
+                                @endphp
+                                <tr wire:key="att-row-{{ $a->id }}" class="group transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
                                     <td class="px-3 py-2.5 ps-5 font-semibold whitespace-nowrap text-zinc-900 dark:text-white">{{ $a->date->toNepali() }}</td>
                                     <td class="px-3 py-2.5 whitespace-nowrap text-zinc-500">{{ $a->date->translatedFormat('l') }}</td>
                                     <td class="px-3 py-2.5">
@@ -1104,11 +1169,17 @@ new #[Title('Employee')] class extends Component {
                                     </td>
                                     <td class="px-3 py-2.5 whitespace-nowrap text-zinc-600 tabular-nums dark:text-zinc-300">{{ $a->worked() ?? '—' }}</td>
                                     <td class="px-3 py-2.5 whitespace-nowrap">
-                                        <span @class(['inline-flex items-center gap-1.5 text-xs font-medium', 'text-violet-700 dark:text-violet-300' => $fromDevice, 'text-zinc-500' => ! $fromDevice])>
-                                            <flux:icon :icon="$fromDevice ? 'finger-print' : 'pencil-square'" variant="micro" class="size-4" />{{ $fromDevice ? __('Fingerprint') : __('By hand') }}
+                                        <span class="{{ $recorded[2] }} inline-flex items-center gap-1.5 text-xs font-medium">
+                                            <flux:icon :icon="$recorded[0]" variant="micro" class="size-4" />{{ $recorded[1] }}
                                         </span>
                                     </td>
-                                    <td class="max-w-64 truncate px-3 py-2.5 pe-5 text-zinc-500" @if ($a->note) title="{{ $a->note }}" @endif>{{ $a->note ?: '—' }}</td>
+                                    <td class="max-w-64 truncate px-3 py-2.5 text-zinc-500" @if ($a->note) title="{{ $a->note }}" @endif>{{ $a->note ?: '—' }}</td>
+                                    <td class="px-3 py-2.5 pe-5 text-end whitespace-nowrap">
+                                        <div class="inline-flex gap-0.5 opacity-60 transition group-hover:opacity-100">
+                                            <button type="button" wire:click="editAttendance({{ $a->id }})" class="rounded-md p-1.5 text-zinc-500 hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-500/10" aria-label="{{ __('Edit attendance') }}" data-test="edit-att-{{ $a->id }}"><flux:icon.pencil-square variant="micro" class="size-4" /></button>
+                                            <button type="button" wire:click="confirmDeleteAttendance({{ $a->id }})" class="rounded-md p-1.5 text-zinc-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete attendance') }}"><flux:icon.trash variant="micro" class="size-4" /></button>
+                                        </div>
+                                    </td>
                                 </tr>
                             @endforeach
                         </tbody>
@@ -1480,6 +1551,76 @@ new #[Title('Employee')] class extends Component {
             </section>
         </div>
     @endif
+
+    {{-- Edit an attendance day --}}
+    <flux:modal name="attendance-edit" class="w-full max-w-lg">
+        @php $editing = $attId ? $e->attendances()->find($attId) : null; @endphp
+        <form wire:submit="saveAttendance" class="flex flex-col gap-5">
+            <div class="flex items-center gap-3">
+                <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300"><flux:icon.calendar-days variant="mini" class="size-5" /></span>
+                <div>
+                    <flux:heading size="lg">{{ __('Edit attendance') }}</flux:heading>
+                    <flux:text>{{ $editing ? $editing->date->toNepali().' · '.$editing->date->translatedFormat('l') : '' }}</flux:text>
+                </div>
+            </div>
+
+            <div>
+                <p class="mb-2 text-sm font-medium text-zinc-800 dark:text-white">{{ __('Status') }}</p>
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-4" role="radiogroup">
+                    @foreach (Attendance::STATUSES as $sk => $sv)
+                        <button type="button" role="radio" wire:click="$set('attStatus', '{{ $sk }}')" aria-checked="{{ $attStatus === $sk ? 'true' : 'false' }}" @class([
+                            'flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-xs font-semibold ring-1 transition',
+                            'bg-brand-50 text-brand-700 ring-2 ring-brand-500 dark:bg-brand-500/10 dark:text-brand-200' => $attStatus === $sk,
+                            'text-zinc-600 ring-zinc-200 hover:bg-zinc-50 dark:text-zinc-300 dark:ring-white/10 dark:hover:bg-white/5' => $attStatus !== $sk,
+                        ])>
+                            <flux:icon :icon="$sv['icon']" variant="mini" class="size-5" />{{ __($sv['label']) }}
+                        </button>
+                    @endforeach
+                </div>
+                <flux:error name="attStatus" />
+            </div>
+
+            @if (in_array($attStatus, ['present', 'half_day'], true))
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <flux:input wire:model="attIn" type="time" :label="__('Check-in')" icon="arrow-right-end-on-rectangle" data-test="att-in" />
+                    <flux:input wire:model="attOut" type="time" :label="__('Check-out')" icon="arrow-right-start-on-rectangle" data-test="att-out" />
+                </div>
+            @endif
+            <flux:input wire:model="attNote" :label="$attStatus === 'leave' ? __('Leave reason') : __('Note')" :placeholder="$attStatus === 'leave' ? __('e.g. Sick, family function') : __('Optional')" />
+
+            <p class="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                <flux:icon.information-circle variant="micro" class="mt-px size-4 shrink-0" />{{ __('Once edited, the attendance device will not change this day again.') }}
+            </p>
+
+            <div class="flex justify-end gap-2">
+                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
+                <flux:button type="submit" variant="primary" icon="check" data-test="save-attendance">{{ __('Save') }}</flux:button>
+            </div>
+        </form>
+    </flux:modal>
+
+    {{-- Delete an attendance day --}}
+    <flux:modal name="attendance-delete" class="w-full max-w-md p-0!">
+        @php $deletingAtt = $deletingAttId ? $e->attendances()->find($deletingAttId) : null; @endphp
+        <div class="flex flex-col items-center px-6 pt-8 pb-6 text-center">
+            <span class="flex size-14 items-center justify-center rounded-full bg-rose-50 text-rose-600 ring-8 ring-rose-50/50 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/5"><flux:icon.trash class="size-6" /></span>
+            <flux:heading size="lg" class="mt-5">{{ __('Delete this attendance?') }}</flux:heading>
+            <flux:text class="mt-1 max-w-xs">{{ __('It is removed for good. Syncing the attendance device will not bring it back.') }}</flux:text>
+            @if ($deletingAtt)
+                <div class="mt-5 flex w-full items-center gap-3 rounded-xl bg-zinc-50 p-4 text-start ring-1 ring-zinc-200/70 dark:bg-white/[0.03] dark:ring-white/10">
+                    <span class="{{ ['present' => 'bg-emerald-500', 'half_day' => 'bg-amber-400', 'leave' => 'bg-sky-500', 'absent' => 'bg-rose-500'][$deletingAtt->status] ?? 'bg-zinc-400' }} flex size-10 items-center justify-center rounded-lg text-white"><flux:icon :icon="Attendance::STATUSES[$deletingAtt->status]['icon'] ?? 'calendar'" variant="mini" class="size-5" /></span>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-sm font-semibold text-zinc-900 dark:text-white">{{ $deletingAtt->date->toNepali() }}</p>
+                        <p class="text-xs text-zinc-500">{{ __(Attendance::STATUSES[$deletingAtt->status]['label'] ?? '') }}@if ($deletingAtt->check_in) · {{ Attendance::clock($deletingAtt->check_in) }}@if ($deletingAtt->check_out) – {{ Attendance::clock($deletingAtt->check_out) }}@endif @endif</p>
+                    </div>
+                </div>
+            @endif
+        </div>
+        <div class="grid grid-cols-2 gap-2 rounded-b-xl border-t border-zinc-100 bg-zinc-50/70 px-6 py-4 dark:border-white/5 dark:bg-white/[0.02]">
+            <flux:modal.close><flux:button variant="ghost" class="w-full">{{ __('Keep it') }}</flux:button></flux:modal.close>
+            <flux:button variant="danger" icon="trash" class="w-full" wire:click="deleteAttendance({{ (int) $deletingAttId }})" :disabled="! $deletingAtt" data-test="confirm-delete-attendance">{{ __('Delete') }}</flux:button>
+        </div>
+    </flux:modal>
 
     {{-- Edit personal details --}}
     <flux:modal name="employee-details" class="w-full max-w-3xl p-0!">

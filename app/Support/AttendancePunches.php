@@ -45,8 +45,8 @@ class AttendancePunches
             [$employeeId, $day] = explode('|', $key);
             $mark = Attendance::where('employee_id', $employeeId)->whereDate('date', $day)->first();
 
-            if ($mark && $mark->source !== 'device') {
-                $kept++; // marked by hand: leave it alone
+            if (($mark && $mark->source !== 'device') || (! $mark && Attendance::isForgotten((int) $employeeId, $day))) {
+                $kept++; // marked or edited by hand, or deleted on purpose: leave it alone
 
                 continue;
             }

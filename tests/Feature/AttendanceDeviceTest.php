@@ -263,6 +263,62 @@ class AttendanceDeviceTest extends TestCase
         $zip->close();
     }
 
+    public function test_attendance_day_can_be_edited_and_the_device_leaves_it_alone(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $emp = Employee::factory()->create(['device_user_id' => '1', 'status' => 'active']);
+        AttendancePunches::apply([['user' => '1', 'time' => $this->at('2026-10-13 09:40')], ['user' => '1', 'time' => $this->at('2026-10-13 17:00')]]);
+        $att = $emp->attendances()->sole();
+
+        Livewire::test('pages::employee-profile', ['employee' => $emp])
+            ->call('editAttendance', $att->id)
+            ->assertSet('attIn', '09:40')
+            ->set('attIn', '09:00')->set('attOut', '08:00')
+            ->call('saveAttendance')
+            ->assertHasErrors(['attOut'])
+            ->set('attOut', '18:15')
+            ->call('saveAttendance')
+            ->assertHasNoErrors()
+            ->assertSee(['9:00 AM', '6:15 PM', 'Edited']);
+
+        $att->refresh();
+        $this->assertSame(['09:00', '18:15', 'edited'], [$att->check_in, $att->check_out, $att->source]);
+
+        // A later sync does not undo the edit.
+        AttendancePunches::apply([['user' => '1', 'time' => $this->at('2026-10-13 08:30')]]);
+        $this->assertSame('09:00', $att->fresh()->check_in);
+
+        // Leave needs a reason and drops the times.
+        Livewire::test('pages::employee-profile', ['employee' => $emp])
+            ->call('editAttendance', $att->id)->set('attStatus', 'leave')
+            ->call('saveAttendance')->assertHasErrors(['attNote'])
+            ->set('attNote', 'Sick')->call('saveAttendance')->assertHasNoErrors();
+        $this->assertSame(['leave', null, null], [$att->fresh()->status, $att->fresh()->check_in, $att->fresh()->check_out]);
+    }
+
+    public function test_deleted_attendance_is_not_brought_back_by_a_sync(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $emp = Employee::factory()->create(['device_user_id' => '1', 'status' => 'active']);
+        $punch = [['user' => '1', 'time' => $this->at('2026-10-13 09:40')]];
+        AttendancePunches::apply($punch);
+        $att = $emp->attendances()->sole();
+
+        Livewire::test('pages::employee-profile', ['employee' => $emp])
+            ->call('confirmDeleteAttendance', $att->id)
+            ->assertSee('Delete this attendance?')
+            ->call('deleteAttendance', $att->id);
+
+        $this->assertModelMissing($att);
+        $result = AttendancePunches::apply($punch);
+        $this->assertSame([0, 1], [$result['marked'], $result['kept']]);
+        $this->assertSame(0, $emp->attendances()->count());
+
+        // The day can still be marked by hand afterwards.
+        Livewire::test('pages::employee-profile', ['employee' => $emp])->call('markDay', '2026-10-13', 'absent');
+        $this->assertSame('absent', $emp->attendances()->sole()->status);
+    }
+
     public function test_marking_a_synced_day_by_hand_protects_it_and_calendar_shows_check_in(): void
     {
         $this->actingAs(User::factory()->create());
