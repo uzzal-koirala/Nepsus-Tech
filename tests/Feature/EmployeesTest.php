@@ -252,8 +252,8 @@ class EmployeesTest extends TestCase
         $page->call('openPay')->set('payAmount', '10000')->call('savePay')->assertSee(['Part paid', 'Salary part', 'Paid NPR 10,000']);
         $page->call('openPay')->call('savePay')->assertSee('Paid on');
 
-        // The salary history lists this month as paid with both payments.
-        $page->assertSee(['Salary history', 'Months fully paid', 'Total for']);
+        // The salary history lists only the payments made.
+        $page->assertSee(['Salary history', 'Total paid', 'Salary for'])->assertDontSee('Months fully paid');
     }
 
     public function test_personal_details_can_be_saved(): void
