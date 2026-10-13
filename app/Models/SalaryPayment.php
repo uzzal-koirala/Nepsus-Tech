@@ -26,13 +26,13 @@ class SalaryPayment extends Model
     }
 
     /**
-     * BS months a salary can be recorded for: this one and the next 6, oldest first.
+     * BS months a salary can be recorded for: this one and the next 2, oldest first.
      *
      * @return list<string>
      */
     public static function periodChoices(): array
     {
-        return array_reverse(NepaliDate::recentPeriods(7, NepaliDate::addMonths(today(), 6)));
+        return array_reverse(NepaliDate::recentPeriods(3, NepaliDate::addMonths(today(), 2)));
     }
 
     /** First month from $from on (or this month) that is not fully paid. */

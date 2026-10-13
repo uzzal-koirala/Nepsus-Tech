@@ -86,10 +86,10 @@ class EmployeesTest extends TestCase
         $page->set('payPeriod', $period)->set('payAmount', '100')->call('savePay')->assertHasErrors(['payPeriod'])->assertSee('Salary for this month is already fully paid.');
         $this->assertSame(2, $ram->salaryPayments()->count());
 
-        // Future months (up to 6 ahead) can be paid in advance.
-        $ahead = \App\Support\NepaliDate::period(\App\Support\NepaliDate::addMonths(today(), 6));
+        // Future months (up to 2 ahead) can be paid in advance.
+        $ahead = \App\Support\NepaliDate::period(\App\Support\NepaliDate::addMonths(today(), 2));
         $page->call('openPay', $ram->id)->set('payPeriod', $ahead)->call('savePay')->assertHasNoErrors();
-        $tooFar = \App\Support\NepaliDate::period(\App\Support\NepaliDate::addMonths(today(), 7));
+        $tooFar = \App\Support\NepaliDate::period(\App\Support\NepaliDate::addMonths(today(), 3));
         $page->call('openPay', $ram->id)->set('payPeriod', $tooFar)->call('savePay')->assertHasErrors(['payPeriod']);
         $lastMonth = \App\Support\NepaliDate::recentPeriods(2)[1];
         $page->call('openPay', $ram->id)->set('payPeriod', $lastMonth)->call('savePay')->assertHasErrors(['payPeriod']);

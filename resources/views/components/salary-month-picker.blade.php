@@ -30,7 +30,7 @@
     ];
 @endphp
 
-{{-- Salary month picker: this month and the next six. Fully paid months are locked. Binds to $wire.payPeriod. --}}
+{{-- Salary month picker: this month and the next two. Fully paid months are locked. Binds to $wire.payPeriod. --}}
 <div {{ $attributes->class('relative grid gap-2') }} x-data="{ open: false }" @click.outside="open = false" @keydown.escape.stop="open = false">
     <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('For month') }}</span>
 
@@ -55,7 +55,7 @@
         <div class="flex items-center gap-2 border-b border-zinc-100 bg-zinc-50/80 px-4 py-2.5 dark:border-white/5 dark:bg-white/[0.03]">
             <flux:icon.calendar-days variant="micro" class="size-4 text-brand-500" />
             <p class="flex-1 text-xs font-semibold text-zinc-700 dark:text-zinc-200">{{ __('Salary month') }}</p>
-            <p class="text-[0.6875rem] text-zinc-400">{{ __('Next 6 months') }}</p>
+            <p class="text-[0.6875rem] text-zinc-400">{{ __('Next 3 months') }}</p>
         </div>
 
         <div class="flex flex-col gap-0.5 p-1.5">
