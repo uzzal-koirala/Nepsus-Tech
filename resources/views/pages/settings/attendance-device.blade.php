@@ -51,6 +51,20 @@ new #[Title('Attendance device')] class extends Component {
         return filled(Setting::get('device_password'));
     }
 
+    #[Computed]
+    public function hasKey(): bool
+    {
+        return filled(Setting::get('device_push_token'));
+    }
+
+    /** Key the office PC helper sends with every upload. */
+    public function createKey(): void
+    {
+        Setting::put(['device_push_token' => Str::random(40)]);
+        unset($this->hasKey);
+        Flux::toast(variant: 'success', text: __('Secret key ready. Download the helper on the office PC.'));
+    }
+
     private function connectionRules(): array
     {
         return [
@@ -149,6 +163,8 @@ new #[Title('Attendance device')] class extends Component {
     $lastResult = json_decode((string) Setting::get('device_last_result'), true);
     $unknown = collect(array_merge($lastResult['unknown'] ?? [], $imported['unknown'] ?? []))->unique()->values();
     $linked = collect($ids)->filter()->count();
+    $helperSeen = Setting::get('device_helper_seen');
+    $helperComputer = Setting::get('device_helper_computer');
 @endphp
 
 <section class="w-full">
@@ -300,9 +316,56 @@ new #[Title('Attendance device')] class extends Component {
                     </form>
                 </div>
 
-                <div class="flex items-start gap-3 rounded-xl bg-zinc-50 px-4 py-3 text-sm text-zinc-600 sm:ms-10 dark:bg-white/[0.03] dark:text-zinc-300">
-                    <flux:icon.computer-desktop variant="mini" class="mt-0.5 size-5 shrink-0 text-zinc-400" />
-                    <span>{{ __('Automatic sync runs on the office PC while the app is open there. Keep that PC on during office hours.') }}</span>
+            </div>
+
+            <hr class="border-zinc-100 dark:border-white/5">
+
+            {{-- 4. Hosted online --}}
+            <div class="flex flex-col gap-5" data-test="helper-section">
+                <div class="flex items-center gap-3">
+                    <span class="{{ $step }}">4</span>
+                    <div>
+                        <p class="font-semibold text-zinc-900 dark:text-white">{{ __('Website hosted online (Hostinger)') }}</p>
+                        <p class="text-sm text-zinc-500">{{ __('The website cannot reach the device inside the office, so a small helper on the office PC sends punches to it every 5 minutes.') }}</p>
+                    </div>
+                </div>
+
+                <div class="grid gap-4 sm:ms-10 lg:grid-cols-[minmax(0,1fr)_18rem]">
+                    <ol class="flex flex-col gap-3 rounded-xl p-5 ring-1 ring-zinc-200/70 dark:ring-white/10">
+                        @foreach ([
+                            ['key', __('Create the secret key'), __('Only the helper with this key can send punches.')],
+                            ['arrow-down-tray', __('Download the helper on the office PC'), __('Open this page on the hosted website from the office PC and download it there.')],
+                            ['folder-open', __('Unzip it and double-click Install.bat'), __('Allow administrator access, then type the device password once.')],
+                            ['check-badge', __('Done'), __('Windows sends new punches every 5 minutes, even after a restart.')],
+                        ] as [$icon, $title, $hint])
+                            <li class="flex gap-3">
+                                <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600 dark:bg-white/10 dark:text-zinc-300"><flux:icon :icon="$icon" variant="micro" class="size-4" /></span>
+                                <div>
+                                    <p class="text-sm font-medium text-zinc-900 dark:text-white">{{ $title }}</p>
+                                    <p class="text-xs text-zinc-500">{{ $hint }}</p>
+                                </div>
+                            </li>
+                        @endforeach
+                    </ol>
+
+                    <div class="flex flex-col gap-3 rounded-xl bg-zinc-50 p-5 dark:bg-white/[0.03]">
+                        <p class="text-xs font-semibold tracking-wide text-zinc-500 uppercase">{{ __('Office PC helper') }}</p>
+                        @if ($helperSeen)
+                            <p class="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-300"><span class="size-2 rounded-full bg-emerald-500"></span>{{ __('Last sent :time', ['time' => Carbon::parse($helperSeen)->diffForHumans()]) }}</p>
+                            @if ($helperComputer)
+                                <p class="-mt-2 text-xs text-zinc-500">{{ __('From :pc', ['pc' => $helperComputer]) }}</p>
+                            @endif
+                        @else
+                            <p class="text-sm text-zinc-500">{{ __('Not installed yet.') }}</p>
+                        @endif
+
+                        @if ($this->hasKey)
+                            <flux:button variant="primary" icon="arrow-down-tray" :href="route('settings.attendance-device.helper')" data-test="download-helper">{{ __('Download helper') }}</flux:button>
+                            <flux:button size="sm" variant="ghost" icon="arrow-path" wire:click="createKey" wire:confirm="{{ __('Make a new key? A helper already installed will stop working until you install the new download.') }}">{{ __('New secret key') }}</flux:button>
+                        @else
+                            <flux:button variant="primary" icon="key" wire:click="createKey" data-test="create-key">{{ __('Create secret key') }}</flux:button>
+                        @endif
+                    </div>
                 </div>
             </div>
         </div>

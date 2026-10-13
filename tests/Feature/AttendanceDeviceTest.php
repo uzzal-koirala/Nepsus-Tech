@@ -170,6 +170,48 @@ class AttendanceDeviceTest extends TestCase
         $this->assertSame('2026-10-14 09:00', $punches[0]['time']->format('Y-m-d H:i'));
     }
 
+    public function test_office_pc_helper_can_push_punches_with_the_secret_key(): void
+    {
+        $emp = Employee::factory()->create(['device_user_id' => '1']);
+        $punch = ['computer' => 'OFFICE-PC', 'punches' => [['user' => '1', 'time' => '2026-10-14 09:06:41'], ['user' => '10', 'time' => '2026-10-14 09:30:00']]];
+
+        $this->postJson(route('api.attendance.punches'), $punch)->assertUnauthorized(); // no key set up yet
+
+        Setting::put(['device_push_token' => 'right-key']);
+        $this->postJson(route('api.attendance.punches'), $punch, ['Authorization' => 'Bearer wrong-key'])->assertUnauthorized();
+        $this->postJson(route('api.attendance.punches'), ['punches' => [['user' => '1', 'time' => 'yesterday']]], ['Authorization' => 'Bearer right-key'])->assertUnprocessable();
+
+        $this->postJson(route('api.attendance.punches'), $punch, ['Authorization' => 'Bearer right-key'])
+            ->assertOk()
+            ->assertJson(['marked' => 1, 'punches' => 2, 'unknown' => ['10']]);
+
+        $this->assertSame('09:06', $emp->attendances()->sole()->check_in);
+        $this->assertSame('OFFICE-PC', Setting::get('device_helper_computer'));
+        $this->postJson(route('api.attendance.punches'), ['punches' => []], ['Authorization' => 'Bearer right-key'])->assertOk();
+    }
+
+    public function test_helper_download_is_set_up_for_this_site(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $this->get(route('settings.attendance-device.helper'))->assertNotFound(); // no key yet
+
+        Livewire::test('pages::settings.attendance-device')->call('createKey')->assertSee('Download helper');
+        $key = Setting::get('device_push_token');
+        $this->assertSame(40, strlen($key));
+
+        $response = $this->get(route('settings.attendance-device.helper'))->assertOk();
+        $zip = new ZipArchive;
+        $zip->open($response->baseResponse->getFile()->getPathname());
+        $config = json_decode($zip->getFromName('config.json'), true);
+
+        $this->assertSame($key, $config['token']);
+        $this->assertSame(rtrim(url('/'), '/'), $config['site']);
+        $this->assertStringContainsString("\r\n", $zip->getFromName('Install.bat'));
+        $this->assertNotFalse($zip->getFromName('sync.ps1'));
+        $this->assertNotFalse($zip->getFromName('setup.ps1'));
+        $zip->close();
+    }
+
     public function test_marking_a_synced_day_by_hand_protects_it_and_calendar_shows_check_in(): void
     {
         $this->actingAs(User::factory()->create());
