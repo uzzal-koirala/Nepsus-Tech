@@ -1150,46 +1150,7 @@ new #[Title('Employee')] class extends Component {
             @endforeach
         </div>
     @elseif ($tab === 'salary')
-        <div class="flex flex-col gap-6">
-        {{-- Salary by month --}}
-        <section class="{{ $panel }}">
-            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-5 py-4 dark:border-white/5">
-                <div>
-                    <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Salary by month') }}</h2>
-                    <p class="text-xs text-zinc-500">{{ __('Last :count months', ['count' => count($months)]) }}</p>
-                </div>
-                <div class="flex items-center gap-3 text-xs text-zinc-500">
-                    <span class="inline-flex items-center gap-1.5"><span class="size-2 rounded-full bg-emerald-500"></span>{{ __('Paid') }}</span>
-                    <span class="inline-flex items-center gap-1.5"><span class="size-2 rounded-full bg-amber-400"></span>{{ __('Part paid') }}</span>
-                    <span class="inline-flex items-center gap-1.5"><span class="size-2 rounded-full bg-zinc-200 dark:bg-white/15"></span>{{ __('Not paid') }}</span>
-                </div>
-            </div>
-            @if ($months === [])
-                <p class="px-5 py-10 text-center text-sm text-zinc-500">{{ __('Their first salary month has not started yet.') }}</p>
-            @else
-                <div class="flex h-56 items-end gap-2 px-5 pt-6 pb-4 sm:gap-3">
-                    @foreach ($months as $m)
-                        @php
-                            $current = $m['period'] === $this->period;
-                            [$y, $mo] = explode('-', $m['period']);
-                        @endphp
-                        <div class="group flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2" title="{{ NepaliDate::periodLabel($m['period']) }}: {{ $money($m['paid']) }}">
-                            <span class="text-[0.625rem] font-semibold text-zinc-500 tabular-nums opacity-0 transition group-hover:opacity-100">{{ $m['percent'] }}%</span>
-                            <div class="relative flex w-full max-w-10 flex-1 items-end overflow-hidden rounded-lg bg-zinc-100 dark:bg-white/5">
-                                <div @class([
-                                    'w-full rounded-lg transition-[height] duration-700',
-                                    'bg-linear-to-t from-emerald-500 to-emerald-400' => $m['percent'] >= 100,
-                                    'bg-linear-to-t from-amber-400 to-amber-300' => $m['percent'] > 0 && $m['percent'] < 100,
-                                ]) style="height: {{ $m['percent'] }}%"></div>
-                            </div>
-                            <span @class(['text-[0.6875rem] whitespace-nowrap', 'font-semibold text-brand-600 dark:text-brand-300' => $current, 'text-zinc-400' => ! $current])>{{ mb_substr(NepaliDate::MONTHS[(int) $mo - 1], 0, 3) }}</span>
-                        </div>
-                    @endforeach
-                </div>
-            @endif
-        </section>
-
-        </div>
+        {{-- Left blank for now. --}}
     @elseif ($tab === 'details')
         @php
             $age = $e->date_of_birth ? (int) $e->date_of_birth->diffInYears(today()) : null;

@@ -118,7 +118,7 @@ class EmployeesTest extends TestCase
         $this->get(route('employees.show', $employee))->assertRedirect(route('login'));
         $this->actingAs(User::factory()->create());
         $this->get(route('employees.show', $employee))->assertOk()->assertSee(['Bina Rai', 'Attendance', 'Next salary']);
-        $this->get(route('employees.show', ['employee' => $employee, 'tab' => 'salary']))->assertOk()->assertSee('Salary by month');
+        $this->get(route('employees.show', ['employee' => $employee, 'tab' => 'salary']))->assertOk()->assertDontSee('Salary by month');
 
         $page = Livewire::test('pages::employee-profile', ['employee' => $employee])
             ->call('openPay')
