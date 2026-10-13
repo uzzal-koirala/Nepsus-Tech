@@ -676,13 +676,11 @@ new #[Title('Employees')] class extends Component {
                 <flux:text class="mt-1">{{ $payEmployeeId ? \App\Models\Employee::find($payEmployeeId)?->name : '' }}</flux:text>
             </div>
             <div class="grid gap-4 sm:grid-cols-2">
-                <div class="sm:col-span-2">
-                    <flux:input wire:model="payTitle" icon="pencil" :label="__('Payment title')" :placeholder="__('e.g. Ashoj salary, Dashain bonus')" maxlength="120" data-test="pay-title" />
-                </div>
-                @if ($payEmployeeId && $payee = Employee::find($payEmployeeId))
-                    <x-salary-month-picker :employee="$payee" class="sm:col-span-2" />
-                @endif
+                <flux:input wire:model="payTitle" icon="pencil" :label="__('Payment title')" :placeholder="__('e.g. Ashoj salary')" maxlength="120" data-test="pay-title" />
                 <flux:input wire:model="payAmount" type="number" min="0" step="1" :label="__('Amount (:currency)', ['currency' => config('app.currency')])" required />
+                @if ($payEmployeeId && $payee = Employee::find($payEmployeeId))
+                    <x-salary-month-picker :employee="$payee" />
+                @endif
                 <x-nepali-date wire:model="payDate" :label="__('Paid date')" />
                 <flux:input wire:model="payNote" :label="__('Note')" :placeholder="__('e.g. Advance, bonus, bank transfer')" class="sm:col-span-2" />
             </div>
