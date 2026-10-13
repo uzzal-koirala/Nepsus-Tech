@@ -10,10 +10,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 #[Fillable([
-    'name', 'designation', 'department', 'email', 'phone', 'status', 'salary', 'salary_day', 'joined_on', 'contract_start', 'contract_end',
+    'name', 'avatar_path', 'designation', 'department', 'email', 'phone', 'status', 'salary', 'salary_day', 'joined_on', 'contract_start', 'contract_end',
     'date_of_birth', 'gender', 'blood_group', 'marital_status', 'father_name', 'mother_name', 'spouse_name',
     'permanent_address', 'current_address', 'district', 'province', 'emergency_name', 'emergency_relation', 'emergency_phone',
     'citizenship_no', 'pan_no', 'bank_name', 'bank_account_name', 'bank_account_no',
@@ -127,6 +128,16 @@ class Employee extends Model
         }
 
         return NepaliDate::toAd($year, $month, min($this->salary_day, NepaliDate::monthLength($year, $month)));
+    }
+
+    protected static function booted(): void
+    {
+        static::deleted(fn (Employee $employee) => $employee->avatar_path && Storage::disk('public')->delete($employee->avatar_path));
+    }
+
+    public function avatarUrl(): ?string
+    {
+        return $this->avatar_path ? Storage::disk('public')->url($this->avatar_path) : null;
     }
 
     public function initials(): string

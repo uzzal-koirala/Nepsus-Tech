@@ -12,4 +12,8 @@
     ];
 @endphp
 
+@if ($url = $employee->avatarUrl())
+<img src="{{ $url }}" alt="{{ $employee->name }}" {{ $attributes->merge(['class' => 'shrink-0 rounded-full object-cover']) }} title="{{ $employee->name }}">
+@else
 <span {{ $attributes->merge(['class' => ($tints[$employee->department] ?? $tints['development']).' inline-flex shrink-0 items-center justify-center rounded-full font-semibold tracking-tighter']) }} title="{{ $employee->name }}{{ $employee->designation ? ' · '.$employee->designation : '' }}">{{ $employee->initials() }}</span>
+@endif

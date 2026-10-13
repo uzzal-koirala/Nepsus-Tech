@@ -13,6 +13,7 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Illuminate\Support\Facades\Storage;
 use Livewire\WithFileUploads;
 
 new #[Title('Employee')] class extends Component {
@@ -31,6 +32,9 @@ new #[Title('Employee')] class extends Component {
 
     /** @var array<string, string> */
     public array $info = [];
+
+    /** New profile photo, saved as soon as it is picked. */
+    public $photo = null;
 
     #[Url(except: 'overview')]
     public string $tab = 'overview';
@@ -344,6 +348,23 @@ new #[Title('Employee')] class extends Component {
         Flux::toast(variant: 'success', text: __('Employee updated.'));
     }
 
+    public function updatedPhoto(): void
+    {
+        $this->validateOnly('photo', ['photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048']], attributes: ['photo' => __('photo')]);
+
+        $this->employee->avatar_path && Storage::disk('public')->delete($this->employee->avatar_path);
+        $this->employee->update(['avatar_path' => $this->photo->store('employees/avatars', 'public')]);
+        $this->reset('photo');
+        Flux::toast(variant: 'success', text: __('Photo updated.'));
+    }
+
+    public function removePhoto(): void
+    {
+        $this->employee->avatar_path && Storage::disk('public')->delete($this->employee->avatar_path);
+        $this->employee->update(['avatar_path' => null]);
+        Flux::toast(text: __('Photo removed.'));
+    }
+
     public function openDetails(): void
     {
         $this->info = collect(self::DETAIL_FIELDS)->mapWithKeys(fn ($f) => [
@@ -527,12 +548,18 @@ new #[Title('Employee')] class extends Component {
         <div class="flex flex-col gap-4 px-5 pb-5 sm:px-6">
             <div class="flex flex-wrap items-end justify-between gap-4">
                 <div class="flex min-w-0 items-end gap-4">
-                    <span class="relative -mt-12 shrink-0">
-                        <span class="{{ $look['avatar'] }} flex size-24 items-center justify-center rounded-2xl text-3xl font-semibold shadow-lg ring-4 ring-white dark:ring-zinc-950">{{ $e->initials() }}</span>
+                    <label class="group/photo relative -mt-12 shrink-0 cursor-pointer" title="{{ __('Change photo') }}" data-test="employee-photo">
+                        <input type="file" wire:model="photo" accept="image/png,image/jpeg,image/webp" class="sr-only">
+                        <span class="{{ $look['avatar'] }} flex size-24 items-center justify-center overflow-hidden rounded-2xl text-3xl font-semibold shadow-lg ring-4 ring-white dark:ring-zinc-950">@if ($photoUrl = $e->avatarUrl())<img src="{{ $photoUrl }}" alt="" class="size-full rounded-[inherit] object-cover">@else{{ $e->initials() }}@endif</span>
+                        <span class="absolute inset-0 flex items-center justify-center rounded-2xl bg-zinc-950/45 text-white opacity-0 transition group-hover/photo:opacity-100" wire:loading.class="opacity-100!" wire:target="photo">
+                            <flux:icon.camera wire:loading.remove wire:target="photo" class="size-6" />
+                            <flux:icon.loading wire:loading wire:target="photo" class="size-6" />
+                        </span>
                         <span class="{{ $statusDot[$e->status] }} absolute -end-1 -bottom-1 size-4.5 rounded-full ring-[3px] ring-white dark:ring-zinc-950" title="{{ __(Employee::STATUSES[$e->status]) }}"></span>
-                    </span>
+                    </label>
                     <div class="min-w-0 pt-3">
                         <h1 class="truncate text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-[1.75rem] dark:text-white">{{ $e->name }}</h1>
+                        @error('photo')<p class="mt-1 text-xs font-medium text-rose-600">{{ $message }}</p>@enderror
                         <p class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-500 dark:text-zinc-400">
                             <span class="inline-flex items-center gap-1.5"><flux:icon.briefcase variant="micro" class="size-3.5 opacity-70" />{{ $e->designation ?? __('No role set') }}</span>
                             @if ($e->phone)
@@ -560,6 +587,9 @@ new #[Title('Employee')] class extends Component {
                         <flux:button icon="ellipsis-horizontal" :aria-label="__('More actions')" />
                         <flux:menu>
                             <flux:menu.item icon="banknotes" wire:click="openPay">{{ __('Record a payment') }}</flux:menu.item>
+                            @if ($e->avatar_path)
+                                <flux:menu.item icon="photo" wire:click="removePhoto">{{ __('Remove photo') }}</flux:menu.item>
+                            @endif
                             <flux:menu.separator />
                             <flux:menu.item icon="trash" variant="danger" x-on:click="$flux.modal('employee-delete').show()">{{ __('Remove employee') }}</flux:menu.item>
                         </flux:menu>
@@ -1256,7 +1286,7 @@ new #[Title('Employee')] class extends Component {
                 <section class="{{ $panel }} overflow-hidden">
                     <div class="{{ $look['cover'] }} h-16 bg-linear-to-r"></div>
                     <div class="-mt-9 flex flex-col items-center px-5 pb-5 text-center">
-                        <span class="{{ $look['avatar'] }} flex size-18 items-center justify-center rounded-2xl text-2xl font-semibold shadow-md ring-4 ring-white dark:ring-zinc-950">{{ $e->initials() }}</span>
+                        <span class="{{ $look['avatar'] }} flex size-18 items-center justify-center overflow-hidden rounded-2xl text-2xl font-semibold shadow-md ring-4 ring-white dark:ring-zinc-950">@if ($photoUrl = $e->avatarUrl())<img src="{{ $photoUrl }}" alt="" class="size-full rounded-[inherit] object-cover">@else{{ $e->initials() }}@endif</span>
                         <p class="mt-3 text-lg font-semibold text-zinc-900 dark:text-white">{{ $e->name }}</p>
                         <p class="text-sm text-zinc-500">{{ $e->designation ?? __('No role set') }} · {{ __($meta['label']) }}</p>
                         <div class="mt-3 flex flex-wrap justify-center gap-1.5">
@@ -1442,7 +1472,7 @@ new #[Title('Employee')] class extends Component {
     <flux:modal name="employee-details" class="w-full max-w-3xl p-0!">
         <form wire:submit="saveDetails" class="flex flex-col">
             <div class="flex items-center gap-4 border-b border-zinc-100 px-6 py-5 dark:border-white/5">
-                <span class="{{ $look['avatar'] }} flex size-11 items-center justify-center rounded-xl text-sm font-semibold">{{ $e->initials() }}</span>
+                <span class="{{ $look['avatar'] }} flex size-11 items-center justify-center overflow-hidden rounded-xl text-sm font-semibold">@if ($photoUrl = $e->avatarUrl())<img src="{{ $photoUrl }}" alt="" class="size-full rounded-[inherit] object-cover">@else{{ $e->initials() }}@endif</span>
                 <div class="min-w-0 flex-1">
                     <flux:heading size="lg">{{ __('Edit details') }}</flux:heading>
                     <p class="text-sm text-zinc-500">{{ $e->name }}</p>

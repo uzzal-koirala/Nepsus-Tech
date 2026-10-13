@@ -284,4 +284,26 @@ class EmployeesTest extends TestCase
         $this->assertSame('1998-05-12', $employee->date_of_birth->toDateString());
         $this->assertNull($employee->spouse_name);
     }
+
+    public function test_employee_photo_can_be_uploaded_and_removed(): void
+    {
+        Storage::fake('public');
+        $this->actingAs(User::factory()->create());
+        $employee = Employee::factory()->create();
+
+        $page = Livewire::test('pages::employee-profile', ['employee' => $employee])
+            ->set('photo', UploadedFile::fake()->create('notes.pdf', 10, 'application/pdf'))
+            ->assertHasErrors('photo')
+            ->set('photo', UploadedFile::fake()->image('me.png'))
+            ->assertHasNoErrors();
+
+        $path = $employee->refresh()->avatar_path;
+        $this->assertNotNull($path);
+        Storage::disk('public')->assertExists($path);
+        $page->assertSee($employee->avatarUrl());
+
+        $page->call('removePhoto');
+        $this->assertNull($employee->refresh()->avatar_path);
+        Storage::disk('public')->assertMissing($path);
+    }
 }

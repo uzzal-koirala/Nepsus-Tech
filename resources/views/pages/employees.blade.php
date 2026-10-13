@@ -417,7 +417,7 @@ new #[Title('Employees')] class extends Component {
                     {{-- Identity --}}
                     <div class="flex items-start gap-3.5">
                         <span class="{{ $d['avatar'] }} relative flex size-14 shrink-0 items-center justify-center rounded-2xl text-lg font-semibold">
-                            {{ $e->initials() }}
+                            @if ($photoUrl = $e->avatarUrl())<img src="{{ $photoUrl }}" alt="" class="size-full rounded-[inherit] object-cover">@else{{ $e->initials() }}@endif
                             <span class="{{ $statusDot[$e->status] }} absolute -end-1 -bottom-1 size-3.5 rounded-full ring-[3px] ring-white dark:ring-zinc-950" title="{{ __(Employee::STATUSES[$e->status]) }}"></span>
                         </span>
                         <div class="min-w-0 flex-1">
@@ -525,7 +525,7 @@ new #[Title('Employees')] class extends Component {
                             <td class="px-5 py-3">
                                 <div class="flex items-center gap-3">
                                     <span class="{{ $d['avatar'] }} relative flex size-9 shrink-0 items-center justify-center rounded-xl text-xs font-semibold">
-                                        {{ $e->initials() }}
+                                        @if ($photoUrl = $e->avatarUrl())<img src="{{ $photoUrl }}" alt="" class="size-full rounded-[inherit] object-cover">@else{{ $e->initials() }}@endif
                                         <span class="{{ $statusDot[$e->status] }} absolute -end-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-white dark:ring-zinc-950"></span>
                                     </span>
                                     <div class="min-w-0">
