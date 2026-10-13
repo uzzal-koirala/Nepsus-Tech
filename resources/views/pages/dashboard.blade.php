@@ -7,7 +7,6 @@ use App\Models\Payment;
 use App\Models\SalaryPayment;
 use App\Models\Task;
 use App\Models\Transaction;
-use App\Models\VehicleExpense;
 use App\Support\NepaliDate;
 use Illuminate\Support\Carbon;
 use Livewire\Attributes\Computed;
@@ -26,8 +25,7 @@ new #[Title('Overview')] class extends Component {
         $income = (float) Payment::whereNotNull('paid_at')->whereBetween('paid_at', [$from, $to])->sum('amount')
             + (float) Transaction::where('kind', 'income')->whereBetween('date', $days)->sum('amount');
         $spent = (float) Transaction::where('kind', 'expense')->whereBetween('date', $days)->sum('amount')
-            + (float) SalaryPayment::whereBetween('paid_on', [$from, $to])->sum('amount')
-            + (float) VehicleExpense::whereBetween('date', $days)->sum('amount');
+            + (float) SalaryPayment::whereBetween('paid_on', [$from, $to])->sum('amount');
 
         return ['period' => $period, 'income' => $income, 'spent' => $spent];
     }
