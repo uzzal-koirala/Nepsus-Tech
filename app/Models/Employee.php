@@ -18,15 +18,31 @@ class Employee extends Model
     /** @use HasFactory<EmployeeFactory> */
     use HasFactory;
 
-    public const DEPARTMENTS = [
-        'design' => ['label' => 'Design', 'icon' => 'paint-brush'],
-        'development' => ['label' => 'Development', 'icon' => 'code-bracket'],
-        'marketing' => ['label' => 'Marketing', 'icon' => 'megaphone'],
-        'content' => ['label' => 'Content', 'icon' => 'pencil-square'],
-        'sales' => ['label' => 'Sales', 'icon' => 'briefcase'],
-        'management' => ['label' => 'Management', 'icon' => 'building-office'],
-        'hr' => ['label' => 'HR & Admin', 'icon' => 'user-circle'],
-    ];
+    /** @var array<string, array{label: string, icon: string}>|null */
+    private static ?array $departmentCache = null;
+
+    /**
+     * Departments keyed by slug: [slug => [label, icon]]. Managed from the employee form.
+     *
+     * @return array<string, array{label: string, icon: string}>
+     */
+    public static function departments(): array
+    {
+        return self::$departmentCache ??= Department::orderBy('position')->orderBy('id')->get()
+            ->mapWithKeys(fn ($d) => [$d->slug => ['label' => $d->name, 'icon' => $d->icon]])
+            ->all();
+    }
+
+    public static function forgetDepartments(): void
+    {
+        self::$departmentCache = null;
+    }
+
+    /** Label and icon of this employee's department (also for a deleted one). */
+    public function departmentMeta(): array
+    {
+        return self::departments()[$this->department] ?? ['label' => Str::headline((string) $this->department), 'icon' => 'rectangle-group'];
+    }
 
     public const STATUSES = ['active' => 'Active', 'on_leave' => 'On leave', 'inactive' => 'Inactive'];
 

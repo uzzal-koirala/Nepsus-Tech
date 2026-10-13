@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Department;
 use App\Models\Employee;
 use App\Models\SalaryPayment;
 use App\Support\NepaliDate;
@@ -34,6 +35,7 @@ new #[Title('Employees')] class extends Component {
     public string $employeeStatus = 'active';
     public string $salary = '';
     public string $joinedOn = '';
+    public string $newDepartment = '';
 
     public ?int $payEmployeeId = null;
     public string $payPeriod = '';
@@ -138,7 +140,7 @@ new #[Title('Employees')] class extends Component {
         $data = $this->validate([
             'name' => ['required', 'string', 'max:255'],
             'designation' => ['nullable', 'string', 'max:255'],
-            'dept' => ['required', Rule::in(array_keys(Employee::DEPARTMENTS))],
+            'dept' => ['required', Rule::exists('departments', 'slug')],
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'employeeStatus' => ['required', Rule::in(array_keys(Employee::STATUSES))],
@@ -233,6 +235,39 @@ new #[Title('Employees')] class extends Component {
         SalaryPayment::where('employee_id', $this->historyEmployeeId)->findOrFail($id)->delete();
         unset($this->historyEmployee);
         Flux::toast(text: __('Salary payment deleted.'));
+    }
+
+    public function addDepartment(): void
+    {
+        $this->validate(['newDepartment' => ['required', 'string', 'max:40']], attributes: ['newDepartment' => __('department name')]);
+
+        $name = trim($this->newDepartment);
+        $department = Department::whereRaw('lower(name) = ?', [mb_strtolower($name)])->first() ?? Department::add($name);
+        Employee::forgetDepartments();
+
+        $this->dept = $department->slug;
+        $this->reset('newDepartment');
+    }
+
+    public function deleteDepartment(string $slug): void
+    {
+        $inUse = Employee::where('department', $slug)->count();
+        if ($inUse) {
+            Flux::toast(variant: 'warning', text: trans_choice(':count employee is in this department. Move them first.|:count employees are in this department. Move them first.', $inUse));
+
+            return;
+        }
+        if (Department::count() <= 1) {
+            Flux::toast(variant: 'warning', text: __('Keep at least one department.'));
+
+            return;
+        }
+
+        Department::where('slug', $slug)->delete();
+        Employee::forgetDepartments();
+        if ($this->dept === $slug) {
+            $this->dept = (string) array_key_first(Employee::departments());
+        }
     }
 
     private function resetForm(): void
@@ -371,7 +406,7 @@ new #[Title('Employees')] class extends Component {
             @foreach ($this->employees as $e)
                 @php
                     $d = $depts[$e->department] ?? $depts['development'];
-                    $meta = Employee::DEPARTMENTS[$e->department] ?? Employee::DEPARTMENTS['development'];
+                    $meta = $e->departmentMeta();
                     $pay = $e->status === 'inactive' ? null : $e->salaryProgress();
                     $full = $pay && $pay['left'] <= 0;
                 @endphp
@@ -483,7 +518,7 @@ new #[Title('Employees')] class extends Component {
                     @foreach ($this->employees as $e)
                         @php
                             $d = $depts[$e->department] ?? $depts['development'];
-                            $meta = Employee::DEPARTMENTS[$e->department] ?? Employee::DEPARTMENTS['development'];
+                            $meta = $e->departmentMeta();
                             $pay = $e->status === 'inactive' ? null : $e->salaryProgress();
                         @endphp
                         <tr wire:key="emp-row-{{ $e->id }}" @class(['transition hover:bg-zinc-50/70 dark:hover:bg-white/[0.02]', 'opacity-60' => $e->status === 'inactive'])>
@@ -554,23 +589,63 @@ new #[Title('Employees')] class extends Component {
                 <flux:heading size="lg">{{ $editingId ? __('Edit employee') : __('Add employee') }}</flux:heading>
                 <flux:text class="mt-1">{{ __('Role, team, salary and contact details.') }}</flux:text>
             </div>
+            @php
+                $deptOptions = Employee::departments();
+                $deptCounts = Employee::selectRaw('department, count(*) as total')->groupBy('department')->pluck('total', 'department');
+            @endphp
             <div class="grid gap-4 sm:grid-cols-2">
-                <flux:input wire:model="name" :label="__('Full name')" required autofocus class="sm:col-span-2" />
-                <flux:input wire:model="designation" :label="__('Role')" :placeholder="__('e.g. Graphic Designer')" />
-                <flux:select wire:model="dept" :label="__('Department')">
-                    @foreach (Employee::DEPARTMENTS as $key => $meta)
-                        <flux:select.option :value="$key">{{ __($meta['label']) }}</flux:select.option>
-                    @endforeach
-                </flux:select>
-                <flux:input wire:model="salary" type="number" min="0" step="1" :label="__('Monthly salary (:currency)', ['currency' => config('app.currency')])" />
+                <flux:input wire:model="name" :label="__('Full name')" required autofocus />
                 <flux:select wire:model="employeeStatus" :label="__('Status')">
                     @foreach (Employee::STATUSES as $key => $label)
                         <flux:select.option :value="$key">{{ __($label) }}</flux:select.option>
                     @endforeach
                 </flux:select>
+
+                <flux:input wire:model="designation" :label="__('Role')" :placeholder="__('e.g. Graphic Designer')" />
+
+                {{-- Department --}}
+                <div class="relative" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.stop="open = false">
+                    <span class="mb-2 block text-sm font-medium text-zinc-800 dark:text-white">{{ __('Department') }}</span>
+                    <button type="button" @click="open = ! open" class="flex h-10 w-full items-center gap-2.5 rounded-lg bg-white px-3 text-start shadow-xs ring-1 ring-zinc-200 transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 focus:outline-none dark:bg-white/5 dark:ring-white/10" :aria-expanded="open" aria-haspopup="listbox" data-test="department-button">
+                        @foreach ($deptOptions as $key => $d)
+                            <span x-show="$wire.dept === @js($key)" class="flex min-w-0 items-center gap-2.5" x-cloak>
+                                <span class="{{ $depts[$key]['avatar'] ?? $depts['development']['avatar'] }} flex size-6 shrink-0 items-center justify-center rounded-md"><flux:icon :icon="$d['icon']" variant="micro" class="size-3.5" /></span>
+                                <span class="truncate text-sm font-medium text-zinc-900 dark:text-white">{{ __($d['label']) }}</span>
+                            </span>
+                        @endforeach
+                        <flux:icon.chevron-up-down variant="mini" class="ms-auto size-4 shrink-0 text-zinc-400" />
+                    </button>
+                    <div x-show="open" x-transition.origin.top x-cloak class="absolute inset-x-0 top-full z-40 mt-1.5 overflow-hidden rounded-xl bg-white shadow-[0_20px_50px_-12px_rgb(15_23_42/0.35)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10" role="listbox">
+                        <div class="max-h-60 overflow-y-auto p-1.5">
+                            @foreach ($deptOptions as $key => $d)
+                                <div wire:key="dept-opt-{{ $key }}" class="group flex items-center rounded-lg transition hover:bg-zinc-50 dark:hover:bg-white/5" :class="$wire.dept === @js($key) && 'bg-brand-50/70 dark:bg-brand-500/10'">
+                                    <button type="button" role="option" @click="$wire.dept = @js($key); open = false" class="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-start">
+                                        <span class="{{ $depts[$key]['avatar'] ?? $depts['development']['avatar'] }} flex size-7 shrink-0 items-center justify-center rounded-lg"><flux:icon :icon="$d['icon']" variant="micro" class="size-3.5" /></span>
+                                        <span class="min-w-0 flex-1">
+                                            <span class="block truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ __($d['label']) }}</span>
+                                            <span class="block text-[0.6875rem] text-zinc-400">{{ trans_choice(':count person|:count people', (int) ($deptCounts[$key] ?? 0)) }}</span>
+                                        </span>
+                                        <flux:icon.check variant="mini" class="size-4 text-brand-600" x-show="$wire.dept === @js($key)" />
+                                    </button>
+                                    <button type="button" wire:click="deleteDepartment('{{ $key }}')" wire:confirm="{{ __('Delete the department “:name”?', ['name' => __($d['label'])]) }}" class="me-1 rounded-md p-1.5 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 focus:opacity-100 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete :name', ['name' => __($d['label'])]) }}">
+                                        <flux:icon.trash variant="micro" class="size-3.5" />
+                                    </button>
+                                </div>
+                            @endforeach
+                        </div>
+                        <div class="flex items-center gap-1.5 border-t border-zinc-100 bg-zinc-50/70 p-2 dark:border-white/5 dark:bg-white/[0.02]">
+                            <input wire:model="newDepartment" type="text" maxlength="40" placeholder="{{ __('New department…') }}" @keydown.enter.prevent="$wire.addDepartment()" class="h-8 min-w-0 flex-1 rounded-lg border-0 bg-white px-2.5 text-sm ring-1 ring-zinc-200 placeholder:text-zinc-400 focus:ring-2 focus:ring-brand-500 focus:outline-none dark:bg-white/5 dark:text-white dark:ring-white/10" data-test="new-department-input" />
+                            <button type="button" wire:click="addDepartment" class="inline-flex h-8 items-center gap-1 rounded-lg bg-brand-500 px-2.5 text-xs font-semibold text-white transition hover:bg-brand-600"><flux:icon.plus variant="micro" class="size-3.5" />{{ __('Add') }}</button>
+                        </div>
+                        <flux:error name="newDepartment" class="px-3 pb-2" />
+                    </div>
+                    <flux:error name="dept" />
+                </div>
+
                 <flux:input wire:model="phone" type="tel" :label="__('Phone')" placeholder="98XXXXXXXX" />
+                <flux:input wire:model="salary" type="number" min="0" step="1" :label="__('Monthly salary (:currency)', ['currency' => config('app.currency')])" />
                 <flux:input wire:model="email" type="email" :label="__('Email')" />
-                <x-nepali-date wire:model="joinedOn" :label="__('Joined on')" class="sm:col-span-2" />
+                <x-nepali-date wire:model="joinedOn" :label="__('Joined on')" />
             </div>
             <div class="flex justify-end gap-2">
                 <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>

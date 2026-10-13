@@ -71,8 +71,16 @@ class FinanceTest extends TestCase
             ->assertDontSee('Logo for a friend');
 
         $rent = Transaction::firstWhere('title', 'Office rent');
-        $page->call('deleteEntry', $rent->id);
+        $page->call('deleteEntry', 't'.$rent->id);
         $this->assertModelMissing($rent);
+
+        // Client payments and salaries can be deleted from here too.
+        $payment = $client->payments()->whereNotNull('paid_at')->sole();
+        $salary = \App\Models\SalaryPayment::sole();
+        $page->call('deleteEntry', 'p'.$payment->id)->call('deleteEntry', 's'.$salary->id);
+        $this->assertModelMissing($payment);
+        $this->assertModelMissing($salary);
+        $this->assertSame(5000.0, $page->instance()->summary['income']);
     }
 
     public function test_an_entry_can_have_a_private_receipt(): void

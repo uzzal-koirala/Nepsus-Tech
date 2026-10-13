@@ -1807,7 +1807,7 @@ new #[Title('Client profile')] class extends Component {
             'content' => 'bg-emerald-100 text-emerald-700', 'sales' => 'bg-sky-100 text-sky-700', 'management' => 'bg-violet-100 text-violet-700', 'hr' => 'bg-teal-100 text-teal-700',
         ];
         $teamJs = $this->team->map(fn ($e) => [
-            'id' => $e->id, 'name' => $e->name, 'role' => $e->designation ?? __(Employee::DEPARTMENTS[$e->department]['label'] ?? ''),
+            'id' => $e->id, 'name' => $e->name, 'role' => $e->designation ?? $e->departmentMeta()['label'],
             'initials' => $e->initials(), 'tint' => $empTints[$e->department] ?? $empTints['development'],
         ])->values();
         $typesJs = collect($types)->map(fn ($t, $slug) => ['label' => $t['label'], 'tile' => ($palette[$t['color']] ?? $palette['zinc'])['chip']]);

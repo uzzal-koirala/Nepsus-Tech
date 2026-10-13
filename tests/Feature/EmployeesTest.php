@@ -212,4 +212,28 @@ class EmployeesTest extends TestCase
             ->assertStatus(422);
         $this->assertSame(0, $employee->attendances()->count());
     }
+
+    public function test_departments_can_be_added_and_deleted_from_the_form(): void
+    {
+        $this->actingAs(User::factory()->create());
+        Employee::factory()->create(['department' => 'design']);
+
+        $page = Livewire::test('pages::employees')
+            ->call('create')
+            ->set('newDepartment', 'Video Production')
+            ->call('addDepartment')
+            ->assertSet('dept', 'video-production')
+            ->set('name', 'Sujan Thapa')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertSame('video-production', Employee::firstWhere('name', 'Sujan Thapa')->department);
+        $this->assertSame('Video Production', Employee::firstWhere('name', 'Sujan Thapa')->departmentMeta()['label']);
+
+        // A department with people in it is kept; an empty one is deleted.
+        $page->call('deleteDepartment', 'design');
+        $this->assertTrue(\App\Models\Department::where('slug', 'design')->exists());
+        $page->call('deleteDepartment', 'sales');
+        $this->assertFalse(\App\Models\Department::where('slug', 'sales')->exists());
+    }
 }

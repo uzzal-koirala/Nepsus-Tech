@@ -304,7 +304,7 @@ new #[Title('Employee')] class extends Component {
         $data = $this->validate([
             'name' => ['required', 'string', 'max:255'],
             'designation' => ['nullable', 'string', 'max:255'],
-            'dept' => ['required', Rule::in(array_keys(Employee::DEPARTMENTS))],
+            'dept' => ['required', Rule::exists('departments', 'slug')],
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'employeeStatus' => ['required', Rule::in(array_keys(Employee::STATUSES))],
@@ -387,7 +387,7 @@ new #[Title('Employee')] class extends Component {
     $e = $employee;
     $money = fn ($v) => Client::money($v);
     $periodLabel = NepaliDate::periodLabel($this->period);
-    $meta = Employee::DEPARTMENTS[$e->department] ?? Employee::DEPARTMENTS['development'];
+    $meta = $e->departmentMeta();
     $looks = [
         'design' => ['cover' => 'from-rose-300 via-pink-400 to-rose-500', 'avatar' => 'bg-rose-100 text-rose-700 dark:bg-rose-500/25 dark:text-rose-100', 'chip' => 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'],
         'development' => ['cover' => 'from-brand-400 via-brand-500 to-indigo-600', 'avatar' => 'bg-brand-100 text-brand-700 dark:bg-brand-500/30 dark:text-white', 'chip' => 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'],
@@ -1088,7 +1088,7 @@ new #[Title('Employee')] class extends Component {
                 <flux:input wire:model="name" :label="__('Full name')" required class="sm:col-span-2" />
                 <flux:input wire:model="designation" :label="__('Role')" :placeholder="__('e.g. Graphic Designer')" />
                 <flux:select wire:model="dept" :label="__('Department')">
-                    @foreach (Employee::DEPARTMENTS as $key => $d)
+                    @foreach (Employee::departments() as $key => $d)
                         <flux:select.option :value="$key">{{ __($d['label']) }}</flux:select.option>
                     @endforeach
                 </flux:select>

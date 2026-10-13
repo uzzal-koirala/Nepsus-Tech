@@ -294,10 +294,20 @@ new #[Title('Finance')] class extends Component {
         Flux::toast(variant: 'success', text: $data['kind'] === 'income' ? __('Income added.') : __('Expense added.'));
     }
 
-    public function deleteEntry(int $id): void
+    /** Deletes any transaction by its key: "p12" client payment, "s5" salary payment, "t3" own entry. */
+    public function deleteEntry(string $key): void
     {
-        Transaction::findOrFail($id)->delete();
-        Flux::toast(text: __('Entry deleted.'));
+        $id = (int) substr($key, 1);
+
+        match ($key[0] ?? '') {
+            'p' => Payment::findOrFail($id)->delete(),
+            's' => SalaryPayment::findOrFail($id)->delete(),
+            't' => Transaction::findOrFail($id)->delete(),
+            default => abort(404),
+        };
+
+        unset($this->entries, $this->visible, $this->summary);
+        Flux::toast(text: __('Transaction deleted.'));
     }
 }; ?>
 
@@ -432,6 +442,8 @@ new #[Title('Finance')] class extends Component {
             'linkLabel' => ['client' => __('Open client'), 'salary' => __('Open employee')][$e['source']] ?? null,
             'proof' => $e['proof'],
             'id' => $e['id'],
+            'key' => $e['key'],
+            'warn' => ['client' => __('This also removes it from the client\'s payments.'), 'salary' => __('This also removes it from the employee\'s salary history.')][$e['source']] ?? '',
             'recorded' => $e['recorded'],
         ]]);
     @endphp
@@ -492,7 +504,8 @@ new #[Title('Finance')] class extends Component {
                             <th class="{{ $th }}">{{ __('Category') }}</th>
                             <th class="{{ $th }}">{{ __('Payment type') }}</th>
                             <th class="{{ $th }}">{{ __('Method') }}</th>
-                            <th class="{{ str_replace('text-start', 'text-end', $th) }} pe-5">{{ __('Amount') }}</th>
+                            <th class="{{ str_replace('text-start', 'text-end', $th) }}">{{ __('Amount') }}</th>
+                            <th class="{{ $th }} w-12 pe-5"><span class="sr-only">{{ __('Delete') }}</span></th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-zinc-100 dark:divide-white/5">
@@ -536,12 +549,18 @@ new #[Title('Finance')] class extends Component {
                                     @endif
                                 </td>
                                 {{-- Amount --}}
-                                <td class="px-3 py-2.5 pe-5 text-end whitespace-nowrap">
+                                <td class="px-3 py-2.5 text-end whitespace-nowrap">
                                     <span @class([
                                         'inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-sm font-bold tabular-nums ring-1 ring-inset',
                                         'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20' => $in,
                                         'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20' => ! $in,
                                     ])>{{ $in ? '+' : '−' }} {{ $money($e['amount']) }}</span>
+                                </td>
+                                <td class="px-3 py-2.5 pe-5 text-end">
+                                    @php $warn = ['client' => __('This also removes it from the client\'s payments.'), 'salary' => __('This also removes it from the employee\'s salary history.')][$e['source']] ?? ''; @endphp
+                                    <button type="button" @click.stop wire:click="deleteEntry('{{ $e['key'] }}')" wire:confirm="{{ __('Delete this transaction?') }}{{ $warn ? ' '.$warn : '' }}" class="rounded-lg p-1.5 text-zinc-300 transition hover:bg-rose-50 hover:text-rose-500 dark:text-zinc-600 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete :title', ['title' => $e['title']]) }}" data-test="delete-{{ $e['key'] }}">
+                                        <flux:icon.trash variant="micro" class="size-4" />
+                                    </button>
                                 </td>
                             </tr>
                         @endforeach
@@ -572,8 +591,8 @@ new #[Title('Finance')] class extends Component {
                             <div class="flex justify-between gap-4 py-3"><dt class="text-zinc-500">{{ __('Recorded') }}</dt><dd class="text-zinc-600 dark:text-zinc-300" x-text="rows[open].recorded"></dd></div>
                         </dl>
                         <div class="flex flex-wrap items-center gap-2 border-t border-zinc-100 bg-zinc-50/70 px-6 py-4 dark:border-white/5 dark:bg-white/[0.02]">
-                            <template x-if="rows[open].id">
-                                <button type="button" @click="if (confirm(@js(__('Delete this entry?')))) { $wire.deleteEntry(rows[open].id); open = null }" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"><flux:icon.trash variant="micro" class="size-4" />{{ __('Delete') }}</button>
+                            <template x-if="rows[open].key">
+                                <button type="button" @click="if (confirm(@js(__('Delete this transaction?')) + (rows[open].warn ? '\n' + rows[open].warn : ''))) { $wire.deleteEntry(rows[open].key); open = null }" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"><flux:icon.trash variant="micro" class="size-4" />{{ __('Delete') }}</button>
                             </template>
                             <div class="ms-auto flex gap-2">
                                 <template x-if="rows[open].proof">
