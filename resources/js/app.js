@@ -1,2 +1,2 @@
 import './nepali-datepicker';
-import './camera-player';
+import './cctv-player';

@@ -5,7 +5,6 @@
             ['route' => 'settings.preferences', 'icon' => 'adjustments-horizontal', 'label' => __('Preferences'), 'hint' => __('Currency, reminders and holidays')],
             ['route' => 'settings.work-types', 'icon' => 'swatch', 'label' => __('Work types'), 'hint' => __('Post, reel, edit and more')],
             ['route' => 'settings.attendance-device', 'icon' => 'finger-print', 'label' => __('Attendance device'), 'hint' => __('Hikvision fingerprint machine')],
-            ['route' => 'settings.cameras', 'icon' => 'video-camera', 'label' => __('Cameras'), 'hint' => __('EZVIZ CCTV account')],
         ],
         __('Your account') => [
             ['route' => 'profile.edit', 'icon' => 'user-circle', 'label' => __('Profile'), 'hint' => __('Your name and email')],
