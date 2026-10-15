@@ -39,7 +39,7 @@
 
                         @foreach ($items as $item)
                             @isset($item['route'])
-                                <flux:sidebar.item :icon="$item['icon']" :href="route($item['route'])" :current="request()->routeIs(str($item['route'])->before('.').'*')" wire:navigate>
+                                <flux:sidebar.item :icon="$item['icon']" :href="route($item['route'])" :current="request()->routeIs(str($item['route'])->before('.').'*')" wire:navigate.hover>
                                     {{ $item['label'] }}
                                 </flux:sidebar.item>
                             @else
@@ -68,7 +68,7 @@
             </div>
 
             <flux:sidebar.nav>
-                <flux:sidebar.item icon="cog-6-tooth" :href="route('settings.business')" :current="request()->routeIs('profile.edit', 'security.edit', 'appearance.edit', 'settings.*')" wire:navigate>
+                <flux:sidebar.item icon="cog-6-tooth" :href="route('settings.business')" :current="request()->routeIs('profile.edit', 'security.edit', 'appearance.edit', 'settings.*')" wire:navigate.hover>
                     {{ __('Settings') }}
                 </flux:sidebar.item>
             </flux:sidebar.nav>
