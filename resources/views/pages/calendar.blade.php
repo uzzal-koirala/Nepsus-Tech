@@ -144,15 +144,6 @@ new #[Title('Calendar')] class extends Component {
     }
 
     #[Computed]
-    public function upcoming()
-    {
-        return Task::with('client')->whereNotNull('client_id')->whereNull('completed_at')
-            ->whereBetween('due_date', [today()->addDay()->toDateString(), today()->addDays(7)->toDateString()])
-            ->when($this->off, fn ($q) => $q->whereNotIn('type', $this->off))
-            ->orderBy('due_date')->take(8)->get();
-    }
-
-    #[Computed]
     public function clients()
     {
         return Client::orderBy('company')->orderBy('name')->get();
@@ -405,28 +396,6 @@ new #[Title('Calendar')] class extends Component {
                         </div>
                     @endforelse
                     <flux:button icon="plus" size="sm" wire:click="newTask('{{ $day }}')" class="mt-1 w-full">{{ __('Add task on this day') }}</flux:button>
-                </div>
-            </section>
-
-            {{-- Next 7 days --}}
-            <section class="{{ $panel }} p-5">
-                <p class="flex items-center gap-2 font-semibold text-zinc-900 dark:text-white"><flux:icon.sparkles variant="mini" class="size-5 text-brand-500" />{{ __('Coming up') }}<span class="text-xs font-normal text-zinc-500">{{ __('next 7 days') }}</span></p>
-                <div class="mt-3 flex flex-col divide-y divide-zinc-100 dark:divide-white/5">
-                    @forelse ($this->upcoming as $t)
-                        @php $bs = NepaliDate::fromAd($t->due_date); @endphp
-                        <button type="button" wire:click="pick('{{ $t->due_date->toDateString() }}')" class="flex items-center gap-3 py-2.5 text-start">
-                            <span class="flex w-11 shrink-0 flex-col items-center rounded-lg bg-zinc-50 py-1 dark:bg-white/5">
-                                <span class="text-[0.625rem] font-semibold text-zinc-500 uppercase">{{ $bs ? mb_substr(NepaliDate::MONTHS[$bs[1] - 1], 0, 3) : $t->due_date->format('M') }}</span>
-                                <span class="text-base leading-none font-bold text-zinc-900 dark:text-white">{{ $bs[2] ?? $t->due_date->day }}</span>
-                            </span>
-                            <span class="min-w-0 flex-1">
-                                <span class="block truncate text-sm font-medium text-zinc-900 dark:text-white">{{ $t->title }}</span>
-                                <span class="flex items-center gap-1.5 truncate text-xs text-zinc-500"><span class="{{ $toneOf($t->type)['dot'] }} size-1.5 shrink-0 rounded-full"></span>{{ $t->client->displayName() }}</span>
-                            </span>
-                        </button>
-                    @empty
-                        <p class="py-4 text-center text-sm text-zinc-500">{{ __('A quiet week ahead.') }}</p>
-                    @endforelse
                 </div>
             </section>
         </aside>
