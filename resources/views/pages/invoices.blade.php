@@ -172,7 +172,7 @@ new #[Title('Invoices & Quotations')] class extends Component {
                                 </td>
                                 <td class="px-3 py-3">
                                     <p class="font-medium text-zinc-900 dark:text-white">{{ $d->bill_company ?: $d->bill_name }}</p>
-                                    @if ($d->bill_company)<p class="text-xs text-zinc-500">{{ $d->bill_name }}</p>@endif
+                                    @if ($d->bill_company && ! $quote)<p class="text-xs text-zinc-500">{{ $d->bill_name }}</p>@endif
                                 </td>
                                 <td class="px-3 py-3 whitespace-nowrap text-zinc-700 dark:text-zinc-300">{{ $d->issue_date->toNepali() }}</td>
                                 <td @class(['px-3 py-3 whitespace-nowrap', 'font-medium text-rose-600 dark:text-rose-400' => in_array($st, ['overdue', 'expired'], true), 'text-zinc-700 dark:text-zinc-300' => ! in_array($st, ['overdue', 'expired'], true)])>{{ $d->due_date?->toNepali() ?? '—' }}</td>

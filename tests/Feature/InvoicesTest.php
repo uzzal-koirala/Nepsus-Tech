@@ -114,6 +114,9 @@ class InvoicesTest extends TestCase
         $this->actingAs(User::factory()->create());
         $quote = $this->invoice(['type' => 'quotation', 'number' => 'QT-0001']);
         $this->get(route('invoices.show', $quote))->assertSee(['QUOTATION', 'Convert to invoice']);
+        // Quotations are addressed to the business, not the person.
+        $this->get(route('invoices.print', $quote))->assertSee('Himalayan Cafe')->assertDontSee('Ram Sharma');
+        $this->get(route('invoices.index', ['type' => 'quotation']))->assertSee('Himalayan Cafe')->assertDontSee('Ram Sharma');
 
         Livewire::test('pages::invoice-show', ['invoice' => $quote])->call('convert');
 

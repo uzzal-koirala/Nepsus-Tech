@@ -11,8 +11,10 @@
     $items = $doc['items'] ?? [];
     $tpl = $doc['template'] ?? 'classic';
     $contacts = array_filter([['phone', $b['phone']], ['envelope', $b['email']], ['map-pin', $b['address']]], fn ($c) => $c[1] !== '');
-    $billLines = array_filter([$doc['bill_company'] ?? null, $doc['bill_address'] ?? null]);
     $isQuote = ($doc['type'] ?? 'invoice') === 'quotation';
+    // Quotations are addressed to the business only (falls back to the person when there is no business name).
+    $billTitle = $isQuote ? (($doc['bill_company'] ?? null) ?: ($doc['bill_name'] ?? '')) : ($doc['bill_name'] ?? '');
+    $billLines = array_filter([$isQuote ? null : ($doc['bill_company'] ?? null), $doc['bill_address'] ?? null]);
 @endphp
 
 <div {{ $attributes->class('invoice-paper relative flex flex-col overflow-hidden bg-white text-[13px] leading-relaxed text-zinc-700') }} style="width: 794px; min-height: 1123px; font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif;">
@@ -44,7 +46,7 @@
     <div class="flex justify-between px-10 pt-9">
         <div>
             <p class="text-[12px] font-semibold" style="color: {{ $a }}">{{ $doc['to_label'] }}:</p>
-            <p class="mt-1 text-[20px] font-bold text-zinc-900">{{ $doc['bill_name'] ?: '—' }}</p>
+            <p class="mt-1 text-[20px] font-bold text-zinc-900">{{ $billTitle ?: '—' }}</p>
             @foreach ($billLines as $line)<p class="text-[12px]">{{ $line }}</p>@endforeach
             @if ($doc['bill_phone'] ?? null)<p class="text-[12px]"><span class="font-semibold text-zinc-900">Phone:</span> {{ $doc['bill_phone'] }}</p>@endif
             @if ($doc['bill_email'] ?? null)<p class="text-[12px]"><span class="font-semibold text-zinc-900">Email:</span> {{ $doc['bill_email'] }}</p>@endif
@@ -152,7 +154,7 @@
         <div class="mt-12 flex items-start justify-between">
             <div>
                 <p class="text-[12px] font-bold tracking-wide text-zinc-900 uppercase">{{ $doc['to_label'] }}:</p>
-                <p class="mt-1 text-[13px] font-semibold text-zinc-800">{{ $doc['bill_name'] ?: '—' }}</p>
+                <p class="mt-1 text-[13px] font-semibold text-zinc-800">{{ $billTitle ?: '—' }}</p>
                 @foreach ($billLines as $line)<p class="text-[11px] text-zinc-500">{{ $line }}</p>@endforeach
                 @if ($doc['bill_phone'] ?? null)<p class="text-[11px] text-zinc-500">{{ $doc['bill_phone'] }}</p>@endif
                 @if ($doc['bill_email'] ?? null)<p class="text-[11px] text-zinc-500">{{ $doc['bill_email'] }}</p>@endif
@@ -259,7 +261,7 @@
     <div class="flex justify-between px-10 pt-8">
         <div>
             <p class="text-[12px] font-semibold tracking-wide uppercase" style="color: {{ $a }}">{{ $doc['to_label'] }}:</p>
-            <p class="mt-1 text-[22px] font-bold text-zinc-900">{{ $doc['bill_name'] ?: '—' }}</p>
+            <p class="mt-1 text-[22px] font-bold text-zinc-900">{{ $billTitle ?: '—' }}</p>
             @foreach ($billLines as $line)<p class="text-[12px]">{{ $line }}</p>@endforeach
             @if ($doc['bill_phone'] ?? null)<p class="text-[12px]">Phone: {{ $doc['bill_phone'] }}</p>@endif
             @if ($doc['bill_email'] ?? null)<p class="text-[12px]">Email: {{ $doc['bill_email'] }}</p>@endif
