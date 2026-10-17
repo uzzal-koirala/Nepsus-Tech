@@ -4,6 +4,7 @@
     'options' => [],      // list of ['value', 'label', 'hint'?, 'icon'?, 'tile'?, 'initials'?]
     'placeholder' => null,
     'searchable' => false,
+    'live' => false,      // send each pick to the server straight away
 ])
 
 @php
@@ -32,7 +33,7 @@
             this.up = window.innerHeight - r.bottom < 330 && r.top > window.innerHeight - r.bottom;
             this.$nextTick(() => this.$refs.search?.focus());
         },
-        value: $wire.entangle('{{ $model }}'),
+        value: $wire.entangle('{{ $model }}'){{ $live ? '.live' : '' }},
         options: @js($options),
         get shown() { const q = this.q.trim().toLowerCase(); return q ? this.options.filter(o => (o.label + ' ' + (o.hint || '')).toLowerCase().includes(q)) : this.options },
         pick(v) { this.value = v; this.open = false; this.q = ''; },

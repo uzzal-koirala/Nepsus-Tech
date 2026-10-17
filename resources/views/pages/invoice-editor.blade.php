@@ -77,9 +77,10 @@ new #[Title('Invoice editor')] class extends Component {
     /** Picking a client fills in who the document is for. */
     public function updatedClientId(): void
     {
+        $this->billName = '';
         if ($client = Client::find((int) $this->clientId)) {
             $this->billName = $client->name;
-            $this->billCompany = (string) $client->company;
+            $this->billCompany = $client->company ?: $client->name;
             $this->billPhone = (string) $client->phone;
             $this->billEmail = (string) $client->email;
         }
@@ -130,8 +131,8 @@ new #[Title('Invoice editor')] class extends Component {
     {
         $data = $this->validate([
             'clientId' => ['nullable', 'exists:clients,id'],
-            'billName' => ['required', 'string', 'max:120'],
-            'billCompany' => ['nullable', 'string', 'max:120'],
+            'billName' => ['nullable', 'string', 'max:120'],
+            'billCompany' => ['required', 'string', 'max:120'],
             'billPhone' => ['nullable', 'string', 'max:50'],
             'billEmail' => ['nullable', 'email', 'max:120'],
             'billAddress' => ['nullable', 'string', 'max:200'],
@@ -152,11 +153,11 @@ new #[Title('Invoice editor')] class extends Component {
         ], [
             'items.*.description.required' => __('Describe each item.'),
             'items.*.price.required' => __('Enter a price.'),
-        ], ['billName' => __('name'), 'billEmail' => __('email'), 'dueDate' => $this->type === 'quotation' ? __('valid until date') : __('due date'), 'issueDate' => __('date')]);
+        ], ['billCompany' => __('business'), 'billEmail' => __('email'), 'dueDate' => $this->type === 'quotation' ? __('valid until date') : __('due date'), 'issueDate' => __('date')]);
 
         $fields = [
             'client_id' => $data['clientId'] ?: null,
-            'bill_name' => trim($data['billName']), 'bill_company' => $data['billCompany'] ?: null, 'bill_phone' => $data['billPhone'] ?: null,
+            'bill_name' => trim($data['billName'] ?: $data['billCompany']), 'bill_company' => trim($data['billCompany']), 'bill_phone' => $data['billPhone'] ?: null,
             'bill_email' => $data['billEmail'] ?: null, 'bill_address' => $data['billAddress'] ?: null,
             'issue_date' => $data['issueDate'], 'due_date' => $data['dueDate'] ?: null,
             'discount' => (float) $data['discount'], 'tax_rate' => (float) $data['taxRate'],
@@ -188,6 +189,8 @@ new #[Title('Invoice editor')] class extends Component {
 }; ?>
 
 @php
+    $clientOptions = collect([['value' => '', 'label' => __('Someone new (not a client yet)'), 'hint' => __('Type the details below'), 'icon' => 'user-plus', 'tile' => 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300']])
+        ->concat($this->clients->map(fn ($c) => ['value' => $c->id, 'label' => $c->company ?: $c->name, 'hint' => collect([$c->company ? $c->name : null, $c->phone])->filter()->implode(' · '), 'initials' => mb_strtoupper(mb_substr($c->company ?: $c->name, 0, 2)), 'tile' => 'bg-linear-to-br from-brand-500 to-violet-600 text-white']));
     $panel = 'rounded-xl bg-white ring-1 ring-zinc-200/70 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:ring-white/10';
     $quote = $type === 'quotation';
     $doc = $this->paper;
@@ -270,17 +273,11 @@ new #[Title('Invoice editor')] class extends Component {
             <section class="{{ $panel }} p-5">
                 <p class="{{ $sectionTitle }}"><flux:icon.user variant="mini" class="size-5 text-brand-500" />{{ $quote ? __('Quotation for') : __('Bill to') }}</p>
                 <div class="mt-4 grid gap-4 sm:grid-cols-2">
-                    <div class="sm:col-span-2">
-                        <flux:select wire:model.live="clientId" :label="__('Client')" :description="__('Pick one to fill in the details, or type them below.')">
-                            <flux:select.option value="">{{ __('Someone new (not a client yet)') }}</flux:select.option>
-                            @foreach ($this->clients as $c)<flux:select.option :value="$c->id">{{ $c->displayName() }}{{ $c->company ? ' · '.$c->name : '' }}</flux:select.option>@endforeach
-                        </flux:select>
-                    </div>
-                    <flux:input wire:model.live.debounce.400ms="billName" :label="__('Name')" required data-test="bill-name" />
-                    <flux:input wire:model.live.debounce.400ms="billCompany" :label="__('Business')" />
+                    <x-rich-select model="clientId" live searchable class="sm:col-span-2" :label="__('Client')" :placeholder="__('Pick a client')" :options="$clientOptions" />
+                    <flux:input wire:model.live.debounce.400ms="billCompany" :label="__('Business')" required data-test="bill-company" />
+                    <flux:input wire:model.live.debounce.400ms="billAddress" :label="__('Address')" />
                     <flux:input wire:model.live.debounce.400ms="billPhone" :label="__('Phone')" />
                     <flux:input wire:model.live.debounce.400ms="billEmail" type="email" :label="__('Email')" />
-                    <div class="sm:col-span-2"><flux:input wire:model.live.debounce.400ms="billAddress" :label="__('Address')" /></div>
                 </div>
             </section>
 
