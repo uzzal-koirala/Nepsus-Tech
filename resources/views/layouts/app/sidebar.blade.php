@@ -15,6 +15,7 @@
                     $sections = [
                         __('Dashboard') => [
                             ['icon' => 'home', 'label' => __('Overview'), 'route' => 'dashboard'],
+                            ['icon' => 'calendar-days', 'label' => __('Calendar'), 'route' => 'calendar.index'],
                         ],
                         __('Workspace') => [
                             ['icon' => 'building-office-2', 'label' => __('Clients'), 'route' => 'clients.index'],
