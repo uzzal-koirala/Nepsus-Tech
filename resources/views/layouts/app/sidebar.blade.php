@@ -25,6 +25,7 @@
                         ],
                         __('Money') => [
                             ['icon' => 'banknotes', 'label' => __('Finance'), 'route' => 'finance.index'],
+                            ['icon' => 'receipt-percent', 'label' => __('Invoices & Quotes'), 'route' => 'invoices.index'],
                         ],
                         __('Team') => [
                             ['icon' => 'user-group', 'label' => __('Employees'), 'route' => 'employees.index'],
