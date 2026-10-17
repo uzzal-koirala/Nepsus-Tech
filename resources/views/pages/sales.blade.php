@@ -242,7 +242,7 @@ new #[Title('Sales & Marketing')] class extends Component {
     $hth = 'px-3 py-2.5 text-start text-xs font-semibold tracking-wide whitespace-nowrap text-zinc-500 uppercase';
 @endphp
 
-<div class="stagger mx-auto flex w-full max-w-7xl flex-col gap-6">
+<div class="stagger flex w-full flex-col gap-6">
     {{-- Header --}}
     <header class="flex flex-wrap items-end justify-between gap-4">
         <div>
@@ -591,7 +591,7 @@ new #[Title('Sales & Marketing')] class extends Component {
                 <flux:button variant="primary" icon="plus" wire:click="newCampaign">{{ __('New campaign') }}</flux:button>
             </section>
         @else
-            <section class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            <section class="grid gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 @foreach ($camps as $c)
                     @php
                         $meta = $c->channelMeta();

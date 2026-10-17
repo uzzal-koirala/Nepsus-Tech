@@ -109,7 +109,7 @@ new #[Title('Lead')] class extends Component {
     $wa = $phone ? (str_starts_with($phone, '+') ? ltrim($phone, '+') : (strlen($phone) === 10 ? '977'.$phone : $phone)) : null;
 @endphp
 
-<div class="stagger mx-auto flex w-full max-w-6xl flex-col gap-6">
+<div class="stagger flex w-full flex-col gap-6">
     <flux:breadcrumbs>
         <flux:breadcrumbs.item :href="route('sales.index', ['tab' => 'pipeline'])" wire:navigate>{{ __('Sales & Marketing') }}</flux:breadcrumbs.item>
         <flux:breadcrumbs.item>{{ $l->displayName() }}</flux:breadcrumbs.item>
