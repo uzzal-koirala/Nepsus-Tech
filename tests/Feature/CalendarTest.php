@@ -2,49 +2,60 @@
 
 namespace Tests\Feature;
 
-use App\Models\CalendarEvent;
 use App\Models\Client;
+use App\Models\Employee;
+use App\Models\Task;
 use App\Models\User;
+use App\Models\WorkType;
 use App\Support\NepaliDate;
-use Livewire\Livewire;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Livewire;
 use Tests\TestCase;
 
 class CalendarTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_calendar_shows_client_dates_and_events_can_be_added(): void
+    public function test_calendar_shows_only_client_tasks_and_tasks_can_be_added(): void
     {
         $this->get(route('calendar.index'))->assertRedirect(route('login'));
         $this->actingAs(User::factory()->create());
 
-        $client = Client::factory()->create(['name' => 'Sita Rai', 'company' => 'Everest Gym', 'status' => 'active', 'billing_months' => 1, 'contract_start' => NepaliDate::addMonths(today(), -2)]);
+        $type = WorkType::firstOrFail()->slug;
+        $client = Client::factory()->create(['name' => 'Sita Rai', 'company' => 'Everest Gym']);
         $client->payments()->create(['amount' => 15000, 'due_date' => today()]);
-        $client->tasks()->create(['title' => 'Design March posts', 'due_date' => today()]);
+        $client->tasks()->create(['title' => 'Design Dashain posts', 'type' => $type, 'due_date' => today()]);
+        Task::create(['title' => 'Office cleanup', 'type' => $type, 'due_date' => today()]); // no client
+        $employee = Employee::factory()->create();
 
         $page = Livewire::test('pages::calendar')
-            ->assertSee(['Everest Gym', 'Payment due', 'Design March posts', 'Renews'])
-            ->call('toggle', 'due')
-            ->assertDontSee('Payment due')
-            ->call('newEvent', today()->toDateString())
-            ->call('saveEvent')
-            ->assertHasErrors(['event.title'])
-            ->set('event.title', 'Content shoot')
-            ->set('event.kind', 'shoot')
-            ->set('event.time', '14:30')
-            ->set('event.client_id', (string) $client->id)
-            ->call('saveEvent')
+            ->assertSee(['Design Dashain posts', 'Everest Gym'])
+            ->assertDontSee(['Office cleanup', 'Payment due'])
+            ->call('toggleType', $type)
+            ->assertDontSee('Design Dashain posts')
+            ->call('toggleType', $type)
+            ->call('newTask', today()->addDays(2)->toDateString())
+            ->call('saveTask')
+            ->assertHasErrors(['task.client_id', 'task.title'])
+            ->set('task.client_id', (string) $client->id)
+            ->set('task.title', 'Shoot reel at the gym')
+            ->set('task.priority', 'high')
+            ->set('task.assignees', [(string) $employee->id])
+            ->call('saveTask')
             ->assertHasNoErrors()
-            ->assertSee(['Content shoot', '2:30 PM']);
+            ->assertSet('day', today()->addDays(2)->toDateString())
+            ->assertSee('Shoot reel at the gym');
 
-        $event = CalendarEvent::sole();
-        $this->assertSame(['shoot', '14:30', $client->id], [$event->kind, $event->time, $event->client_id]);
+        $task = Task::where('title', 'Shoot reel at the gym')->sole();
+        $this->assertSame([$client->id, 'high', 'todo', [$employee->id]], [$task->client_id, $task->priority, $task->status, $task->assignees->pluck('id')->all()]);
+        $this->assertTrue($task->due_date->isSameDay(today()->addDays(2)));
 
-        $page->call('confirmDelete', $event->id)->call('deleteEvent');
-        $this->assertModelMissing($event);
+        $page->call('toggleDone', $task->id);
+        $this->assertNotNull($task->fresh()->completed_at);
 
-        // Moving months keeps the title in step.
+        $page->call('confirmDelete', $task->id)->call('deleteTask');
+        $this->assertModelMissing($task);
+
         [$y, $m] = NepaliDate::fromAd(today());
         Livewire::test('pages::calendar')->call('shift', 1)->assertSet('month', sprintf('%d-%02d', $m === 12 ? $y + 1 : $y, $m % 12 + 1));
     }
