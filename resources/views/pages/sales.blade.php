@@ -39,6 +39,7 @@ new #[Title('Sales & Marketing')] class extends Component {
         if (! in_array($this->tab, self::TABS, true)) {
             $this->tab = 'overview';
         }
+        $this->lead = $this->blankLead();
 
         // Opened from a lead page's Edit link.
         if ($id = (int) request()->query('edit')) {
@@ -96,10 +97,16 @@ new #[Title('Sales & Marketing')] class extends Component {
 
     // ---- Leads ------------------------------------------------------------
 
+    /** Every field, so the dropdowns can bind to them from the first render. */
+    private function blankLead(string $stage = 'new'): array
+    {
+        return ['name' => '', 'company' => '', 'phone' => '', 'email' => '', 'source' => 'facebook', 'service_type' => 'social_media', 'value' => '', 'stage' => array_key_exists($stage, Lead::STAGES) ? $stage : 'new', 'employee_id' => '', 'next_follow_up' => today()->addDay()->toDateString(), 'notes' => ''];
+    }
+
     public function newLead(string $stage = 'new'): void
     {
         $this->editingLeadId = null;
-        $this->lead = ['name' => '', 'company' => '', 'phone' => '', 'email' => '', 'source' => 'facebook', 'service_type' => 'social_media', 'value' => '', 'stage' => array_key_exists($stage, Lead::STAGES) ? $stage : 'new', 'employee_id' => '', 'next_follow_up' => today()->addDay()->toDateString(), 'notes' => ''];
+        $this->lead = $this->blankLead($stage);
         $this->resetErrorBag();
         Flux::modal('lead-form')->show();
     }
@@ -481,7 +488,7 @@ new #[Title('Sales & Marketing')] class extends Component {
     @endif
 
     {{-- Add / edit lead --}}
-    <flux:modal name="lead-form" class="w-full max-w-2xl">
+    <flux:modal name="lead-form" class="w-full max-w-2xl overflow-visible!">
         <form wire:submit="saveLead" class="flex flex-col gap-5">
             <div class="flex items-center gap-3">
                 <span class="flex size-10 items-center justify-center rounded-xl bg-brand-500 text-white shadow-md shadow-brand-500/30"><flux:icon.user-plus variant="mini" class="size-5" /></span>
@@ -492,21 +499,21 @@ new #[Title('Sales & Marketing')] class extends Component {
                 <flux:input wire:model="lead.company" :label="__('Business')" :placeholder="__('e.g. Himalayan Cafe')" />
                 <flux:input wire:model="lead.phone" type="tel" :label="__('Phone')" placeholder="98XXXXXXXX" />
                 <flux:input wire:model="lead.email" type="email" :label="__('Email')" />
-                <flux:select wire:model="lead.source" :label="__('Came from')">
-                    @foreach (Lead::SOURCES as $key => $src)<flux:select.option :value="$key">{{ __($src['label']) }}</flux:select.option>@endforeach
-                </flux:select>
-                <flux:select wire:model="lead.service_type" :label="__('Interested in')">
-                    <flux:select.option value="">{{ __('Not sure yet') }}</flux:select.option>
-                    @foreach (Client::SERVICE_TYPES as $key => $svc)<flux:select.option :value="$key">{{ __($svc['label']) }}</flux:select.option>@endforeach
-                </flux:select>
+                @php
+                    $sourceHints = ['facebook' => __('Page, post or ad'), 'instagram' => __('DM, post or ad'), 'tiktok' => __('Video or DM'), 'google' => __('Search or Maps'), 'website' => __('Our website form'), 'referral' => __('Recommended by someone'), 'walk_in' => __('Came to the office'), 'cold_call' => __('We reached out'), 'other' => __('Anywhere else')];
+                    $sourceOptions = collect(Lead::SOURCES)->map(fn ($s, $k) => ['value' => $k, 'label' => __($s['label']), 'hint' => $sourceHints[$k] ?? null, 'icon' => $s['icon'], 'tile' => $s['color'].' text-white'])->values();
+                    $serviceTiles = ['social_media' => 'bg-pink-50 text-pink-600 dark:bg-pink-500/10 dark:text-pink-300', 'website' => 'bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300', 'software' => 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300', 'video' => 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300'];
+                    $serviceOptions = collect([['value' => '', 'label' => __('Not sure yet'), 'hint' => __('Decide later'), 'icon' => 'question-mark-circle']])
+                        ->concat(collect(Client::SERVICE_TYPES)->map(fn ($s, $k) => ['value' => $k, 'label' => __($s['label']), 'hint' => __($s['hint']), 'icon' => $s['icon'], 'tile' => $serviceTiles[$k] ?? null]));
+                    $stageOptions = collect($stages)->map(fn ($s, $k) => ['value' => $k, 'label' => __($s['label']), 'hint' => in_array($k, ['won', 'lost'], true) ? ($k === 'won' ? __('Deal closed, became a client') : __('Deal did not happen')) : __(':chance% chance to win', ['chance' => $s['chance']]), 'icon' => $s['icon'], 'tile' => str_replace(['ring-sky-200', 'ring-violet-200', 'ring-amber-200', 'ring-orange-200', 'ring-emerald-200', 'ring-zinc-200'], '', $s['tone'])])->values();
+                    $ownerOptions = collect([['value' => '', 'label' => __('Nobody yet'), 'hint' => __('Assign later'), 'icon' => 'user']])
+                        ->concat(Employee::where('status', '!=', 'inactive')->orderBy('name')->get()->map(fn ($e) => ['value' => $e->id, 'label' => $e->name, 'hint' => $e->designation ?: __($e->departmentMeta()['label']), 'initials' => $e->initials(), 'tile' => 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200']));
+                @endphp
+                <x-rich-select model="lead.source" :label="__('Came from')" :options="$sourceOptions" />
+                <x-rich-select model="lead.service_type" :label="__('Interested in')" :options="$serviceOptions" />
                 <flux:input wire:model="lead.value" type="number" min="0" step="any" :label="__('Deal value (:currency)', ['currency' => config('app.currency')])" placeholder="25000" />
-                <flux:select wire:model="lead.stage" :label="__('Stage')">
-                    @foreach ($stages as $key => $st)<flux:select.option :value="$key">{{ __($st['label']) }}</flux:select.option>@endforeach
-                </flux:select>
-                <flux:select wire:model="lead.employee_id" :label="__('Handled by')">
-                    <flux:select.option value="">{{ __('Nobody yet') }}</flux:select.option>
-                    @foreach (Employee::where('status', '!=', 'inactive')->orderBy('name')->get(['id', 'name']) as $e)<flux:select.option :value="$e->id">{{ $e->name }}</flux:select.option>@endforeach
-                </flux:select>
+                <x-rich-select model="lead.stage" :label="__('Stage')" :options="$stageOptions" />
+                <x-rich-select model="lead.employee_id" :label="__('Handled by')" :options="$ownerOptions" :searchable="$ownerOptions->count() > 6" />
                 <x-nepali-date wire:model="lead.next_follow_up" :label="__('Next follow-up')" />
                 <div class="sm:col-span-2">
                     <flux:textarea wire:model="lead.notes" :label="__('Notes')" rows="2" :placeholder="__('What they need, budget, timing...')" />
