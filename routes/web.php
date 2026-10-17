@@ -18,6 +18,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('employees/{employee}', 'pages::employee-profile')->name('employees.show');
     Route::livewire('sales', 'pages::sales')->name('sales.index');
     Route::livewire('sales/leads/{lead}', 'pages::lead-profile')->name('sales.leads.show');
+    Route::livewire('invoices', 'pages::invoices')->name('invoices.index');
+    Route::livewire('invoices/create', 'pages::invoice-editor')->name('invoices.create');
+    Route::livewire('invoices/{invoice}', 'pages::invoice-show')->name('invoices.show');
+    Route::livewire('invoices/{invoice}/edit', 'pages::invoice-editor')->name('invoices.edit');
+    Route::get('invoices/{invoice}/print', fn (App\Models\Invoice $invoice) => view('invoice-print', ['invoice' => $invoice->load('items')]))->name('invoices.print');
 
     Route::get('documents/{document}', fn (Document $document) => Storage::disk('local')->download($document->path, $document->name))
         ->name('documents.download');
