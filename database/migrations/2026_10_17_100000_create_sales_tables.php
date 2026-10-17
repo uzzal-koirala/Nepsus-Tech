@@ -8,18 +8,6 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('campaigns', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->string('channel', 30);
-            $table->decimal('budget', 12, 2)->nullable();
-            $table->decimal('spent', 12, 2)->default(0);
-            $table->date('starts_on');
-            $table->date('ends_on')->nullable();
-            $table->text('notes')->nullable();
-            $table->timestamps();
-        });
-
         Schema::create('leads', function (Blueprint $table) {
             $table->id();
             $table->string('name');
@@ -27,7 +15,6 @@ return new class extends Migration
             $table->string('phone', 50)->nullable();
             $table->string('email')->nullable();
             $table->string('source', 30)->default('other')->index();
-            $table->foreignId('campaign_id')->nullable()->constrained()->nullOnDelete();
             $table->string('service_type', 20)->nullable();
             $table->decimal('value', 12, 2)->nullable(); // expected deal value
             $table->string('stage', 20)->default('new')->index();
@@ -55,6 +42,5 @@ return new class extends Migration
     {
         Schema::dropIfExists('lead_activities');
         Schema::dropIfExists('leads');
-        Schema::dropIfExists('campaigns');
     }
 };

@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Campaign;
 use App\Models\Client;
 use App\Models\Employee;
 use App\Models\Lead;
@@ -12,7 +11,7 @@ use Livewire\Attributes\Url;
 use Livewire\Component;
 
 new #[Title('Sales & Marketing')] class extends Component {
-    public const TABS = ['overview', 'pipeline', 'leads', 'campaigns'];
+    public const TABS = ['overview', 'pipeline', 'leads'];
 
     #[Url(except: 'overview')]
     public string $tab = 'overview';
@@ -30,11 +29,6 @@ new #[Title('Sales & Marketing')] class extends Component {
     /** @var array<string, mixed> Add / edit lead. */
     public array $lead = [];
     public ?int $editingLeadId = null;
-
-    /** @var array<string, mixed> Add / edit campaign. */
-    public array $campaign = [];
-    public ?int $editingCampaignId = null;
-    public ?int $deletingCampaignId = null;
 
     // Marking a lead as lost asks why.
     public ?int $losingLeadId = null;
@@ -62,7 +56,7 @@ new #[Title('Sales & Marketing')] class extends Component {
     #[Computed]
     public function leads()
     {
-        return Lead::with(['employee', 'campaign'])->orderBy('position')->latest('id')->get();
+        return Lead::with('employee')->orderBy('position')->latest('id')->get();
     }
 
     #[Computed]
@@ -89,14 +83,6 @@ new #[Title('Sales & Marketing')] class extends Component {
     }
 
     #[Computed]
-    public function campaigns()
-    {
-        return Campaign::withCount(['leads', 'leads as won_count' => fn ($q) => $q->where('stage', 'won')])
-            ->withSum(['leads as won_value' => fn ($q) => $q->where('stage', 'won')], 'value')
-            ->latest('starts_on')->get();
-    }
-
-    #[Computed]
     public function filteredLeads()
     {
         $q = mb_strtolower(trim($this->search));
@@ -113,7 +99,7 @@ new #[Title('Sales & Marketing')] class extends Component {
     public function newLead(string $stage = 'new'): void
     {
         $this->editingLeadId = null;
-        $this->lead = ['name' => '', 'company' => '', 'phone' => '', 'email' => '', 'source' => 'facebook', 'campaign_id' => '', 'service_type' => 'social_media', 'value' => '', 'stage' => array_key_exists($stage, Lead::STAGES) ? $stage : 'new', 'employee_id' => '', 'next_follow_up' => today()->addDay()->toDateString(), 'notes' => ''];
+        $this->lead = ['name' => '', 'company' => '', 'phone' => '', 'email' => '', 'source' => 'facebook', 'service_type' => 'social_media', 'value' => '', 'stage' => array_key_exists($stage, Lead::STAGES) ? $stage : 'new', 'employee_id' => '', 'next_follow_up' => today()->addDay()->toDateString(), 'notes' => ''];
         $this->resetErrorBag();
         Flux::modal('lead-form')->show();
     }
@@ -144,7 +130,7 @@ new #[Title('Sales & Marketing')] class extends Component {
             $l->activities()->create(['user_id' => auth()->id(), 'type' => 'note', 'body' => __('Lead added from :source', ['source' => __($l->sourceMeta()['label'])])]);
         }
 
-        unset($this->leads, $this->stats, $this->filteredLeads, $this->campaigns);
+        unset($this->leads, $this->stats, $this->filteredLeads);
         Flux::modal('lead-form')->close();
         Flux::toast(variant: 'success', text: $this->editingLeadId ? __('Lead updated.') : __('Lead added.'));
     }
@@ -163,7 +149,7 @@ new #[Title('Sales & Marketing')] class extends Component {
         }
 
         Lead::findOrFail($id)->moveTo($stage);
-        unset($this->leads, $this->stats, $this->filteredLeads, $this->campaigns);
+        unset($this->leads, $this->stats, $this->filteredLeads);
 
         if ($stage === 'won') {
             Flux::toast(variant: 'success', text: __('Deal won! Open the lead to turn it into a client.'));
@@ -176,58 +162,9 @@ new #[Title('Sales & Marketing')] class extends Component {
         Lead::findOrFail($this->losingLeadId)->moveTo('lost', trim($this->lostReason));
 
         $this->reset('losingLeadId', 'lostReason');
-        unset($this->leads, $this->stats, $this->filteredLeads, $this->campaigns);
+        unset($this->leads, $this->stats, $this->filteredLeads);
         Flux::modal('lead-lost')->close();
         Flux::toast(text: __('Marked as lost.'));
-    }
-
-    // ---- Campaigns --------------------------------------------------------
-
-    public function newCampaign(): void
-    {
-        $this->editingCampaignId = null;
-        $this->campaign = ['name' => '', 'channel' => 'facebook_ads', 'budget' => '', 'spent' => '', 'starts_on' => today()->toDateString(), 'ends_on' => '', 'notes' => ''];
-        $this->resetErrorBag();
-        Flux::modal('campaign-form')->show();
-    }
-
-    public function editCampaign(int $id): void
-    {
-        $c = Campaign::findOrFail($id);
-        $this->editingCampaignId = $c->id;
-        $this->campaign = collect(Campaign::rules())->keys()->mapWithKeys(fn ($k) => [$k => $c->{$k} instanceof \Carbon\CarbonInterface ? $c->{$k}->toDateString() : (string) $c->{$k}])->all();
-        $this->resetErrorBag();
-        Flux::modal('campaign-form')->show();
-    }
-
-    public function saveCampaign(): void
-    {
-        $rules = collect(Campaign::rules())->mapWithKeys(fn ($r, $k) => ["campaign.$k" => $r])->all();
-        $rules['campaign.ends_on'] = ['nullable', 'date', 'after_or_equal:campaign.starts_on'];
-        $data = $this->validate($rules, attributes: ['campaign.name' => __('name'), 'campaign.starts_on' => __('start date'), 'campaign.ends_on' => __('end date')])['campaign'];
-        $data = array_map(fn ($v) => $v === '' ? null : $v, $data);
-        $data['spent'] ??= 0;
-
-        $this->editingCampaignId ? Campaign::findOrFail($this->editingCampaignId)->update($data) : Campaign::create($data);
-
-        unset($this->campaigns);
-        Flux::modal('campaign-form')->close();
-        Flux::toast(variant: 'success', text: $this->editingCampaignId ? __('Campaign updated.') : __('Campaign added.'));
-    }
-
-    public function confirmDeleteCampaign(int $id): void
-    {
-        $this->deletingCampaignId = Campaign::findOrFail($id)->id;
-        Flux::modal('campaign-delete')->show();
-    }
-
-    public function deleteCampaign(int $id): void
-    {
-        Campaign::findOrFail($id)->delete();
-        $this->deletingCampaignId = null;
-        unset($this->campaigns, $this->leads);
-        Flux::modal('campaign-delete')->close();
-        Flux::toast(text: __('Campaign removed. Its leads are kept.'));
     }
 }; ?>
 
@@ -247,17 +184,16 @@ new #[Title('Sales & Marketing')] class extends Component {
     <header class="flex flex-wrap items-end justify-between gap-4">
         <div>
             <h1 class="text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-3xl dark:text-white">{{ __('Sales & Marketing') }}</h1>
-            <p class="mt-1 text-sm text-zinc-500">{{ __('Find leads, follow up, win clients and see which marketing pays off.') }}</p>
+            <p class="mt-1 text-sm text-zinc-500">{{ __('Find leads, follow up and win clients.') }}</p>
         </div>
         <div class="flex gap-2">
-            <flux:button icon="megaphone" wire:click="newCampaign">{{ __('New campaign') }}</flux:button>
             <flux:button variant="primary" icon="plus" wire:click="newLead" class="shadow-lg shadow-brand-500/25" data-test="add-lead">{{ __('Add lead') }}</flux:button>
         </div>
     </header>
 
     {{-- Tabs --}}
     <nav class="flex w-fit flex-wrap gap-1 rounded-xl bg-white p-1 ring-1 ring-zinc-200/70 dark:bg-zinc-950 dark:ring-white/10" aria-label="{{ __('Sales sections') }}">
-        @foreach (['overview' => ['squares-2x2', __('Overview')], 'pipeline' => ['view-columns', __('Pipeline')], 'leads' => ['users', __('Leads')], 'campaigns' => ['megaphone', __('Campaigns')]] as $key => [$icon, $label])
+        @foreach (['overview' => ['squares-2x2', __('Overview')], 'pipeline' => ['view-columns', __('Pipeline')], 'leads' => ['users', __('Leads')]] as $key => [$icon, $label])
             <button type="button" wire:click="setTab('{{ $key }}')" @class([
                 'inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition',
                 'bg-brand-500 text-white shadow-md shadow-brand-500/30' => $tab === $key,
@@ -396,26 +332,6 @@ new #[Title('Sales & Marketing')] class extends Component {
                     </div>
                 </section>
 
-                {{-- Campaigns snapshot --}}
-                <section class="{{ $panel }} p-5">
-                    <div class="flex items-center justify-between">
-                        <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Campaigns running') }}</h2>
-                        <button type="button" wire:click="setTab('campaigns')" class="text-xs font-medium text-brand-600 hover:underline dark:text-brand-300">{{ __('All') }} →</button>
-                    </div>
-                    <div class="mt-3 flex flex-col gap-2">
-                        @forelse ($this->campaigns->filter(fn ($c) => $c->status() === 'running')->take(3) as $c)
-                            <div class="flex items-center gap-3 rounded-lg bg-zinc-50 px-3 py-2.5 dark:bg-white/[0.03]">
-                                <span class="flex size-8 items-center justify-center rounded-lg bg-linear-to-br {{ $c->channelMeta()['color'] }} text-white"><flux:icon :icon="$c->channelMeta()['icon']" variant="micro" class="size-4" /></span>
-                                <div class="min-w-0 flex-1">
-                                    <p class="truncate text-sm font-medium text-zinc-900 dark:text-white">{{ $c->name }}</p>
-                                    <p class="text-xs text-zinc-500">{{ trans_choice(':count lead|:count leads', $c->leads_count) }} · {{ __(':amount spent', ['amount' => $short($c->spent)]) }}</p>
-                                </div>
-                            </div>
-                        @empty
-                            <p class="py-3 text-center text-sm text-zinc-500">{{ __('No campaigns running.') }}</p>
-                        @endforelse
-                    </div>
-                </section>
             </aside>
         </div>
 
@@ -562,77 +478,6 @@ new #[Title('Sales & Marketing')] class extends Component {
             @endif
         </section>
 
-    @elseif ($tab === 'campaigns')
-        @php
-            $camps = $this->campaigns;
-            $spent = (float) $camps->sum('spent');
-            $campLeads = (int) $camps->sum('leads_count');
-            $campWon = (float) $camps->sum('won_value');
-        @endphp
-        <section class="grid gap-4 sm:grid-cols-4">
-            @foreach ([[__('Spent on marketing'), $short($spent), 'banknotes'], [__('Leads from campaigns'), $campLeads, 'user-plus'], [__('Cost per lead'), $campLeads ? $money($spent / $campLeads) : '—', 'calculator'], [__('Won from campaigns'), $short($campWon), 'trophy']] as [$label, $value, $icon])
-                <div class="{{ $panel }} flex items-center gap-4 p-5">
-                    <span class="flex size-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300"><flux:icon :icon="$icon" variant="mini" class="size-5" /></span>
-                    <div class="min-w-0">
-                        <p class="truncate text-sm text-zinc-500">{{ $label }}</p>
-                        <p class="text-xl leading-tight font-bold text-zinc-900 tabular-nums dark:text-white">{{ $value }}</p>
-                    </div>
-                </div>
-            @endforeach
-        </section>
-
-        @if ($camps->isEmpty())
-            <section class="{{ $panel }} flex flex-col items-center gap-4 px-6 py-14 text-center">
-                <span class="flex size-16 items-center justify-center rounded-2xl bg-linear-to-br from-brand-500 to-violet-600 text-white shadow-lg shadow-brand-500/30"><flux:icon.megaphone class="size-8" /></span>
-                <div>
-                    <p class="font-semibold text-zinc-900 dark:text-white">{{ __('No campaigns yet') }}</p>
-                    <p class="mt-1 max-w-sm text-sm text-zinc-500">{{ __('Add your Facebook boosts, Google ads or events, then link leads to them to see what each one brings.') }}</p>
-                </div>
-                <flux:button variant="primary" icon="plus" wire:click="newCampaign">{{ __('New campaign') }}</flux:button>
-            </section>
-        @else
-            <section class="grid gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                @foreach ($camps as $c)
-                    @php
-                        $meta = $c->channelMeta();
-                        $status = $c->status();
-                        $used = $c->budget > 0 ? min(100, (int) round($c->spent / $c->budget * 100)) : null;
-                        $roi = $c->spent > 0 ? round(((float) $c->won_value - (float) $c->spent) / (float) $c->spent * 100) : null;
-                    @endphp
-                    <article wire:key="camp-{{ $c->id }}" class="{{ $panel }} flex flex-col overflow-hidden">
-                        <div class="relative bg-linear-to-br {{ $meta['color'] }} p-5 text-white">
-                            <div class="absolute -top-8 -right-8 size-28 rounded-full bg-white/10"></div>
-                            <div class="relative flex items-start justify-between gap-3">
-                                <span class="flex size-10 items-center justify-center rounded-xl bg-white/20 ring-1 ring-white/30"><flux:icon :icon="$meta['icon']" variant="mini" class="size-5" /></span>
-                                <span @class(['rounded-full px-2.5 py-1 text-[0.6875rem] font-bold tracking-wide uppercase', 'bg-white text-emerald-700' => $status === 'running', 'bg-white/25 text-white' => $status !== 'running'])>{{ ['running' => __('Running'), 'scheduled' => __('Scheduled'), 'ended' => __('Ended')][$status] }}</span>
-                            </div>
-                            <p class="relative mt-4 truncate text-lg font-semibold">{{ $c->name }}</p>
-                            <p class="relative text-sm text-white/80">{{ __($meta['label']) }} · {{ $c->starts_on->toNepali(false) }}{{ $c->ends_on ? ' – '.$c->ends_on->toNepali(false) : '' }}</p>
-                        </div>
-                        <div class="flex flex-1 flex-col gap-4 p-5">
-                            <div class="grid grid-cols-3 gap-2 text-center">
-                                <div class="rounded-lg bg-zinc-50 py-2 dark:bg-white/[0.03]"><p class="text-lg font-bold text-zinc-900 tabular-nums dark:text-white">{{ $c->leads_count }}</p><p class="text-[0.6875rem] text-zinc-500">{{ __('Leads') }}</p></div>
-                                <div class="rounded-lg bg-zinc-50 py-2 dark:bg-white/[0.03]"><p class="text-lg font-bold text-emerald-600 tabular-nums dark:text-emerald-400">{{ $c->won_count }}</p><p class="text-[0.6875rem] text-zinc-500">{{ __('Won') }}</p></div>
-                                <div class="rounded-lg bg-zinc-50 py-2 dark:bg-white/[0.03]"><p class="text-lg font-bold text-zinc-900 tabular-nums dark:text-white">{{ $c->leads_count ? $short($c->spent / $c->leads_count) : '—' }}</p><p class="text-[0.6875rem] text-zinc-500">{{ __('Per lead') }}</p></div>
-                            </div>
-                            <div>
-                                <div class="flex justify-between text-xs"><span class="text-zinc-500">{{ __('Spent :spent', ['spent' => $money($c->spent)]) }}</span><span class="font-medium text-zinc-700 dark:text-zinc-200">{{ $c->budget ? __('of :budget', ['budget' => $money($c->budget)]) : __('No budget set') }}</span></div>
-                                @if ($used !== null)
-                                    <div class="mt-1.5 h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div @class(['h-full rounded-full', 'bg-rose-500' => $used >= 100, 'bg-amber-400' => $used >= 80 && $used < 100, 'bg-brand-500' => $used < 80]) style="width: {{ $used }}%"></div></div>
-                                @endif
-                            </div>
-                            <div class="mt-auto flex items-center justify-between gap-2 border-t border-zinc-100 pt-3 dark:border-white/5">
-                                <span @class(['text-xs font-semibold', 'text-emerald-600 dark:text-emerald-400' => $roi !== null && $roi >= 0, 'text-rose-600 dark:text-rose-400' => $roi !== null && $roi < 0, 'text-zinc-400' => $roi === null])>{{ $roi === null ? __('Return: —') : __('Return :roi%', ['roi' => ($roi >= 0 ? '+' : '').$roi]) }}</span>
-                                <div class="flex gap-1">
-                                    <flux:button size="sm" variant="ghost" icon="pencil-square" wire:click="editCampaign({{ $c->id }})" :aria-label="__('Edit')" />
-                                    <flux:button size="sm" variant="ghost" icon="trash" wire:click="confirmDeleteCampaign({{ $c->id }})" :aria-label="__('Remove')" />
-                                </div>
-                            </div>
-                        </div>
-                    </article>
-                @endforeach
-            </section>
-        @endif
     @endif
 
     {{-- Add / edit lead --}}
@@ -649,10 +494,6 @@ new #[Title('Sales & Marketing')] class extends Component {
                 <flux:input wire:model="lead.email" type="email" :label="__('Email')" />
                 <flux:select wire:model="lead.source" :label="__('Came from')">
                     @foreach (Lead::SOURCES as $key => $src)<flux:select.option :value="$key">{{ __($src['label']) }}</flux:select.option>@endforeach
-                </flux:select>
-                <flux:select wire:model="lead.campaign_id" :label="__('Campaign')">
-                    <flux:select.option value="">{{ __('None') }}</flux:select.option>
-                    @foreach ($this->campaigns as $c)<flux:select.option :value="$c->id">{{ $c->name }}</flux:select.option>@endforeach
                 </flux:select>
                 <flux:select wire:model="lead.service_type" :label="__('Interested in')">
                     <flux:select.option value="">{{ __('Not sure yet') }}</flux:select.option>
@@ -699,61 +540,5 @@ new #[Title('Sales & Marketing')] class extends Component {
                 <flux:button type="submit" variant="danger" data-test="confirm-lost">{{ __('Mark as lost') }}</flux:button>
             </div>
         </form>
-    </flux:modal>
-
-    {{-- Add / edit campaign --}}
-    <flux:modal name="campaign-form" class="w-full max-w-xl">
-        <form wire:submit="saveCampaign" class="flex flex-col gap-5">
-            <div class="flex items-center gap-3">
-                <span class="flex size-10 items-center justify-center rounded-xl bg-linear-to-br from-brand-500 to-violet-600 text-white"><flux:icon.megaphone variant="mini" class="size-5" /></span>
-                <flux:heading size="lg">{{ $editingCampaignId ? __('Edit campaign') : __('New campaign') }}</flux:heading>
-            </div>
-            <div class="grid gap-4 sm:grid-cols-2">
-                <div class="sm:col-span-2">
-                    <flux:input wire:model="campaign.name" :label="__('Name')" :placeholder="__('e.g. Dashain offer boost')" required data-test="campaign-name" />
-                </div>
-                <div class="sm:col-span-2">
-                    <p class="mb-2 text-sm font-medium text-zinc-800 dark:text-white">{{ __('Channel') }}</p>
-                    <div class="grid grid-cols-3 gap-2" role="radiogroup">
-                        @foreach (Campaign::CHANNELS as $key => $ch)
-                            <button type="button" role="radio" wire:click="$set('campaign.channel', '{{ $key }}')" aria-checked="{{ ($campaign['channel'] ?? '') === $key ? 'true' : 'false' }}" @class([
-                                'flex items-center gap-2 rounded-xl px-2.5 py-2 text-start text-xs font-medium ring-1 transition',
-                                'bg-brand-50 text-brand-700 ring-2 ring-brand-500 dark:bg-brand-500/10 dark:text-brand-200' => ($campaign['channel'] ?? '') === $key,
-                                'text-zinc-700 ring-zinc-200 hover:bg-zinc-50 dark:text-zinc-200 dark:ring-white/10' => ($campaign['channel'] ?? '') !== $key,
-                            ])>
-                                <span class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-linear-to-br {{ $ch['color'] }} text-white"><flux:icon :icon="$ch['icon']" variant="micro" class="size-3.5" /></span>
-                                <span class="truncate">{{ __($ch['label']) }}</span>
-                            </button>
-                        @endforeach
-                    </div>
-                </div>
-                <flux:input wire:model="campaign.budget" type="number" min="0" step="any" :label="__('Budget (:currency)', ['currency' => config('app.currency')])" :placeholder="__('Optional')" />
-                <flux:input wire:model="campaign.spent" type="number" min="0" step="any" :label="__('Spent so far')" placeholder="0" />
-                <x-nepali-date wire:model="campaign.starts_on" :label="__('Starts')" />
-                <x-nepali-date wire:model="campaign.ends_on" :label="__('Ends')" />
-                <flux:error name="campaign.ends_on" class="sm:col-span-2" />
-                <div class="sm:col-span-2">
-                    <flux:textarea wire:model="campaign.notes" :label="__('Notes')" rows="2" :placeholder="__('Audience, offer, creative...')" />
-                </div>
-            </div>
-            <div class="flex justify-end gap-2">
-                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
-                <flux:button type="submit" variant="primary" icon="check" data-test="save-campaign">{{ __('Save campaign') }}</flux:button>
-            </div>
-        </form>
-    </flux:modal>
-
-    {{-- Remove campaign --}}
-    <flux:modal name="campaign-delete" class="w-full max-w-sm">
-        <div class="flex flex-col gap-5">
-            <div>
-                <flux:heading size="lg">{{ __('Remove this campaign?') }}</flux:heading>
-                <flux:text class="mt-1">{{ __('Its leads stay, they just will not be linked to a campaign anymore.') }}</flux:text>
-            </div>
-            <div class="flex justify-end gap-2">
-                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
-                <flux:button variant="danger" wire:click="deleteCampaign({{ (int) $deletingCampaignId }})">{{ __('Remove') }}</flux:button>
-            </div>
-        </div>
     </flux:modal>
 </div>

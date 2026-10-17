@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\Campaign;
 use App\Models\Client;
 use App\Models\Employee;
 use App\Models\Lead;
@@ -26,10 +25,11 @@ class SalesTest extends TestCase
 
         $this->actingAs(User::factory()->create());
         $this->get(route('sales.index'))->assertOk()->assertSee(['Sales & Marketing', 'Open pipeline', 'Sales funnel', 'Follow up today']);
-        foreach (['pipeline' => 'Proposal sent', 'leads' => 'No leads yet', 'campaigns' => 'No campaigns yet'] as $tab => $text) {
+        foreach (['pipeline' => 'Proposal sent', 'leads' => 'No leads yet'] as $tab => $text) {
             $this->get(route('sales.index', ['tab' => $tab]))->assertOk()->assertSee($text);
         }
         $this->get(route('dashboard'))->assertSee('Sales &amp; Marketing', false);
+        $this->get(route('sales.index'))->assertDontSee(['Campaigns', 'New campaign']);
     }
 
     public function test_lead_can_be_added_with_validation(): void
@@ -121,35 +121,5 @@ class SalesTest extends TestCase
         $this->assertSame('30000.00', (string) $client->price);
         $lead->refresh();
         $this->assertSame(['won', $client->id], [$lead->stage, $lead->client_id]);
-    }
-
-    public function test_campaigns_track_spend_and_leads(): void
-    {
-        $this->actingAs(User::factory()->create());
-
-        Livewire::test('pages::sales', ['tab' => 'campaigns'])
-            ->call('newCampaign')
-            ->set('campaign.name', 'Dashain boost')
-            ->set('campaign.channel', 'facebook_ads')
-            ->set('campaign.budget', '10000')
-            ->set('campaign.spent', '6000')
-            ->set('campaign.starts_on', today()->toDateString())
-            ->set('campaign.ends_on', today()->subDay()->toDateString())
-            ->call('saveCampaign')
-            ->assertHasErrors(['campaign.ends_on'])
-            ->set('campaign.ends_on', today()->addWeek()->toDateString())
-            ->call('saveCampaign')
-            ->assertHasNoErrors();
-
-        $campaign = Campaign::sole();
-        $this->lead(['campaign_id' => $campaign->id, 'stage' => 'won', 'value' => 30000, 'closed_at' => now()]);
-        $this->lead(['campaign_id' => $campaign->id]);
-
-        Livewire::test('pages::sales', ['tab' => 'campaigns'])
-            ->assertSee(['Dashain boost', 'Running', 'NPR 3,000', 'Return +400%']);
-
-        Livewire::test('pages::sales', ['tab' => 'campaigns'])->call('confirmDeleteCampaign', $campaign->id)->call('deleteCampaign', $campaign->id);
-        $this->assertModelMissing($campaign);
-        $this->assertSame(2, Lead::whereNull('campaign_id')->count());
     }
 }

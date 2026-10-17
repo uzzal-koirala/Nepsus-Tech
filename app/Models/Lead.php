@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
-#[Fillable(['name', 'company', 'phone', 'email', 'source', 'campaign_id', 'service_type', 'value', 'stage', 'employee_id', 'next_follow_up', 'notes', 'lost_reason', 'client_id', 'closed_at', 'position'])]
+#[Fillable(['name', 'company', 'phone', 'email', 'source', 'service_type', 'value', 'stage', 'employee_id', 'next_follow_up', 'notes', 'lost_reason', 'client_id', 'closed_at', 'position'])]
 class Lead extends Model
 {
     /** Pipeline columns, in order. Won and Lost close the deal. */
@@ -61,7 +61,6 @@ class Lead extends Model
             'phone' => ['nullable', 'string', 'max:50'],
             'email' => ['nullable', 'email', 'max:120'],
             'source' => ['required', Rule::in(array_keys(self::SOURCES))],
-            'campaign_id' => ['nullable', 'exists:campaigns,id'],
             'service_type' => ['nullable', Rule::in(array_keys(Client::SERVICE_TYPES))],
             'value' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
             'stage' => ['required', Rule::in(array_keys(self::STAGES))],
@@ -79,11 +78,6 @@ class Lead extends Model
     public function employee(): BelongsTo
     {
         return $this->belongsTo(Employee::class);
-    }
-
-    public function campaign(): BelongsTo
-    {
-        return $this->belongsTo(Campaign::class);
     }
 
     public function client(): BelongsTo

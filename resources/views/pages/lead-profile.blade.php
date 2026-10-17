@@ -100,7 +100,7 @@ new #[Title('Lead')] class extends Component {
 }; ?>
 
 @php
-    $l = $lead->fresh(['employee', 'campaign', 'client', 'activities.user']);
+    $l = $lead->fresh(['employee', 'client', 'activities.user']);
     $panel = 'rounded-xl bg-white ring-1 ring-zinc-200/70 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:ring-white/10';
     $money = fn ($v) => Client::money(round((float) $v));
     $stageKeys = array_keys(Lead::STAGES);
@@ -186,7 +186,6 @@ new #[Title('Lead')] class extends Component {
                         ['banknotes', __('Value'), $l->value ? $money($l->value) : null],
                         ['funnel', __('Win chance'), $l->stageMeta()['chance'].'%'],
                         [$l->sourceMeta()['icon'], __('Came from'), __($l->sourceMeta()['label'])],
-                        ['megaphone', __('Campaign'), $l->campaign?->name],
                         ['briefcase', __('Interested in'), $l->service_type ? __(Client::SERVICE_TYPES[$l->service_type]['label'] ?? '') : null],
                         ['phone', __('Phone'), $l->phone],
                         ['envelope', __('Email'), $l->email],
