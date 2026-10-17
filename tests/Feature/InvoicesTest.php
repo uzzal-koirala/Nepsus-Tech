@@ -50,6 +50,7 @@ class InvoicesTest extends TestCase
         foreach (['classic', 'minimal', 'bold'] as $tpl) {
             $inv = $this->invoice(['template' => $tpl]);
             $this->get(route('invoices.show', $inv))->assertOk()->assertSee([$inv->number, 'INVOICE', 'Himalayan Cafe', 'Social media management', 'NPR 33,900', 'Nepsus Tech']);
+            $this->get(route('invoices.print', $inv))->assertDontSee('Ram Sharma'); // the business, not its owner
             $this->get(route('invoices.print', $inv))->assertOk()->assertSee(['Save as PDF', 'NPR 33,900']);
         }
         $this->get(route('invoices.edit', $inv))->assertOk()->assertSee('Live preview');

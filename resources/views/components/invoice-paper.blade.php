@@ -12,9 +12,9 @@
     $tpl = $doc['template'] ?? 'classic';
     $contacts = array_filter([['phone', $b['phone']], ['envelope', $b['email']], ['map-pin', $b['address']]], fn ($c) => $c[1] !== '');
     $isQuote = ($doc['type'] ?? 'invoice') === 'quotation';
-    // Quotations are addressed to the business only (falls back to the person when there is no business name).
-    $billTitle = $isQuote ? (($doc['bill_company'] ?? null) ?: ($doc['bill_name'] ?? '')) : ($doc['bill_name'] ?? '');
-    $billLines = array_filter([$isQuote ? null : ($doc['bill_company'] ?? null), $doc['bill_address'] ?? null]);
+    // Addressed to the business, not its owner (falls back to the person when there is no business name).
+    $billTitle = ($doc['bill_company'] ?? null) ?: ($doc['bill_name'] ?? '');
+    $billLines = array_filter([$doc['bill_address'] ?? null]);
 @endphp
 
 <div {{ $attributes->class('invoice-paper relative flex flex-col overflow-hidden bg-white text-[13px] leading-relaxed text-zinc-700') }} style="width: 794px; min-height: 1123px; font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif;">
