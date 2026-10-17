@@ -12,6 +12,7 @@
     $tpl = $doc['template'] ?? 'classic';
     $contacts = array_filter([['phone', $b['phone']], ['envelope', $b['email']], ['map-pin', $b['address']]], fn ($c) => $c[1] !== '');
     $billLines = array_filter([$doc['bill_company'] ?? null, $doc['bill_address'] ?? null]);
+    $isQuote = ($doc['type'] ?? 'invoice') === 'quotation';
 @endphp
 
 <div {{ $attributes->class('invoice-paper relative flex flex-col overflow-hidden bg-white text-[13px] leading-relaxed text-zinc-700') }} style="width: 794px; min-height: 1123px; font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif;">
@@ -112,11 +113,24 @@
         </div>
     @endif
 
+    @if ($isQuote)
+        {{-- Quotations: a warm thank-you in the free space near the bottom --}}
+        <div class="flex flex-1 flex-col items-center justify-center px-12 py-8 text-center">
+            <div class="flex items-center gap-3">
+                <span class="h-px w-16" style="background: {{ $a }}"></span>
+                <flux:icon.heart variant="micro" class="size-4" style="color: {{ $a }}" />
+                <span class="h-px w-16" style="background: {{ $a }}"></span>
+            </div>
+            <p class="mt-3 text-[24px] font-bold text-zinc-900">Thank you for your business!</p>
+            <p class="mt-1 max-w-[440px] text-[13px] leading-relaxed text-zinc-500">We truly appreciate the opportunity to work with you and look forward to bringing your ideas to life. Feel free to reach out with any questions about this quotation.</p>
+        </div>
+    @endif
+
     <div class="mt-auto flex items-center gap-6 px-10 py-5 text-[11px] text-white" style="background: {{ $navy }}">
         @foreach ($contacts as [$icon, $value])
             <span class="flex items-center gap-2"><span class="flex size-6 rotate-45 items-center justify-center rounded" style="background: {{ $a }}"><flux:icon :icon="$icon" variant="micro" class="size-3.5 -rotate-45" /></span>{{ $value }}</span>
         @endforeach
-        <span class="ms-auto text-[14px] font-bold">Thank you for your business</span>
+        <span class="ms-auto text-[14px] font-bold">{{ $isQuote ? 'We look forward to working with you' : 'Thank you for your business' }}</span>
     </div>
 
 @elseif ($tpl === 'minimal')
@@ -191,13 +205,26 @@
         </div>
     </div>
 
+    @if ($isQuote)
+        {{-- Quotations: a warm thank-you in the free space near the bottom --}}
+        <div class="flex flex-1 flex-col items-center justify-center px-12 py-8 text-center">
+            <div class="flex items-center gap-3">
+                <span class="h-px w-16" style="background: {{ $a }}"></span>
+                <flux:icon.heart variant="micro" class="size-4" style="color: {{ $a }}" />
+                <span class="h-px w-16" style="background: {{ $a }}"></span>
+            </div>
+            <p class="mt-3 text-[24px] font-bold text-zinc-900">Thank you for your business!</p>
+            <p class="mt-1 max-w-[440px] text-[13px] leading-relaxed text-zinc-500">We truly appreciate the opportunity to work with you and look forward to bringing your ideas to life. Feel free to reach out with any questions about this quotation.</p>
+        </div>
+    @endif
+
     <div class="mt-auto flex items-end justify-between px-12 pt-10 pb-12">
         <div class="w-44 text-center">
             <div class="h-10"></div>
             <div class="border-t border-zinc-300 pt-1.5"><p class="text-[13px] font-bold text-zinc-900">{{ $b['name'] }}</p><p class="text-[11px] text-zinc-500">Authorised sign</p></div>
         </div>
         <div class="text-right">
-            <p class="text-[20px] font-bold" style="color: {{ $a }}">Thank you for your business!</p>
+            @unless ($isQuote)<p class="text-[20px] font-bold" style="color: {{ $a }}">Thank you for your business!</p>@endunless
             <div class="mt-2 flex justify-end gap-5 text-[11px] text-zinc-500">
                 @foreach ($contacts as [$icon, $value])
                     <span class="flex items-center gap-1.5"><flux:icon :icon="$icon" variant="micro" class="size-3.5" />{{ $value }}</span>
@@ -263,7 +290,9 @@
 
     <div class="flex justify-between gap-8 px-10 pt-7">
         <div>
-            <p class="text-[15px] font-bold text-zinc-900">Thank you for your business</p>
+            @if (! $isQuote || $contacts)
+                <p class="text-[15px] font-bold text-zinc-900">{{ $isQuote ? 'Get in touch' : 'Thank you for your business' }}</p>
+            @endif
             <div class="mt-3 flex flex-col gap-2 text-[12px]">
                 @foreach ($contacts as [$icon, $value])
                     <span class="flex items-center gap-2"><span class="flex size-5 items-center justify-center rounded text-white" style="background: {{ $a }}"><flux:icon :icon="$icon" variant="micro" class="size-3" /></span>{{ $value }}</span>
@@ -288,6 +317,19 @@
             <div class="border-t border-zinc-300 pt-1.5"><p class="text-[12px] font-bold text-zinc-900">{{ $b['name'] }}</p><p class="text-[10px] text-zinc-500">Authorised sign</p></div>
         </div>
     </div>
+
+    @if ($isQuote)
+        {{-- Quotations: a warm thank-you in the free space near the bottom --}}
+        <div class="flex flex-1 flex-col items-center justify-center px-12 py-8 text-center">
+            <div class="flex items-center gap-3">
+                <span class="h-px w-16" style="background: {{ $a }}"></span>
+                <flux:icon.heart variant="micro" class="size-4" style="color: {{ $a }}" />
+                <span class="h-px w-16" style="background: {{ $a }}"></span>
+            </div>
+            <p class="mt-3 text-[24px] font-bold text-zinc-900">Thank you for your business!</p>
+            <p class="mt-1 max-w-[440px] text-[13px] leading-relaxed text-zinc-500">We truly appreciate the opportunity to work with you and look forward to bringing your ideas to life. Feel free to reach out with any questions about this quotation.</p>
+        </div>
+    @endif
 
     <div class="relative mt-auto h-[30px]" style="background: {{ $navy }}">
         <div class="absolute inset-y-0 left-0 w-[50%]" style="background: {{ $a }}; clip-path: polygon(0 0, 92% 0, 100% 100%, 0 100%);"></div>
