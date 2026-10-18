@@ -1,10 +1,10 @@
 # Deploying to Hostinger
 
-After the one-time setup below, **every push to `main` goes live by itself** in about two minutes:
-GitHub runs the tests, builds the design files, uploads the app over SSH, then updates the database and caches.
-If a test fails, nothing is uploaded.
+After the one-time setup below, new versions go live from inside the app:
+**Settings → Updates → Update now**. The page shows what is new since the live version.
 
-Follow the progress in GitHub → **Actions** → **deploy**.
+GitHub does the heavy work (tests, building the design files, uploading over SSH), so the live site stays fast while it updates.
+If a test fails, nothing changes on the live site. You can also start it from GitHub → **Actions** → **deploy** → **Run workflow**.
 
 Never edit files on the server: the next push overwrites them. Change the code here and push.
 
@@ -107,15 +107,28 @@ hPanel → **Advanced → Cron Jobs** → every minute:
 cd /home/u123456789/domains/example.com/laravel && php artisan schedule:run >> /dev/null 2>&1
 ```
 
-### 10. Attendance helper on the office PC
+### 10. The Update button
+On GitHub: your picture → **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
+- Repository access: **Only select repositories** → this repository
+- Permissions: **Actions: Read and write**, **Contents: Read**
+
+Add it to the live `.env`:
+
+```
+GITHUB_REPO=uzzal-koirala/Nepsus-Tech
+GITHUB_TOKEN=github_pat_...
+```
+
+Then run `php artisan config:cache` over SSH. **Settings → Updates** now shows the button.
+
+### 11. Attendance helper on the office PC
 In the live app, open **Settings → Attendance device** and download the helper again, so the office PC sends punches to the live site instead of `127.0.0.1`.
 
 ---
 
 ## Day to day
 
-```bash
-git push
-```
+1. Build the feature here and `git push`.
+2. In the live app: **Settings → Updates → Update now**.
 
-That's it. To redeploy without changes: GitHub → Actions → deploy → **Run workflow**.
+To deploy on every push without pressing the button, add `push: { branches: [main] }` under `on:` in `.github/workflows/deploy.yml`.

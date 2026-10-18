@@ -1,17 +1,16 @@
 name: deploy
 
-# Every push to main is tested, built and uploaded to Hostinger.
-# One-time setup: DEPLOY.md. Run it by hand from the Actions tab with "Run workflow".
+# Tests, builds and uploads main to Hostinger. Started by the "Update now" button
+# (Settings > Updates) or by hand from the Actions tab with "Run workflow".
+# To deploy on every push as well, add:  push: { branches: [main] }
+# One-time setup: DEPLOY.md.
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Never run two deploys at once; a newer push waits for the current one.
+# Never run two deploys at once; a second one waits for the first.
 concurrency:
   group: deploy
   cancel-in-progress: false
@@ -107,3 +106,11 @@ jobs:
           $PHP_BIN artisan up
           echo "Deployed."
           EOF
+
+      # Tells Settings > Updates which version is live.
+      - name: Record the live version
+        run: |
+          jq -n --arg sha "$GITHUB_SHA" --arg message "$(git log -1 --format=%s)" --arg at "$(date -u +%FT%TZ)" \
+            '{sha: $sha, message: $message, at: $at}' \
+            | ssh -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
+              "[ -f '$APP_DIR/.env' ] && cat > '$APP_DIR/storage/app/deploy.json' || cat > /dev/null"

@@ -31,6 +31,15 @@ return [
         'fallbacks' => array_filter(explode(',', env('OPENROUTER_FALLBACK_MODELS', 'google/gemma-4-31b-it:free,nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free'))),
     ],
 
+    // The "Update now" button in Settings. Token: fine-grained, this repository only,
+    // Actions: read and write + Contents: read.
+    'github' => [
+        'repo' => env('GITHUB_REPO', 'uzzal-koirala/Nepsus-Tech'),
+        'branch' => env('GITHUB_BRANCH', 'main'),
+        'workflow' => 'deploy.yml',
+        'token' => env('GITHUB_TOKEN'),
+    ],
+
     'resend' => [
         'key' => env('RESEND_API_KEY'),
     ],
