@@ -14,7 +14,7 @@
         <flux:button variant="primary" icon="plus" wire:click="newBox">{{ __('Create a box') }}</flux:button>
     </section>
 @else
-    <section class="grid items-start gap-5 grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))]">
+    <section class="grid items-start gap-5 sm:grid-cols-2 xl:grid-cols-4">
         @foreach ($boxes as $b)
             @php
                 $accent = ($palette[$b->color] ?? $palette['violet'])['hex'];
