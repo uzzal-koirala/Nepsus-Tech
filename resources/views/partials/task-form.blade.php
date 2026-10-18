@@ -7,6 +7,8 @@
         ->concat($this->clients->map(fn ($c) => ['value' => $c->id, 'label' => $c->displayName(), 'hint' => $c->company ? $c->name : $c->phone, 'initials' => $c->initials(), 'tile' => 'bg-linear-to-br from-brand-500 to-violet-600 text-white']));
     $typeOptions = collect($formTypes)->map(fn ($t, $slug) => ['value' => $slug, 'label' => $t['label'], 'icon' => $t['icon'], 'tile' => $formTone($slug)['chip']])->values();
     $priorityOptions = collect(\App\Models\Task::PRIORITIES)->map(fn ($label, $k) => ['value' => $k, 'label' => __($label), 'icon' => \App\Models\Task::PRIORITY_STYLES[$k]['icon'], 'tile' => \App\Models\Task::PRIORITY_STYLES[$k]['tone']])->values();
+    $boxOptions = collect([['value' => '', 'label' => __('No box'), 'hint' => __('A single task'), 'icon' => 'square-2-stack']])
+        ->concat($this->boxes->map(fn ($b) => ['value' => $b->id, 'label' => $b->name, 'icon' => 'archive-box', 'tile' => (\App\Models\WorkType::PALETTE[$b->color] ?? \App\Models\WorkType::PALETTE['violet'])['dot'].' text-white']));
     $statusOptions = collect(\App\Models\Task::STATUSES)->map(fn ($s, $k) => ['value' => $k, 'label' => __($s['label']), 'icon' => $s['icon']])->values();
 @endphp
 
@@ -21,6 +23,9 @@
         </div>
         <div class="grid gap-4 sm:grid-cols-2">
             <div class="sm:col-span-2"><flux:input wire:model="task.title" :label="__('Task')" :placeholder="__('e.g. Design 4 posts for Dashain')" required data-test="task-title" /></div>
+            @if ($this->boxes->isNotEmpty())
+                <x-rich-select model="task.task_group_id" class="sm:col-span-2" :label="__('Box')" :options="$boxOptions" :searchable="$this->boxes->count() > 6" />
+            @endif
             <x-rich-select model="task.client_id" class="sm:col-span-2" :label="$strict ? __('Client') : __('Client (optional)')" :placeholder="__('Pick a client')" :options="$clientOptions" searchable />
             <x-rich-select model="task.type" :label="__('Work type')" :options="$typeOptions" :searchable="count($formTypes) > 6" />
             <x-nepali-date wire:model="task.due_date" :label="$strict ? __('Due date') : __('Due date (optional)')" />

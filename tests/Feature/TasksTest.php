@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Client;
 use App\Models\Employee;
 use App\Models\Task;
+use App\Models\TaskGroup;
 use App\Models\User;
 use App\Models\WorkType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -19,7 +20,7 @@ class TasksTest extends TestCase
     {
         $this->get(route('tasks.index'))->assertRedirect(route('login'));
         $this->actingAs(User::factory()->create());
-        $this->get(route('tasks.index'))->assertOk()->assertSee(['Tasks', 'No tasks yet'])->assertDontSee(['Projects', 'Activity log']);
+        $this->get(route('tasks.index'))->assertOk()->assertSee(['Tasks', 'No boxes yet'])->assertDontSee(['Projects', 'Activity log']);
 
         $type = WorkType::firstOrFail()->slug;
         $client = Client::factory()->create(['company' => 'Everest Gym']);
@@ -27,6 +28,7 @@ class TasksTest extends TestCase
 
         // Internal task without a client or date.
         $page = Livewire::test('pages::tasks')
+            ->set('view', 'board')
             ->call('newTaskFor', 'in_progress')
             ->assertSet('task.status', 'in_progress')
             ->call('saveTask')
@@ -62,5 +64,45 @@ class TasksTest extends TestCase
         $this->assertNotNull($reel->fresh()->completed_at);
         $page->call('confirmDelete', $wifi->id)->call('deleteTask');
         $this->assertModelMissing($wifi);
+    }
+
+    public function test_boxes_group_tasks_and_show_progress_and_people(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $client = Client::factory()->create(['company' => 'Everest Gym']);
+        $asha = Employee::factory()->create(['name' => 'Asha Gurung']);
+
+        $page = Livewire::test('pages::tasks')
+            ->assertSet('view', 'boxes')
+            ->call('newBox')
+            ->call('saveBox')
+            ->assertHasErrors(['box.name'])
+            ->set('box.name', 'Dashain campaign')
+            ->set('box.client_id', (string) $client->id)
+            ->call('saveBox')
+            ->assertHasNoErrors();
+
+        $box = TaskGroup::sole();
+        $this->assertSame(['Dashain campaign', $client->id], [$box->name, $box->client_id]);
+
+        // Quick add and a detailed task with a person.
+        $page->set("quick.{$box->id}", 'Write captions')->call('quickAdd', $box->id)->assertHasNoErrors()
+            ->call('newTaskIn', $box->id)
+            ->assertSet('task.task_group_id', (string) $box->id)
+            ->set('task.title', 'Shoot greeting video')
+            ->set('task.assignees', [(string) $asha->id])
+            ->call('saveTask')
+            ->assertHasNoErrors();
+
+        $this->assertSame(2, $box->tasks()->count());
+        $this->assertSame([$client->id], $box->tasks()->pluck('client_id')->unique()->values()->all()); // tasks follow the box's client
+
+        $first = $box->tasks()->where('title', 'Write captions')->sole();
+        $page->call('toggleDone', $first->id)
+            ->assertSee(['Dashain campaign', 'Everest Gym', '50%', '1 of 2 done', 'Asha Gurung', 'Shoot greeting video']);
+
+        $page->call('confirmDeleteBox', $box->id)->call('deleteBox');
+        $this->assertModelMissing($box);
+        $this->assertSame(0, Task::count());
     }
 }

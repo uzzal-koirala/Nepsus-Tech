@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Str;
 
-#[Fillable(['title', 'description', 'type', 'status', 'priority', 'start_date', 'due_date', 'completed_at'])]
+#[Fillable(['task_group_id', 'title', 'description', 'type', 'status', 'priority', 'start_date', 'due_date', 'completed_at'])]
 class Task extends Model
 {
     /** @use HasFactory<TaskFactory> */
@@ -68,6 +68,11 @@ class Task extends Model
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
+    }
+
+    public function group(): BelongsTo
+    {
+        return $this->belongsTo(TaskGroup::class, 'task_group_id');
     }
 
     public function assignees(): BelongsToMany

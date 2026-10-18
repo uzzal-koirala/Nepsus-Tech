@@ -2,7 +2,9 @@
 
 use App\Concerns\ManagesTasks;
 use App\Models\Task;
+use App\Models\TaskGroup;
 use App\Models\WorkType;
+use Flux\Flux;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
@@ -11,8 +13,8 @@ use Livewire\Component;
 new #[Title('Tasks')] class extends Component {
     use ManagesTasks;
 
-    #[Url(except: 'board')]
-    public string $view = 'board';
+    #[Url(except: 'boxes')]
+    public string $view = 'boxes';
 
     #[Url(except: '')]
     public string $search = '';
@@ -23,15 +25,103 @@ new #[Title('Tasks')] class extends Component {
     #[Url(except: '')]
     public string $priority = '';
 
+    /** @var array<string, string> Add / edit box. */
+    public array $box = ['name' => '', 'client_id' => '', 'color' => 'violet'];
+
+    public ?int $editingBoxId = null;
+
+    public ?int $deletingBoxId = null;
+
+    /** @var array<int|string, string> Quick-add title typed in each box. */
+    public array $quick = [];
+
     public function mount(): void
     {
-        $this->view = $this->view === 'list' ? 'list' : 'board';
+        $this->view = in_array($this->view, ['boxes', 'board', 'list'], true) ? $this->view : 'boxes';
         $this->task = $this->blankTask();
     }
 
     public function newTaskFor(string $status): void
     {
         $this->newTask(null, $status);
+    }
+
+    public function newTaskIn(int $boxId): void
+    {
+        $box = TaskGroup::findOrFail($boxId);
+        $this->newTask();
+        $this->task['task_group_id'] = (string) $box->id;
+        $this->task['client_id'] = (string) $box->client_id;
+    }
+
+    /** Typing a title in a box and pressing Enter adds a to-do there. */
+    public function quickAdd(int $boxId): void
+    {
+        $box = TaskGroup::findOrFail($boxId);
+        $title = trim($this->quick[$boxId] ?? '');
+        $this->validate(["quick.$boxId" => ['required', 'string', 'max:255']], attributes: ["quick.$boxId" => __('task')]);
+
+        $box->tasks()->create(['title' => $title, 'type' => array_key_first($this->types), 'priority' => 'medium', 'status' => 'todo'])
+            ->forceFill(['client_id' => $box->client_id])->save();
+        unset($this->quick[$boxId]);
+    }
+
+    #[Computed]
+    public function boxList()
+    {
+        return TaskGroup::with(['client', 'tasks' => fn ($q) => $q->with('assignees')->orderByRaw('completed_at is not null')->orderByRaw('due_date is null')->orderBy('due_date')->orderBy('id')])
+            ->orderBy('position')->orderBy('id')->get();
+    }
+
+    public function newBox(): void
+    {
+        $this->view = 'boxes'; // the box form lives in the boxes view
+        $this->editingBoxId = null;
+        $this->box = ['name' => '', 'client_id' => '', 'color' => array_keys(WorkType::PALETTE)[TaskGroup::count() % count(WorkType::PALETTE)]];
+        $this->resetErrorBag();
+        Flux::modal('box-form')->show();
+    }
+
+    public function editBox(int $id): void
+    {
+        $b = TaskGroup::findOrFail($id);
+        $this->editingBoxId = $b->id;
+        $this->box = ['name' => $b->name, 'client_id' => (string) $b->client_id, 'color' => $b->color];
+        $this->resetErrorBag();
+        Flux::modal('box-form')->show();
+    }
+
+    public function saveBox(): void
+    {
+        $data = $this->validate([
+            'box.name' => ['required', 'string', 'max:120'],
+            'box.client_id' => ['nullable', 'exists:clients,id'],
+            'box.color' => ['required', \Illuminate\Validation\Rule::in(array_keys(WorkType::PALETTE))],
+        ], attributes: ['box.name' => __('box name')])['box'];
+
+        $b = TaskGroup::updateOrCreate(['id' => $this->editingBoxId], ['name' => $data['name'], 'client_id' => $data['client_id'] ?: null, 'color' => $data['color']] + ($this->editingBoxId ? [] : ['position' => (int) TaskGroup::max('position') + 1]));
+        // Tasks follow their box's client when they had none.
+        if ($b->client_id) {
+            $b->tasks()->whereNull('client_id')->update(['client_id' => $b->client_id]);
+        }
+
+        $this->view = 'boxes';
+        Flux::modal('box-form')->close();
+        Flux::toast(variant: 'success', text: $this->editingBoxId ? __('Box updated.') : __('Box created. Add its tasks.'));
+    }
+
+    public function confirmDeleteBox(int $id): void
+    {
+        $this->deletingBoxId = $id;
+        Flux::modal('box-delete')->show();
+    }
+
+    public function deleteBox(): void
+    {
+        TaskGroup::whereKey($this->deletingBoxId)->first()?->delete();
+        $this->deletingBoxId = null;
+        Flux::modal('box-delete')->close();
+        Flux::toast(text: __('Box deleted.'));
     }
 
     public function clearFilters(): void
@@ -113,7 +203,10 @@ new #[Title('Tasks')] class extends Component {
             <h1 class="text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-3xl dark:text-white">{{ __('Tasks') }}</h1>
             <p class="mt-1 text-sm text-zinc-500">{{ __('Create work, give it to the right people and watch it move to done.') }}</p>
         </div>
-        <flux:button variant="primary" icon="plus" wire:click="newTaskFor('todo')" class="shadow-lg shadow-brand-500/25" data-test="new-task">{{ __('New task') }}</flux:button>
+        <div class="flex gap-2">
+            <flux:button icon="archive-box" wire:click="newBox" data-test="new-box">{{ __('New box') }}</flux:button>
+            <flux:button variant="primary" icon="plus" wire:click="newTaskFor('todo')" class="shadow-lg shadow-brand-500/25" data-test="new-task">{{ __('New task') }}</flux:button>
+        </div>
     </header>
 
     {{-- Summary --}}
@@ -137,6 +230,7 @@ new #[Title('Tasks')] class extends Component {
 
     {{-- Toolbar --}}
     <div class="flex flex-wrap items-center gap-2">
+        @if ($view !== 'boxes')
         <div class="min-w-56 flex-1">
             <flux:input wire:model.live.debounce.300ms="search" icon="magnifying-glass" :placeholder="__('Search tasks or clients')" />
         </div>
@@ -145,8 +239,9 @@ new #[Title('Tasks')] class extends Component {
         @if ($filtered)
             <flux:button variant="ghost" icon="x-mark" wire:click="clearFilters">{{ __('Clear') }}</flux:button>
         @endif
+        @endif
         <nav class="ms-auto flex gap-1 rounded-xl bg-white p-1 ring-1 ring-zinc-200/70 dark:bg-zinc-950 dark:ring-white/10">
-            @foreach (['board' => ['view-columns', __('Board')], 'list' => ['list-bullet', __('List')]] as $key => [$icon, $label])
+            @foreach (['boxes' => ['archive-box', __('Boxes')], 'board' => ['view-columns', __('Board')], 'list' => ['list-bullet', __('List')]] as $key => [$icon, $label])
                 <button type="button" wire:click="$set('view', '{{ $key }}')" @class([
                     'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition',
                     'bg-brand-500 text-white shadow-md shadow-brand-500/30' => $view === $key,
@@ -156,7 +251,9 @@ new #[Title('Tasks')] class extends Component {
         </nav>
     </div>
 
-    @if ($this->all->isEmpty())
+    @if ($view === 'boxes')
+        @include('partials.task-boxes')
+    @elseif ($this->all->isEmpty())
         <section class="{{ $panel }} flex flex-col items-center gap-4 px-6 py-16 text-center">
             <span class="flex size-16 items-center justify-center rounded-2xl bg-linear-to-br from-brand-500 to-violet-600 text-white shadow-lg shadow-brand-500/30"><flux:icon.clipboard-document-check class="size-8" /></span>
             <div>

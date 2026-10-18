@@ -5,6 +5,7 @@ namespace App\Concerns;
 use App\Models\Client;
 use App\Models\Employee;
 use App\Models\Task;
+use App\Models\TaskGroup;
 use Flux\Flux;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
@@ -29,7 +30,7 @@ trait ManagesTasks
 
     protected function blankTask(?string $date = null, array $preset = []): array
     {
-        return $preset + ['client_id' => '', 'title' => '', 'type' => array_key_first($this->types) ?? '', 'priority' => 'medium', 'status' => 'todo', 'due_date' => $date ?? '', 'description' => '', 'assignees' => []];
+        return $preset + ['task_group_id' => '', 'client_id' => '', 'title' => '', 'type' => array_key_first($this->types) ?? '', 'priority' => 'medium', 'status' => 'todo', 'due_date' => $date ?? '', 'description' => '', 'assignees' => []];
     }
 
     #[Computed]
@@ -42,6 +43,12 @@ trait ManagesTasks
     public function clients()
     {
         return Client::orderBy('company')->orderBy('name')->get();
+    }
+
+    #[Computed]
+    public function boxes()
+    {
+        return TaskGroup::orderBy('position')->orderBy('id')->get();
     }
 
     #[Computed]
@@ -62,7 +69,7 @@ trait ManagesTasks
     {
         $t = Task::with('assignees')->findOrFail($id);
         $this->editingId = $t->id;
-        $this->task = ['client_id' => (string) $t->client_id, 'title' => $t->title, 'type' => $t->type, 'priority' => $t->priority, 'status' => $t->stage(), 'due_date' => (string) $t->due_date?->toDateString(), 'description' => (string) $t->description, 'assignees' => $t->assignees->pluck('id')->map('strval')->all()];
+        $this->task = ['task_group_id' => (string) $t->task_group_id, 'client_id' => (string) $t->client_id, 'title' => $t->title, 'type' => $t->type, 'priority' => $t->priority, 'status' => $t->stage(), 'due_date' => (string) $t->due_date?->toDateString(), 'description' => (string) $t->description, 'assignees' => $t->assignees->pluck('id')->map('strval')->all()];
         $this->resetErrorBag();
         Flux::modal('task-form')->show();
     }
@@ -71,6 +78,7 @@ trait ManagesTasks
     {
         $strict = $this->needsClientAndDate();
         $data = $this->validate([
+            'task.task_group_id' => ['nullable', 'exists:task_groups,id'],
             'task.client_id' => [$strict ? 'required' : 'nullable', 'exists:clients,id'],
             'task.title' => ['required', 'string', 'max:255'],
             'task.type' => ['required', Rule::exists('work_types', 'slug')],
@@ -83,7 +91,9 @@ trait ManagesTasks
         ], attributes: ['task.client_id' => __('client'), 'task.title' => __('task'), 'task.due_date' => __('due date'), 'task.type' => __('work type')])['task'];
 
         $t = $this->editingId ? Task::findOrFail($this->editingId) : new Task;
-        $t->client_id = $data['client_id'] ?: null;
+        $t->task_group_id = $data['task_group_id'] ?: null;
+        // A task in a client's box belongs to that client unless one was picked.
+        $t->client_id = $data['client_id'] ?: TaskGroup::find($t->task_group_id)?->client_id;
         $t->fill([
             'title' => $data['title'], 'type' => $data['type'], 'priority' => $data['priority'], 'status' => $data['status'],
             'due_date' => $data['due_date'] ?: null, 'description' => $data['description'] ?: null,
