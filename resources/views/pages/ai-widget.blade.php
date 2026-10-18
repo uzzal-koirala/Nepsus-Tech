@@ -92,7 +92,7 @@ new class extends Component {
         </div>
 
         {{-- Messages --}}
-        <div x-ref="scroll" class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4 [scrollbar-width:thin]">
+        <div x-ref="scroll" class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             @if (! $ready)
                 <form wire:submit="saveKey" class="my-auto flex flex-col gap-3 text-center">
                     <p class="text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Connect the AI') }}</p>

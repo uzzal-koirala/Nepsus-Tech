@@ -131,7 +131,7 @@ new #[Title('Client profile')] class extends Component {
         $to = NepaliDate::toAd($py, $pm, NepaliDate::monthLength($py, $pm));
         $length = NepaliDate::monthLength($this->calYear, $this->calMonth);
 
-        $previous = $this->client->tasks()->with('assignees')->whereBetween('due_date', [$from->toDateString(), $to->toDateString()])->get();
+        $previous = $this->client->tasks()->with('assignees')->whereDate('due_date', '>=', $from)->whereDate('due_date', '<=', $to)->get();
 
         foreach ($previous as $task) {
             $day = min(NepaliDate::fromAd($task->due_date)[2], $length);

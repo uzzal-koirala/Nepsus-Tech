@@ -107,6 +107,19 @@ class AiTools
                 ]],
             ],
             [
+                'name' => 'calendar',
+                'description' => 'The calendar: tasks by due day, like the Calendar page. Use for "what is on 5 Kartik", "this week", "next week", "this month", "what does Ram have tomorrow". Give a Nepali month (e.g. 2083-07) or a from/to range. Includes done tasks unless you ask for open only.',
+                'inputSchema' => ['type' => 'object', 'properties' => [
+                    'month' => ['type' => 'string', 'description' => 'Nepali month as YYYY-MM, e.g. 2083-07 for Kartik 2083. Use this or from/to.'],
+                    'from' => $date,
+                    'to' => $date,
+                    'calendar' => $calendar,
+                    'assignee_id' => ['type' => 'integer'],
+                    'client_id' => ['type' => 'integer'],
+                    'open_only' => ['type' => 'boolean', 'description' => 'Only tasks not done yet.'],
+                ]],
+            ],
+            [
                 'name' => 'business_overview',
                 'description' => 'Numbers for this Nepali month: clients, money in and out, money owed by clients, unpaid invoices, open leads, task status.',
                 'inputSchema' => ['type' => 'object', 'properties' => new \stdClass],
@@ -125,6 +138,7 @@ class AiTools
             'create_task' => $this->createTask($input),
             'update_task' => $this->updateTask($input),
             'create_box' => $this->createBox($input),
+            'calendar' => $this->calendar($input),
             'business_overview' => $this->overview(),
             default => throw ValidationException::withMessages(['tool' => "Unknown tool {$name}."]),
         };
@@ -143,7 +157,8 @@ class AiTools
         if (! $value) {
             return null;
         }
-        if (($calendar ?? 'ad') === 'bs') {
+        // ponytail: models often forget calendar=bs; a year of 2050+ can only be Nepali here (Nepali years run ~57 ahead).
+        if (($calendar ?? 'ad') === 'bs' || (int) substr($value, 0, 4) >= 2050) {
             if (! preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})$/', $value, $m) || $m[2] < 1 || $m[2] > 12 || $m[3] < 1 || $m[3] > NepaliDate::monthLength((int) $m[1], (int) $m[2])) {
                 throw ValidationException::withMessages(['date' => "{$value} is not a valid Nepali date."]);
             }
@@ -338,13 +353,56 @@ class AiTools
         return ['created_box' => ['id' => $b->id, 'name' => $b->name]];
     }
 
+    private function calendar(array $input): array
+    {
+        $d = $this->validate($input, [
+            'month' => ['nullable', 'regex:/^\d{4}-\d{1,2}$/'],
+            'from' => ['nullable', 'string'], 'to' => ['nullable', 'string'],
+            'assignee_id' => ['nullable', 'integer'], 'client_id' => ['nullable', 'integer'],
+            'open_only' => ['nullable', 'boolean'],
+        ]);
+
+        if (! empty($d['month'])) {
+            [$y, $m] = array_map('intval', explode('-', $d['month']));
+            if ($m < 1 || $m > 12 || ! isset(NepaliDate::calendar()[(string) $y])) {
+                throw ValidationException::withMessages(['month' => "{$d['month']} is not a Nepali month this app knows."]);
+            }
+            [$from, $to] = [NepaliDate::toAd($y, $m, 1), NepaliDate::toAd($y, $m, NepaliDate::monthLength($y, $m))];
+        } else {
+            $from = $this->date($d['from'] ?? null, $d['calendar'] ?? null) ?? today();
+            $to = $this->date($d['to'] ?? null, $d['calendar'] ?? null) ?? $from->copy()->addDays(6);
+        }
+        if ($to->lt($from) || $from->diffInDays($to) > 62) {
+            throw ValidationException::withMessages(['range' => 'Ask for at most about two months at a time, with "to" after "from".']);
+        }
+
+        $tasks = Task::with(['client', 'group', 'assignees'])
+            ->whereDate('due_date', '>=', $from)->whereDate('due_date', '<=', $to)
+            ->when($d['open_only'] ?? false, fn ($q) => $q->whereNull('completed_at'))
+            ->when($d['assignee_id'] ?? null, fn ($q, $id) => $q->whereHas('assignees', fn ($w) => $w->whereKey($id)))
+            ->when($d['client_id'] ?? null, fn ($q, $id) => $q->where('client_id', $id))
+            ->orderBy('due_date')->orderBy('id')->limit(150)->get();
+
+        return [
+            'from' => $this->show($from),
+            'to' => $this->show($to),
+            'total' => $tasks->count(),
+            'done' => $tasks->whereNotNull('completed_at')->count(),
+            'days' => $tasks->groupBy(fn ($t) => $t->due_date->toDateString())
+                ->map(fn ($day, $date) => [
+                    'date' => $this->show(Carbon::parse($date)).', '.Carbon::parse($date)->format('l'),
+                    'tasks' => $day->map(fn ($t) => $this->taskRow($t))->values()->all(),
+                ])->values()->all(),
+        ];
+    }
+
     private function overview(): array
     {
         [$start, $end] = NepaliDate::monthRange(today());
         $money = fn ($v) => Client::money(round((float) $v));
         $tx = Transaction::whereBetween('date', [$start->toDateString(), $end->toDateString()])->get();
         $received = Payment::whereBetween('paid_at', [$start, $end])->sum('amount');
-        $salaries = SalaryPayment::whereBetween('paid_on', [$start->toDateString(), $end->toDateString()])->sum('amount');
+        $salaries = SalaryPayment::whereDate('paid_on', '>=', $start)->whereDate('paid_on', '<=', $end)->sum('amount');
         $openTasks = Task::whereNull('completed_at');
 
         return [

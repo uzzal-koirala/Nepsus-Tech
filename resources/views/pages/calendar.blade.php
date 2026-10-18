@@ -91,7 +91,7 @@ new #[Title('Calendar')] class extends Component {
     private function tasksBetween($from, $to, bool $filtered = true)
     {
         return Task::with(['client', 'assignees'])->whereNotNull('client_id')
-            ->whereBetween('due_date', [$from->toDateString(), $to->toDateString()])
+            ->whereDate('due_date', '>=', $from)->whereDate('due_date', '<=', $to)
             ->when($filtered && $this->off, fn ($q) => $q->whereNotIn('type', $this->off))
             ->orderByRaw('completed_at is not null')
             ->orderByRaw("case priority when 'urgent' then 0 when 'high' then 1 when 'medium' then 2 else 3 end")

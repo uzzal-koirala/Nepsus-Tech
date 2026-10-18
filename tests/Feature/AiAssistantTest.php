@@ -49,18 +49,29 @@ class AiAssistantTest extends TestCase
         $this->assertNotNull($task->fresh()->completed_at);
         $this->assertSame(1, json_decode($tools->run('list_tasks', ['status' => 'done']), true)['count']);
 
+        // The calendar groups tasks by day, for a Nepali month or a range.
+        Task::create(['title' => 'Later shoot', 'type' => 'post', 'due_date' => NepaliDate::toAd($y, $m, 15)]);
+        $month = json_decode($tools->run('calendar', ['month' => sprintf('%d-%02d', $y, $m)]), true);
+        $this->assertSame([2, 1], [$month['total'], $month['done']]);
+        $this->assertCount(1, $month['days']);
+        $this->assertSame(['Design 4 posts', 'Later shoot'], array_column($month['days'][0]['tasks'], 'title'));
+        $this->assertSame(1, json_decode($tools->run('calendar', ['month' => sprintf('%d-%02d', $y, $m), 'open_only' => true]), true)['total']);
+        // A Nepali date sent without calendar=bs is still read as Nepali.
+        $this->assertSame(2, json_decode($tools->run('calendar', ['from' => sprintf('%d-%02d-15', $y, $m), 'to' => sprintf('%d-%02d-15', $y, $m)]), true)['total']);
+        $this->assertSame(0, json_decode($tools->run('calendar', ['from' => sprintf('%d-%02d-16', $y, $m), 'to' => sprintf('%d-%02d-20', $y, $m), 'calendar' => 'bs']), true)['total']);
+
         $overview = json_decode($tools->run('business_overview', []), true);
         $this->assertSame(1, $overview['clients_total']);
 
         // Bad input never reaches the database.
-        foreach ([['create_task', ['title' => '']], ['create_task', ['title' => 'x', 'client_id' => 999]], ['create_task', ['title' => 'x', 'due_date' => '2083-13-40', 'calendar' => 'bs']], ['nope', []]] as [$name, $input]) {
+        foreach ([['create_task', ['title' => '']], ['create_task', ['title' => 'x', 'client_id' => 999]], ['create_task', ['title' => 'x', 'due_date' => '2083-13-40', 'calendar' => 'bs']], ['calendar', ['month' => '2083-13']], ['nope', []]] as [$name, $input]) {
             try {
                 $tools->run($name, $input);
                 $this->fail("{$name} should have been rejected");
             } catch (ValidationException) {
             }
         }
-        $this->assertSame(1, Task::count());
+        $this->assertSame(2, Task::count());
         $this->assertSame(1, TaskGroup::count());
     }
 
