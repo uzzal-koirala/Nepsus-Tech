@@ -7,8 +7,10 @@ use App\Models\Client;
 use App\Models\Employee;
 use App\Models\Invoice;
 use App\Models\Lead;
+use App\Models\Package;
 use App\Models\Payment;
 use App\Models\SalaryPayment;
+use App\Models\Setting;
 use App\Models\Task;
 use App\Models\TaskGroup;
 use App\Models\Transaction;
@@ -22,7 +24,7 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * What the AI may look up and change: the in-app assistant and outside assistants over MCP. Every input is validated here,
- * because the model's arguments are untrusted. Deleting is left to people.
+ * because the model's arguments are untrusted. Deletes keep a copy in storage/app/ai-trash.
  */
 class AiTools
 {
@@ -291,6 +293,81 @@ class AiTools
                 'inputSchema' => ['type' => 'object', 'required' => ['employee_id'], 'properties' => ['employee_id' => ['type' => 'integer']]],
             ],
             [
+                'name' => 'pay_salary',
+                'description' => 'Pay salary to a team member, like the Pay button on the Employees page. Amount defaults to what is left for that month; more than what is left is refused.',
+                'inputSchema' => ['type' => 'object', 'required' => ['employee_id'], 'properties' => [
+                    'employee_id' => ['type' => 'integer'],
+                    'amount' => ['type' => 'number'],
+                    'month' => ['type' => 'string', 'description' => 'Nepali salary month YYYY-MM (this month, last month or the next two). Default this month.'],
+                    'paid_on' => $date,
+                    'calendar' => $calendar,
+                    'title' => ['type' => 'string', 'description' => 'e.g. Advance, Bonus'],
+                    'note' => ['type' => 'string'],
+                ]],
+            ],
+            [
+                'name' => 'mark_attendance',
+                'description' => 'Mark or correct one day of attendance for a team member. The fingerprint device never overwrites a day set here.',
+                'inputSchema' => ['type' => 'object', 'required' => ['employee_id', 'status'], 'properties' => [
+                    'employee_id' => ['type' => 'integer'],
+                    'date' => $date + ['description' => 'Default today.'],
+                    'calendar' => $calendar,
+                    'status' => ['type' => 'string', 'enum' => array_keys(Attendance::STATUSES)],
+                    'check_in' => ['type' => 'string', 'description' => 'HH:MM, 24-hour'],
+                    'check_out' => ['type' => 'string', 'description' => 'HH:MM, 24-hour'],
+                    'note' => ['type' => 'string', 'description' => 'Needed for leave: the reason.'],
+                ]],
+            ],
+            [
+                'name' => 'list_packages',
+                'description' => 'The service packages the business sells, with prices.',
+                'inputSchema' => ['type' => 'object', 'properties' => new \stdClass],
+            ],
+            [
+                'name' => 'create_invoice',
+                'description' => 'Create an invoice or quotation (as a draft) with its items. Use a client_id, or bill_to for someone who is not a client yet.',
+                'inputSchema' => ['type' => 'object', 'required' => ['items'], 'properties' => [
+                    'type' => ['type' => 'string', 'enum' => ['invoice', 'quotation'], 'description' => 'Default invoice.'],
+                    'client_id' => ['type' => 'integer'],
+                    'bill_to' => ['type' => 'string', 'description' => 'Business name when there is no client_id'],
+                    'items' => ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['description', 'price'], 'properties' => [
+                        'description' => ['type' => 'string'],
+                        'details' => ['type' => 'string'],
+                        'quantity' => ['type' => 'number', 'description' => 'Default 1'],
+                        'price' => ['type' => 'number'],
+                    ]]],
+                    'due_date' => $date + ['description' => 'Invoice: due by. Quotation: valid until. Default 15 or 30 days.'],
+                    'calendar' => $calendar,
+                    'discount' => ['type' => 'number', 'description' => 'Amount in NPR'],
+                    'tax_rate' => ['type' => 'number', 'description' => 'Percent, e.g. 13'],
+                    'notes' => ['type' => 'string'],
+                ]],
+            ],
+            [
+                'name' => 'set_invoice_status',
+                'description' => 'Change an invoice or quotation status. Marking an invoice paid also records the payment for the client and in Finance.',
+                'inputSchema' => ['type' => 'object', 'required' => ['invoice_id', 'status'], 'properties' => [
+                    'invoice_id' => ['type' => 'integer'],
+                    'status' => ['type' => 'string', 'enum' => ['draft', 'sent', 'paid', 'accepted', 'declined']],
+                    'method' => ['type' => 'string', 'enum' => Payment::METHODS, 'description' => 'For paid. Default Bank.'],
+                    'paid_on' => $date,
+                    'calendar' => $calendar,
+                ]],
+            ],
+            [
+                'name' => 'convert_quotation',
+                'description' => 'The client accepted a quotation: make an invoice with the same items.',
+                'inputSchema' => ['type' => 'object', 'required' => ['invoice_id'], 'properties' => ['invoice_id' => ['type' => 'integer']]],
+            ],
+            [
+                'name' => 'delete',
+                'description' => 'Delete something for good. Always confirm with the user first, naming exactly what will go. Deleting a client also deletes their payments, tasks and documents; deleting a box deletes its tasks; deleting an employee deletes their salary and attendance history. A copy is kept on the server for recovery.',
+                'inputSchema' => ['type' => 'object', 'required' => ['what', 'id'], 'properties' => [
+                    'what' => ['type' => 'string', 'enum' => ['task', 'box', 'client', 'payment', 'transaction', 'lead', 'employee', 'invoice', 'attendance']],
+                    'id' => ['type' => 'string', 'description' => 'The id. For transaction: the key from list_transactions (like t12, s3 or p8). For attendance: employee_id:YYYY-MM-DD.'],
+                ]],
+            ],
+            [
                 'name' => 'check_for_updates',
                 'description' => 'Which version of the app is live, what is new on GitHub since then, and how the last update went.',
                 'inputSchema' => ['type' => 'object', 'properties' => new \stdClass],
@@ -338,6 +415,13 @@ class AiTools
             'get_employee' => $this->getEmployee($input),
             'create_employee' => $this->saveEmployee($input),
             'update_employee' => $this->saveEmployee($input, true),
+            'pay_salary' => $this->paySalary($input),
+            'mark_attendance' => $this->markAttendance($input),
+            'list_packages' => $this->listPackages(),
+            'create_invoice' => $this->createInvoice($input),
+            'set_invoice_status' => $this->setInvoiceStatus($input),
+            'convert_quotation' => $this->convertQuotation($input),
+            'delete' => $this->delete($input),
             'check_for_updates' => $this->checkForUpdates(),
             'put_update_live' => $this->putUpdateLive($input),
             'business_overview' => $this->overview(),
@@ -745,11 +829,11 @@ class AiTools
 
         $rows = collect()
             ->concat(Payment::with('client')->whereNotNull('paid_at')->whereBetween('paid_at', [$from, $to])->get()
-                ->map(fn ($p) => ['kind' => 'income', 'date' => $p->paid_at, 'title' => $p->client?->displayName(), 'category' => 'Client payment', 'amount' => (float) $p->amount, 'method' => $p->method]))
+                ->map(fn ($p) => ['key' => 'p'.$p->id, 'kind' => 'income', 'date' => $p->paid_at, 'title' => $p->client?->displayName(), 'category' => 'Client payment', 'amount' => (float) $p->amount, 'method' => $p->method]))
             ->concat(SalaryPayment::with('employee')->whereBetween('paid_on', [$from, $to])->get()
-                ->map(fn ($s) => ['kind' => 'expense', 'date' => $s->paid_on, 'title' => $s->employee?->name, 'category' => 'Salary', 'amount' => (float) $s->amount, 'method' => null]))
+                ->map(fn ($s) => ['key' => 's'.$s->id, 'kind' => 'expense', 'date' => $s->paid_on, 'title' => $s->employee?->name, 'category' => 'Salary', 'amount' => (float) $s->amount, 'method' => null]))
             ->concat(Transaction::whereBetween('date', [$from->toDateString(), $to->toDateString()])->get()
-                ->map(fn ($t) => ['kind' => $t->kind, 'date' => $t->date, 'title' => $t->title, 'category' => $t->categoryLabel(), 'amount' => (float) $t->amount, 'method' => $t->method]))
+                ->map(fn ($t) => ['key' => 't'.$t->id, 'kind' => $t->kind, 'date' => $t->date, 'title' => $t->title, 'category' => $t->categoryLabel(), 'amount' => (float) $t->amount, 'method' => $t->method]))
             ->filter(fn ($r) => $kind === 'all' || $r['kind'] === $kind)
             ->sortByDesc(fn ($r) => $r['date']->timestamp)->values();
 
@@ -757,7 +841,7 @@ class AiTools
             'month' => NepaliDate::monthYear($from),
             'money_in' => $this->money($rows->where('kind', 'income')->sum('amount')),
             'money_out' => $this->money($rows->where('kind', 'expense')->sum('amount')),
-            'entries' => $rows->take(60)->map(fn ($r) => ['kind' => $r['kind'], 'date' => $this->show($r['date']), 'title' => $r['title'], 'category' => $r['category'], 'amount' => $this->money($r['amount']), 'method' => $r['method']])->all(),
+            'entries' => $rows->take(60)->map(fn ($r) => ['key' => $r['key'], 'kind' => $r['kind'], 'date' => $this->show($r['date']), 'title' => $r['title'], 'category' => $r['category'], 'amount' => $this->money($r['amount']), 'method' => $r['method']])->all(),
         ];
     }
 
@@ -918,6 +1002,205 @@ class AiTools
             'attendance_this_month' => $month->all(),
             'open_tasks' => $open->map(fn ($t) => $this->taskRow($t))->all(),
         ];
+    }
+
+    private function paySalary(array $input): array
+    {
+        $d = $this->validate($input, [
+            'employee_id' => ['required', 'integer', 'exists:employees,id'], 'amount' => ['nullable', 'numeric'],
+            'month' => ['nullable', 'regex:/^\d{4}-\d{1,2}$/'], 'paid_on' => ['nullable', 'string'],
+            'title' => ['nullable', 'string', 'max:120'], 'note' => ['nullable', 'string', 'max:255'],
+        ]);
+        $e = Employee::findOrFail($d['employee_id']);
+        $period = isset($d['month']) ? vsprintf('%d-%02d', array_map('intval', explode('-', $d['month']))) : NepaliDate::period(today());
+        $amount = $d['amount'] ?? $e->salaryLeftFor($period);
+        if (! $amount) {
+            throw ValidationException::withMessages(['amount' => 'Say how much to pay: this employee has no salary set, or the month is fully paid.']);
+        }
+        // Same rules as the Pay button: a month in range, and never more than what is left.
+        Validator::make(['payPeriod' => $period, 'payAmount' => $amount], SalaryPayment::payRules($e, $period), [], ['payPeriod' => 'month', 'payAmount' => 'amount'])->validate();
+
+        $paidOn = $this->date($d['paid_on'] ?? null, $d['calendar'] ?? null) ?? today();
+        $s = $e->salaryPayments()->create(['period' => $period, 'amount' => $amount, 'paid_on' => $paidOn, 'title' => $d['title'] ?? null, 'note' => $d['note'] ?? null]);
+        $this->actions[] = ['icon' => 'banknotes', 'text' => __('Paid :amount to :name', ['amount' => $this->money($amount), 'name' => $e->name]), 'url' => route('employees.show', ['employee' => $e, 'tab' => 'salary'])];
+
+        return ['paid' => ['employee' => $e->name, 'amount' => $this->money($s->amount), 'for' => $s->label(), 'paid_on' => $this->show($s->paid_on), 'left_for_month' => $this->money($e->fresh()->salaryLeftFor($period) ?? 0)]];
+    }
+
+    private function markAttendance(array $input): array
+    {
+        $d = $this->validate($input, [
+            'employee_id' => ['required', 'integer', 'exists:employees,id'], 'date' => ['nullable', 'string'],
+            'status' => ['required', Rule::in(array_keys(Attendance::STATUSES))],
+            'check_in' => ['nullable', 'date_format:H:i'], 'check_out' => ['nullable', 'date_format:H:i', ...(! empty($input['check_in']) ? ['after:check_in'] : [])],
+            'note' => [($input['status'] ?? null) === 'leave' ? 'required' : 'nullable', 'string', 'max:255'],
+        ], ['note.required' => 'Give the reason for the leave.']);
+        $date = ($this->date($d['date'] ?? null, $d['calendar'] ?? null) ?? today())->toDateString();
+        $working = in_array($d['status'], ['present', 'half_day'], true);
+        DB::table('attendance_exclusions')->where('employee_id', $d['employee_id'])->whereDate('date', $date)->delete();
+        $a = Attendance::updateOrCreate(['employee_id' => $d['employee_id'], 'date' => $date], [
+            'status' => $d['status'], 'check_in' => $working ? ($d['check_in'] ?? null) : null, 'check_out' => $working ? ($d['check_out'] ?? null) : null,
+            'note' => $d['note'] ?? null, 'source' => 'edited', // the device never overwrites an edited day
+        ]);
+        $e = Employee::find($d['employee_id']);
+        $this->actions[] = ['icon' => 'finger-print', 'text' => __(':name: :status on :date', ['name' => $e->name, 'status' => Attendance::STATUSES[$a->status]['label'], 'date' => NepaliDate::format(Carbon::parse($date), false)]), 'url' => route('employees.show', $e)];
+
+        return ['attendance' => ['employee' => $e->name, 'date' => $this->show(Carbon::parse($date)), 'status' => $a->status, 'check_in' => Attendance::clock($a->check_in), 'check_out' => Attendance::clock($a->check_out)]];
+    }
+
+    private function listPackages(): array
+    {
+        return Package::orderBy('position')->get()->map(fn ($p) => ['id' => $p->id, 'name' => $p->name, 'price' => $this->money($p->price), 'billing' => $p->billing_cycle, 'active' => (bool) $p->is_active, 'description' => $p->description])->all();
+    }
+
+    private function createInvoice(array $input): array
+    {
+        $d = $this->validate($input, [
+            'type' => ['nullable', Rule::in(['invoice', 'quotation'])],
+            'client_id' => ['nullable', 'integer', 'exists:clients,id'], 'bill_to' => ['required_without:client_id', 'nullable', 'string', 'max:120'],
+            'items' => ['required', 'array', 'min:1', 'max:50'], 'items.*.description' => ['required', 'string', 'max:200'],
+            'items.*.details' => ['nullable', 'string', 'max:255'], 'items.*.quantity' => ['nullable', 'numeric', 'gt:0', 'max:99999'],
+            'items.*.price' => ['required', 'numeric', 'min:0', 'max:9999999999'], 'due_date' => ['nullable', 'string'],
+            'discount' => ['nullable', 'numeric', 'min:0'], 'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'], 'notes' => ['nullable', 'string', 'max:2000'],
+        ], ['bill_to.required_without' => 'Give a client_id, or bill_to with the business name.']);
+        $type = $d['type'] ?? 'invoice';
+        $quote = $type === 'quotation';
+        $c = isset($d['client_id']) ? Client::find($d['client_id']) : null;
+
+        $invoice = DB::transaction(function () use ($d, $type, $quote, $c) {
+            $i = new Invoice([
+                'type' => $type, 'number' => Invoice::nextNumber($type), 'status' => 'draft', 'client_id' => $c?->id,
+                'bill_name' => $c?->name ?? $d['bill_to'], 'bill_company' => $c ? ($c->company ?: $c->name) : $d['bill_to'],
+                'bill_phone' => $c?->phone, 'bill_email' => $c?->email,
+                'issue_date' => today(), 'due_date' => $this->date($d['due_date'] ?? null, $d['calendar'] ?? null) ?? today()->addDays($quote ? 30 : 15),
+                'discount' => (float) ($d['discount'] ?? 0), 'tax_rate' => (float) ($d['tax_rate'] ?? 0), 'notes' => $d['notes'] ?? null,
+                'terms' => Setting::get($quote ? 'quotation_terms' : 'invoice_terms', $quote ? 'This quotation is valid until the date above. 50% advance to start the work.' : 'Please pay by the due date. Thank you for working with us.'),
+                'payment_info' => Setting::get('invoice_payment_info') ?: null,
+                'template' => Setting::get('invoice_template', 'classic'), 'accent' => Setting::get('invoice_accent', 'green'),
+            ]);
+            $i->save();
+            foreach (array_values($d['items']) as $pos => $item) {
+                $i->items()->create(['description' => $item['description'], 'details' => $item['details'] ?? null, 'quantity' => $item['quantity'] ?? 1, 'price' => $item['price'], 'position' => $pos]);
+            }
+
+            return $i->load('items');
+        });
+        $this->actions[] = ['icon' => 'receipt-percent', 'text' => __('Created :type :number', ['type' => $type, 'number' => $invoice->number]), 'url' => route('invoices.show', $invoice)];
+
+        return ['created' => ['id' => $invoice->id, 'number' => $invoice->number, 'for' => $invoice->bill_company, 'total' => $this->money($invoice->totals()['total']), 'due' => $this->show($invoice->due_date), 'link' => route('invoices.show', $invoice), 'print' => route('invoices.print', $invoice)]];
+    }
+
+    private function setInvoiceStatus(array $input): array
+    {
+        $d = $this->validate($input, ['invoice_id' => ['required', 'integer', 'exists:invoices,id'], 'status' => ['required', 'string'], 'method' => ['nullable', Rule::in(Payment::METHODS)], 'paid_on' => ['nullable', 'string']]);
+        $i = Invoice::with(['items', 'client'])->findOrFail($d['invoice_id']);
+        if (! array_key_exists($d['status'], Invoice::STATUSES[$i->type])) {
+            throw ValidationException::withMessages(['status' => 'A '.$i->type.' can be: '.implode(', ', array_keys(Invoice::STATUSES[$i->type])).'.']);
+        }
+        if ($d['status'] === 'paid') {
+            if ($i->status === 'paid') {
+                throw ValidationException::withMessages(['status' => "{$i->number} is already paid."]);
+            }
+            // Same as the Mark paid button: the payment is recorded for the client and in Finance.
+            DB::transaction(function () use ($i, $d) {
+                $payment = $i->client?->payments()->create([
+                    'amount' => $i->totals()['total'], 'type' => 'full', 'due_date' => $i->due_date,
+                    'paid_at' => ($this->date($d['paid_on'] ?? null, $d['calendar'] ?? null) ?? today())->setTimeFrom(now()),
+                    'method' => $d['method'] ?? 'Bank', 'reference' => $i->number, 'note' => __('Invoice :number', ['number' => $i->number]),
+                ]);
+                $i->update(['status' => 'paid', 'payment_id' => $payment?->id]);
+            });
+        } else {
+            $i->update(['status' => $d['status']]);
+        }
+        $this->actions[] = ['icon' => 'receipt-percent', 'text' => __(':number marked :status', ['number' => $i->number, 'status' => $d['status']]), 'url' => route('invoices.show', $i)];
+
+        return ['invoice' => ['number' => $i->number, 'status' => $i->fresh()->displayStatus(), 'total' => $this->money($i->totals()['total'])]];
+    }
+
+    private function convertQuotation(array $input): array
+    {
+        $d = $this->validate($input, ['invoice_id' => ['required', 'integer', 'exists:invoices,id']]);
+        $q = Invoice::with('items')->findOrFail($d['invoice_id']);
+        if (! $q->isQuote() || $q->converted_to_id) {
+            throw ValidationException::withMessages(['invoice_id' => $q->isQuote() ? 'This quotation was already turned into an invoice.' : 'That is an invoice, not a quotation.']);
+        }
+        $new = DB::transaction(function () use ($q) {
+            $new = $q->replicate(['number', 'type', 'status', 'payment_id', 'converted_to_id']);
+            $new->fill(['type' => 'invoice', 'number' => Invoice::nextNumber('invoice'), 'status' => 'draft', 'issue_date' => today(), 'due_date' => today()->addDays(15), 'terms' => Setting::get('invoice_terms', $q->terms)])->save();
+            foreach ($q->items as $item) {
+                $new->items()->create($item->only(['description', 'details', 'quantity', 'price', 'position']));
+            }
+            $q->update(['status' => 'accepted', 'converted_to_id' => $new->id]);
+
+            return $new;
+        });
+        $this->actions[] = ['icon' => 'document-duplicate', 'text' => __('Invoice :number made from :quote', ['number' => $new->number, 'quote' => $q->number]), 'url' => route('invoices.show', $new)];
+
+        return ['invoice' => ['id' => $new->id, 'number' => $new->number, 'total' => $this->money($new->load('items')->totals()['total']), 'link' => route('invoices.show', $new)]];
+    }
+
+    /** Deletes one record, after saving a copy to storage/app/ai-trash for recovery. */
+    private function delete(array $input): array
+    {
+        $d = $this->validate($input, ['what' => ['required', Rule::in(['task', 'box', 'client', 'payment', 'transaction', 'lead', 'employee', 'invoice', 'attendance'])], 'id' => ['required']]);
+        $id = (string) $d['id'];
+        $find = fn (string $class, array $with = []) => $class::with($with)->find((int) $id) ?? throw ValidationException::withMessages(['id' => "No {$d['what']} with id {$id}."]);
+
+        [$model, $label] = match ($d['what']) {
+            'task' => [$m = $find(Task::class, ['assignees']), "task “{$m->title}”"],
+            'box' => [$m = $find(TaskGroup::class, ['tasks']), "box “{$m->name}” and its {$m->tasks->count()} tasks"],
+            'client' => [$m = $find(Client::class, ['payments', 'tasks', 'documents']), 'client '.$m->displayName().' with their payments, tasks and documents'],
+            'payment' => [$m = $find(Payment::class, ['client']), 'payment of '.$this->money($m->amount).' from '.$m->client?->displayName()],
+            'lead' => [$m = $find(Lead::class, ['activities']), 'lead '.($m->company ?: $m->name)],
+            'employee' => [$m = $find(Employee::class, ['salaryPayments', 'attendances']), "employee {$m->name} with their salary and attendance history"],
+            'invoice' => [$m = $find(Invoice::class, ['items']), $m->number],
+            'transaction' => $this->findTransaction($id),
+            'attendance' => $this->findAttendance($id),
+        };
+
+        $dir = storage_path('app/ai-trash');
+        is_dir($dir) || mkdir($dir, 0755, true);
+        file_put_contents($dir.'/'.today()->toDateString().'.jsonl', json_encode(['at' => now()->toIso8601String(), 'what' => $d['what'], 'record' => $model->toArray()], JSON_UNESCAPED_UNICODE)."\n", FILE_APPEND);
+
+        if ($d['what'] === 'attendance') {
+            Attendance::forgetDay($model->employee_id, $model->date->toDateString()); // and keep the device from bringing it back
+        } elseif ($d['what'] === 'client') {
+            foreach ($model->documents as $doc) {
+                \Illuminate\Support\Facades\Storage::disk('local')->delete($doc->path);
+            }
+            $model->delete();
+        } else {
+            $model->delete();
+        }
+        $this->actions[] = ['icon' => 'trash', 'text' => __('Deleted :what', ['what' => $label]), 'url' => null];
+
+        return ['deleted' => $label, 'recovery' => 'A copy was saved on the server in storage/app/ai-trash.'];
+    }
+
+    private function findTransaction(string $key): array
+    {
+        $id = (int) substr($key, 1);
+        $m = match ($key[0] ?? '') {
+            'p' => Payment::with('client')->find($id),
+            's' => SalaryPayment::with('employee')->find($id),
+            't' => Transaction::find($id),
+            default => null,
+        } ?? throw ValidationException::withMessages(['id' => "No transaction {$key}. Use the key from list_transactions, like t12."]);
+        $who = $m instanceof Payment ? $m->client?->displayName() : ($m instanceof SalaryPayment ? $m->employee?->name : $m->title);
+
+        return [$m, $this->money($m->amount)." ({$who})"];
+    }
+
+    private function findAttendance(string $key): array
+    {
+        [$employee, $date] = array_pad(explode(':', $key, 2), 2, null);
+        $a = $date ? Attendance::with('employee')->where('employee_id', (int) $employee)->whereDate('date', Carbon::parse($date)->toDateString())->first() : null;
+        if (! $a) {
+            throw ValidationException::withMessages(['id' => 'No attendance for that day. Use employee_id:YYYY-MM-DD.']);
+        }
+
+        return [$a, "{$a->employee?->name}'s attendance on ".NepaliDate::format($a->date)];
     }
 
     private function updater(): Updater

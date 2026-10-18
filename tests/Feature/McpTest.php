@@ -114,9 +114,47 @@ class McpTest extends TestCase
             $this->assertStringContainsString('Choose one of', $ex->getMessage());
         }
 
+        // Salary follows the Pay button rules: never more than what is left.
+        $boss->update(['salary' => 30000, 'status' => 'active']);
+        $paid = $run('pay_salary', ['employee_id' => $boss->id, 'amount' => 10000])['paid'];
+        $this->assertSame('NPR 20,000', $paid['left_for_month']);
+        try {
+            $run('pay_salary', ['employee_id' => $boss->id, 'amount' => 25000]);
+            $this->fail('paying more than is left should be refused');
+        } catch (\Illuminate\Validation\ValidationException $ex) {
+            $this->assertStringContainsString('left', $ex->getMessage());
+        }
+        $this->assertSame('NPR 0', $run('pay_salary', ['employee_id' => $boss->id])['paid']['left_for_month']); // pays the rest
+
+        $att = $run('mark_attendance', ['employee_id' => $boss->id, 'status' => 'present', 'check_in' => '09:05', 'check_out' => '17:30'])['attendance'];
+        $this->assertSame(['present', '9:05 AM'], [$att['status'], $att['check_in']]);
+        $this->assertSame('edited', \App\Models\Attendance::where('employee_id', $boss->id)->sole()->source);
+
+        // Invoices: create, mark paid (records the payment), quotation to invoice.
+        $inv = $run('create_invoice', ['client_id' => $c['id'], 'items' => [['description' => 'Social media', 'price' => 20000], ['description' => 'Reels', 'quantity' => 2, 'price' => 2500]], 'tax_rate' => 13])['created'];
+        $this->assertSame(['INV-0001', 'Everest Gym', 'NPR 28,250'], [$inv['number'], $inv['for'], $inv['total']]);
+        $run('set_invoice_status', ['invoice_id' => $inv['id'], 'status' => 'paid', 'method' => 'Khalti']);
+        $this->assertSame(28250.0, (float) Payment::where('reference', 'INV-0001')->sole()->amount);
+        $quote = $run('create_invoice', ['type' => 'quotation', 'bill_to' => 'Momo House', 'items' => [['description' => 'Website', 'price' => 50000]]])['created'];
+        $this->assertSame('INV-0002', $run('convert_quotation', ['invoice_id' => $quote['id']])['invoice']['number']);
+
+        // Delete keeps a recovery copy; attendance deletes stay deleted.
+        @array_map('unlink', glob(storage_path('app/ai-trash/*.jsonl')) ?: []);
+        $key = collect($run('list_transactions')['entries'])->firstWhere('title', 'Facebook boost')['key'];
+        $this->assertSame('deleted', array_key_first($run('delete', ['what' => 'transaction', 'id' => $key])));
+        $this->assertSame(0, Transaction::count());
+        $run('delete', ['what' => 'attendance', 'id' => $boss->id.':'.today()->toDateString()]);
+        $this->assertTrue(\App\Models\Attendance::isForgotten($boss->id, today()->toDateString()));
+        $run('delete', ['what' => 'lead', 'id' => (string) $lead['id']]);
+        $this->assertNull(Lead::find($lead['id']));
+        $trash = file_get_contents(storage_path('app/ai-trash/'.today()->toDateString().'.jsonl'));
+        $this->assertStringContainsString('Facebook boost', $trash);
+        $this->assertStringContainsString('Momo House', $trash);
+        @array_map('unlink', glob(storage_path('app/ai-trash/*.jsonl')) ?: []);
+
         $e = Employee::factory()->create(['name' => 'Asha', 'status' => 'active']);
         $this->assertSame('Asha', $run('get_employee', ['employee_id' => $e->id])['name']);
         $this->assertSame('not marked', collect($run('team_today')['team'])->firstWhere('id', $e->id)['status']);
-        $this->assertSame([], $run('list_invoices'));
+        $this->assertSame(['paid', 'draft'], array_column($run('list_invoices'), 'status'));
     }
 }

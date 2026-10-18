@@ -36,10 +36,12 @@ new #[Title('AI connections')] class extends Component {
     $lastClient = Setting::get('mcp_last_client');
     $groups = [
         [__('Tasks & calendar'), 'clipboard-document-check', ['list_tasks', 'create_task', 'update_task', 'list_boxes', 'create_box', 'calendar']],
+        [__('Invoices & packages'), 'receipt-percent', ['list_invoices', 'create_invoice', 'set_invoice_status', 'convert_quotation', 'list_packages']],
         [__('Clients'), 'building-office-2', ['find_clients', 'get_client', 'create_client', 'update_client']],
-        [__('Payments & finance'), 'banknotes', ['list_payments', 'add_payment', 'mark_payment_paid', 'list_transactions', 'add_transaction', 'list_invoices', 'business_overview']],
+        [__('Payments & finance'), 'banknotes', ['list_payments', 'add_payment', 'mark_payment_paid', 'list_transactions', 'add_transaction', 'business_overview']],
         [__('Sales'), 'presentation-chart-line', ['list_leads', 'create_lead', 'update_lead']],
-        [__('Team'), 'user-group', ['find_people', 'get_employee', 'create_employee', 'update_employee', 'team_today']],
+        [__('Team'), 'user-group', ['find_people', 'get_employee', 'create_employee', 'update_employee', 'pay_salary', 'mark_attendance', 'team_today']],
+        [__('Deleting'), 'trash', ['delete (asks you first)']],
         [__('App updates'), 'cloud-arrow-down', ['check_for_updates', 'put_update_live']],
     ];
     $count = count(AiTools::definitions());
@@ -89,7 +91,7 @@ new #[Title('AI connections')] class extends Component {
                         </div>
                         <p class="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-200 dark:ring-amber-500/20">
                             <flux:icon.shield-exclamation variant="micro" class="mt-0.5 size-4 shrink-0" />
-                            {{ __('This link works like a password: anyone who has it can see and change your data. Only paste it into your own AI account. If it leaks, press "New link". Deleting is never possible through it.') }}
+                            {{ __('This link works like a password: anyone who has it can see, change and delete your data. Only paste it into your own AI account. If it leaks, press "New link" straight away.') }}
                         </p>
                     </div>
                 </div>
@@ -136,7 +138,7 @@ new #[Title('AI connections')] class extends Component {
                         </div>
                     @endforeach
                 </div>
-                <p class="mt-3 text-xs text-zinc-500">{{ __('Payroll, salary payments, invoice editing and deleting stay in the app.') }}</p>
+                <p class="mt-3 text-xs text-zinc-500">{{ __('Before deleting, the assistant tells you what will go and waits for your yes. A copy of everything deleted is kept on the server. Settings, files and the app\'s code stay in the app.') }}</p>
             </div>
         </div>
 

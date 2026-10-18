@@ -12,7 +12,7 @@ use Illuminate\Validation\ValidationException;
  * A Model Context Protocol server (tools only, Streamable HTTP without streaming), so
  * ChatGPT, Claude and other assistants can use the app through the same validated
  * tools as the in-app assistant. The secret link is the password: whoever has it can
- * read and change data (but never delete).
+ * read, change and delete data (deletes ask first and keep a recovery copy).
  */
 class Mcp
 {
@@ -21,7 +21,7 @@ class Mcp
     /** Tools that only read; assistants can run these without asking. */
     private const READ_ONLY = [
         'find_clients', 'find_people', 'list_boxes', 'list_tasks', 'calendar', 'get_client', 'list_payments',
-        'list_transactions', 'list_invoices', 'list_leads', 'team_today', 'get_employee', 'business_overview', 'check_for_updates',
+        'list_transactions', 'list_invoices', 'list_leads', 'team_today', 'get_employee', 'business_overview', 'check_for_updates', 'list_packages',
     ];
 
     public static function token(): ?string
@@ -111,7 +111,7 @@ class Mcp
                 'title' => Str::headline($t['name']),
                 'description' => $t['description'],
                 'inputSchema' => $t['inputSchema'],
-                'annotations' => ['readOnlyHint' => $read, 'destructiveHint' => false, 'idempotentHint' => $read, 'openWorldHint' => false],
+                'annotations' => ['readOnlyHint' => $read, 'destructiveHint' => $t['name'] === 'delete', 'idempotentHint' => $read, 'openWorldHint' => false],
             ];
         }, AiTools::definitions());
     }
