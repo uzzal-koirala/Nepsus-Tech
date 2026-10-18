@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Attendance;
 use App\Models\Client;
 use App\Models\Employee;
 use App\Models\Invoice;
@@ -20,7 +21,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
- * What the AI assistant may look up and change. Every input is validated here,
+ * What the AI may look up and change: the in-app assistant and outside assistants over MCP. Every input is validated here,
  * because the model's arguments are untrusted. Deleting is left to people.
  */
 class AiTools
@@ -120,6 +121,146 @@ class AiTools
                 ]],
             ],
             [
+                'name' => 'get_client',
+                'description' => 'Everything about one client: contact, service, price, contract, payments owed and paid, open tasks.',
+                'inputSchema' => ['type' => 'object', 'required' => ['client_id'], 'properties' => ['client_id' => ['type' => 'integer']]],
+            ],
+            [
+                'name' => 'create_client',
+                'description' => 'Add a new client. Check with find_clients first that they are not already there.',
+                'inputSchema' => ['type' => 'object', 'required' => ['name'], 'properties' => [
+                    'name' => ['type' => 'string', 'description' => 'Contact person'],
+                    'company' => ['type' => 'string', 'description' => 'Business name'],
+                    'phone' => ['type' => 'string'],
+                    'email' => ['type' => 'string'],
+                    'service_type' => ['type' => 'string', 'enum' => array_keys(Client::SERVICE_TYPES)],
+                    'notes' => ['type' => 'string'],
+                ]],
+            ],
+            [
+                'name' => 'update_client',
+                'description' => 'Change a client: contact details, business name, active or inactive, notes. Only send what changes.',
+                'inputSchema' => ['type' => 'object', 'required' => ['client_id'], 'properties' => [
+                    'client_id' => ['type' => 'integer'],
+                    'name' => ['type' => 'string'],
+                    'company' => ['type' => 'string'],
+                    'phone' => ['type' => 'string'],
+                    'email' => ['type' => 'string'],
+                    'status' => ['type' => 'string', 'enum' => Client::STATUSES],
+                    'notes' => ['type' => 'string'],
+                ]],
+            ],
+            [
+                'name' => 'list_payments',
+                'description' => 'Client payments: what is owed (pending), late (overdue) or received (paid). Includes exact totals per client (by_client) for questions like who owes the most.',
+                'inputSchema' => ['type' => 'object', 'properties' => [
+                    'status' => ['type' => 'string', 'enum' => ['pending', 'overdue', 'paid', 'all'], 'description' => 'Default: pending and overdue.'],
+                    'client_id' => ['type' => 'integer'],
+                    'limit' => ['type' => 'integer'],
+                ]],
+            ],
+            [
+                'name' => 'add_payment',
+                'description' => 'Add a client payment: money received now (paid true), or an amount the client will owe on a due date (paid false).',
+                'inputSchema' => ['type' => 'object', 'required' => ['client_id', 'amount'], 'properties' => [
+                    'client_id' => ['type' => 'integer'],
+                    'amount' => ['type' => 'number'],
+                    'paid' => ['type' => 'boolean', 'description' => 'Default true.'],
+                    'date' => $date + ['description' => 'Paid date when paid, due date when not. Default today.'],
+                    'calendar' => $calendar,
+                    'method' => ['type' => 'string', 'enum' => Payment::METHODS],
+                    'note' => ['type' => 'string'],
+                ]],
+            ],
+            [
+                'name' => 'mark_payment_paid',
+                'description' => 'Mark an owed payment (from list_payments or get_client) as received.',
+                'inputSchema' => ['type' => 'object', 'required' => ['payment_id'], 'properties' => [
+                    'payment_id' => ['type' => 'integer'],
+                    'method' => ['type' => 'string', 'enum' => Payment::METHODS],
+                    'date' => $date,
+                    'calendar' => $calendar,
+                ]],
+            ],
+            [
+                'name' => 'list_transactions',
+                'description' => 'Money in and out, like the Finance page: client payments, other income, expenses and salaries.',
+                'inputSchema' => ['type' => 'object', 'properties' => [
+                    'month' => ['type' => 'string', 'description' => 'Nepali month YYYY-MM. Default this month.'],
+                    'kind' => ['type' => 'string', 'enum' => ['income', 'expense', 'all']],
+                ]],
+            ],
+            [
+                'name' => 'add_transaction',
+                'description' => 'Record other income or an expense (rent, ads, equipment...). Client payments use add_payment; salaries are paid from the Employees page.',
+                'inputSchema' => ['type' => 'object', 'required' => ['kind', 'title', 'amount'], 'properties' => [
+                    'kind' => ['type' => 'string', 'enum' => ['income', 'expense']],
+                    'category' => ['type' => 'string', 'enum' => array_values(array_unique([...array_keys(Transaction::INCOME_CATEGORIES), ...array_keys(Transaction::EXPENSE_CATEGORIES)]))],
+                    'title' => ['type' => 'string'],
+                    'amount' => ['type' => 'number'],
+                    'date' => $date,
+                    'calendar' => $calendar,
+                    'method' => ['type' => 'string', 'enum' => Payment::METHODS],
+                    'note' => ['type' => 'string'],
+                ]],
+            ],
+            [
+                'name' => 'list_invoices',
+                'description' => 'Invoices or quotations with their totals and status (draft, sent, paid, overdue, accepted...).',
+                'inputSchema' => ['type' => 'object', 'properties' => [
+                    'type' => ['type' => 'string', 'enum' => ['invoice', 'quotation']],
+                    'status' => ['type' => 'string'],
+                    'client_id' => ['type' => 'integer'],
+                ]],
+            ],
+            [
+                'name' => 'list_leads',
+                'description' => 'Sales leads (possible clients) in the pipeline, with stage, value and next follow-up.',
+                'inputSchema' => ['type' => 'object', 'properties' => [
+                    'stage' => ['type' => 'string', 'enum' => [...array_keys(Lead::STAGES), 'open']],
+                    'query' => ['type' => 'string'],
+                ]],
+            ],
+            [
+                'name' => 'create_lead',
+                'description' => 'Add a sales lead.',
+                'inputSchema' => ['type' => 'object', 'required' => ['name', 'source'], 'properties' => [
+                    'name' => ['type' => 'string'],
+                    'company' => ['type' => 'string'],
+                    'phone' => ['type' => 'string'],
+                    'email' => ['type' => 'string'],
+                    'source' => ['type' => 'string', 'enum' => array_keys(Lead::SOURCES)],
+                    'service_type' => ['type' => 'string', 'enum' => array_keys(Client::SERVICE_TYPES)],
+                    'value' => ['type' => 'number', 'description' => 'Expected deal value'],
+                    'next_follow_up' => $date,
+                    'calendar' => $calendar,
+                    'notes' => ['type' => 'string'],
+                ]],
+            ],
+            [
+                'name' => 'update_lead',
+                'description' => 'Move a lead to another stage, set the next follow-up or change its value or notes.',
+                'inputSchema' => ['type' => 'object', 'required' => ['lead_id'], 'properties' => [
+                    'lead_id' => ['type' => 'integer'],
+                    'stage' => ['type' => 'string', 'enum' => array_keys(Lead::STAGES)],
+                    'lost_reason' => ['type' => 'string'],
+                    'next_follow_up' => $date,
+                    'calendar' => $calendar,
+                    'value' => ['type' => 'number'],
+                    'notes' => ['type' => 'string'],
+                ]],
+            ],
+            [
+                'name' => 'team_today',
+                'description' => 'The team today: who is present, on leave or absent, with check-in and check-out times.',
+                'inputSchema' => ['type' => 'object', 'properties' => new \stdClass],
+            ],
+            [
+                'name' => 'get_employee',
+                'description' => 'One team member: job, contact, salary and how much is left to pay this month, attendance this month, open tasks.',
+                'inputSchema' => ['type' => 'object', 'required' => ['employee_id'], 'properties' => ['employee_id' => ['type' => 'integer']]],
+            ],
+            [
                 'name' => 'business_overview',
                 'description' => 'Numbers for this Nepali month: clients, money in and out, money owed by clients, unpaid invoices, open leads, task status.',
                 'inputSchema' => ['type' => 'object', 'properties' => new \stdClass],
@@ -139,6 +280,20 @@ class AiTools
             'update_task' => $this->updateTask($input),
             'create_box' => $this->createBox($input),
             'calendar' => $this->calendar($input),
+            'get_client' => $this->getClient($input),
+            'create_client' => $this->createClient($input),
+            'update_client' => $this->updateClient($input),
+            'list_payments' => $this->listPayments($input),
+            'add_payment' => $this->addPayment($input),
+            'mark_payment_paid' => $this->markPaymentPaid($input),
+            'list_transactions' => $this->listTransactions($input),
+            'add_transaction' => $this->addTransaction($input),
+            'list_invoices' => $this->listInvoices($input),
+            'list_leads' => $this->listLeads($input),
+            'create_lead' => $this->createLead($input),
+            'update_lead' => $this->updateLead($input),
+            'team_today' => $this->teamToday(),
+            'get_employee' => $this->getEmployee($input),
             'business_overview' => $this->overview(),
             default => throw ValidationException::withMessages(['tool' => "Unknown tool {$name}."]),
         };
@@ -254,10 +409,11 @@ class AiTools
             ->when($d['box_id'] ?? null, fn ($q, $id) => $q->where('task_group_id', $id))
             ->when($from, fn ($q) => $q->whereDate('due_date', '>=', $from))
             ->when($to, fn ($q) => $q->whereDate('due_date', '<=', $to))
-            ->orderByRaw('due_date is null')->orderBy('due_date')
-            ->limit($d['limit'] ?? 30)->get();
+            ->orderByRaw('due_date is null')->orderBy('due_date');
+        $total = (clone $tasks)->count();
+        $tasks = $tasks->limit($d['limit'] ?? 30)->get();
 
-        return ['count' => $tasks->count(), 'tasks' => $tasks->map(fn ($t) => $this->taskRow($t))->all()];
+        return ['count' => $total, 'tasks' => $tasks->map(fn ($t) => $this->taskRow($t))->all(), 'note' => $total > $tasks->count() ? "Showing {$tasks->count()} of {$total} tasks; count covers all of them." : null];
     }
 
     private function createTask(array $input): array
@@ -393,6 +549,284 @@ class AiTools
                     'date' => $this->show(Carbon::parse($date)).', '.Carbon::parse($date)->format('l'),
                     'tasks' => $day->map(fn ($t) => $this->taskRow($t))->values()->all(),
                 ])->values()->all(),
+        ];
+    }
+
+    private function money(float|string|null $v): string
+    {
+        return Client::money(round((float) $v));
+    }
+
+    private function paymentRow(Payment $p): array
+    {
+        return [
+            'id' => $p->id, 'client' => $p->client?->displayName(), 'client_id' => $p->client_id,
+            'amount' => $this->money($p->amount), 'status' => $p->status(),
+            'due' => $this->show($p->due_date), 'paid' => $this->show($p->paid_at), 'method' => $p->method, 'note' => $p->note,
+        ];
+    }
+
+    private function getClient(array $input): array
+    {
+        $d = $this->validate($input, ['client_id' => ['required', 'integer', 'exists:clients,id']]);
+        $c = Client::with('package')->findOrFail($d['client_id']);
+        $payments = $c->payments()->with('client')->latest('id')->get();
+        $open = $c->tasks()->with(['client', 'group', 'assignees'])->whereNull('completed_at')->orderByRaw('due_date is null')->orderBy('due_date')->limit(15)->get();
+
+        return [
+            'id' => $c->id, 'business' => $c->company, 'contact' => $c->name, 'phone' => $c->phone, 'email' => $c->email,
+            'status' => $c->status, 'service' => Client::SERVICE_TYPES[$c->service_type]['label'] ?? null,
+            'package' => $c->package?->name, 'price' => $c->formattedPrice(), 'billing' => $c->billingText(),
+            'contract' => ['start' => $this->show($c->contract_start), 'end' => $this->show($c->contract_end)],
+            'notes' => $c->notes,
+            'owed' => $payments->whereNull('paid_at')->map(fn ($p) => $this->paymentRow($p))->values()->all(),
+            'owed_total' => $this->money($payments->whereNull('paid_at')->sum('amount')),
+            'received_total' => $this->money($payments->whereNotNull('paid_at')->sum('amount')),
+            'recent_paid' => $payments->whereNotNull('paid_at')->take(5)->map(fn ($p) => $this->paymentRow($p))->values()->all(),
+            'open_tasks' => $open->map(fn ($t) => $this->taskRow($t))->all(),
+        ];
+    }
+
+    private function createClient(array $input): array
+    {
+        $d = $this->validate($input, [
+            'name' => ['required', 'string', 'max:120'], 'company' => ['nullable', 'string', 'max:120'],
+            'phone' => ['nullable', 'string', 'max:50'], 'email' => ['nullable', 'email', 'max:120'],
+            'service_type' => ['nullable', Rule::in(array_keys(Client::SERVICE_TYPES))], 'notes' => ['nullable', 'string', 'max:5000'],
+        ]);
+        $c = Client::create($d + ['status' => 'active', 'service_type' => $d['service_type'] ?? 'social_media']);
+        $this->actions[] = ['icon' => 'user-plus', 'text' => __('Added client “:name”', ['name' => $c->displayName()]), 'url' => route('clients.show', $c)];
+
+        return ['created_client' => ['id' => $c->id, 'name' => $c->displayName()]];
+    }
+
+    private function updateClient(array $input): array
+    {
+        $d = $this->validate($input, [
+            'client_id' => ['required', 'integer', 'exists:clients,id'],
+            'name' => ['nullable', 'string', 'max:120'], 'company' => ['nullable', 'string', 'max:120'],
+            'phone' => ['nullable', 'string', 'max:50'], 'email' => ['nullable', 'email', 'max:120'],
+            'status' => ['nullable', Rule::in(Client::STATUSES)], 'notes' => ['nullable', 'string', 'max:5000'],
+        ]);
+        $c = Client::findOrFail($d['client_id']);
+        $c->update(array_filter(collect($d)->except('client_id')->all(), fn ($v) => $v !== null));
+        $this->actions[] = ['icon' => 'pencil-square', 'text' => __('Updated client “:name”', ['name' => $c->displayName()]), 'url' => route('clients.show', $c)];
+
+        return ['updated_client' => ['id' => $c->id, 'name' => $c->displayName(), 'status' => $c->status]];
+    }
+
+    private function listPayments(array $input): array
+    {
+        $d = $this->validate($input, [
+            'status' => ['nullable', Rule::in(['pending', 'overdue', 'paid', 'all'])],
+            'client_id' => ['nullable', 'integer'], 'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+        $status = $d['status'] ?? null;
+        $query = fn () => Payment::query()
+            ->when($d['client_id'] ?? null, fn ($q, $id) => $q->where('client_id', $id))
+            ->when($status === null || $status === 'pending', fn ($q) => $q->whereNull('paid_at'))
+            ->when($status === 'overdue', fn ($q) => $q->whereNull('paid_at')->whereDate('due_date', '<', today()))
+            ->when($status === 'paid', fn ($q) => $q->whereNotNull('paid_at'));
+        $payments = $query()->with('client')
+            ->when($status === 'paid', fn ($q) => $q->latest('paid_at'), fn ($q) => $q->orderByRaw('due_date is null')->orderBy('due_date'))
+            ->limit($d['limit'] ?? 30)->get();
+
+        // Exact totals over every matching payment, so nobody has to add up a cut-short list.
+        $all = $query()->count();
+        $byClient = $query()->selectRaw('client_id, count(*) as n, sum(amount) as total')->groupBy('client_id')->orderByDesc('total')->limit(25)->get();
+        $names = Client::whereIn('id', $byClient->pluck('client_id'))->get()->keyBy('id');
+
+        return [
+            'count' => $all,
+            'total' => $this->money($query()->sum('amount')),
+            'by_client' => $byClient->map(fn ($r) => ['client_id' => $r->client_id, 'client' => $names[$r->client_id]?->displayName(), 'payments' => (int) $r->n, 'total' => $this->money($r->total)])->all(),
+            'payments' => $payments->map(fn ($p) => $this->paymentRow($p))->all(),
+            'note' => $all > $payments->count() ? "Showing {$payments->count()} of {$all} payments; count, total and by_client cover all of them." : null,
+        ];
+    }
+
+    private function addPayment(array $input): array
+    {
+        $d = $this->validate($input, [
+            'client_id' => ['required', 'integer', 'exists:clients,id'], 'amount' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
+            'paid' => ['nullable', 'boolean'], 'date' => ['nullable', 'string'],
+            'method' => ['nullable', Rule::in(Payment::METHODS)], 'note' => ['nullable', 'string', 'max:255'],
+        ]);
+        $date = $this->date($d['date'] ?? null, $d['calendar'] ?? null) ?? today();
+        $paid = $d['paid'] ?? true;
+        $c = Client::findOrFail($d['client_id']);
+        $p = $c->payments()->create([
+            'amount' => $d['amount'], 'method' => $d['method'] ?? null, 'note' => $d['note'] ?? null,
+            'due_date' => $paid ? null : $date, 'paid_at' => $paid ? $date->copy()->setTimeFrom(now()) : null,
+        ]);
+        $this->actions[] = ['icon' => 'banknotes', 'text' => $paid ? __('Recorded :amount from :client', ['amount' => $this->money($p->amount), 'client' => $c->displayName()]) : __('Added :amount due from :client', ['amount' => $this->money($p->amount), 'client' => $c->displayName()]), 'url' => route('clients.show', ['client' => $c, 'tab' => 'payments'])];
+
+        return ['payment' => $this->paymentRow($p->load('client'))];
+    }
+
+    private function markPaymentPaid(array $input): array
+    {
+        $d = $this->validate($input, ['payment_id' => ['required', 'integer', 'exists:payments,id'], 'method' => ['nullable', Rule::in(Payment::METHODS)], 'date' => ['nullable', 'string']]);
+        $p = Payment::with('client')->findOrFail($d['payment_id']);
+        if ($p->paid_at) {
+            throw ValidationException::withMessages(['payment_id' => 'That payment is already marked as paid.']);
+        }
+        $p->update(['paid_at' => ($this->date($d['date'] ?? null, $d['calendar'] ?? null) ?? today())->setTimeFrom(now()), 'method' => $d['method'] ?? $p->method]);
+        $this->actions[] = ['icon' => 'check-circle', 'text' => __('Marked :amount from :client as paid', ['amount' => $this->money($p->amount), 'client' => $p->client?->displayName()]), 'url' => route('clients.show', ['client' => $p->client_id, 'tab' => 'payments'])];
+
+        return ['payment' => $this->paymentRow($p)];
+    }
+
+    /** @return array{0: Carbon, 1: Carbon} */
+    private function monthRange(?string $month): array
+    {
+        if (! $month) {
+            return NepaliDate::monthRange(today());
+        }
+        [$y, $m] = array_map('intval', explode('-', $month) + [1 => 0]);
+        if ($m < 1 || $m > 12 || ! isset(NepaliDate::calendar()[(string) $y])) {
+            throw ValidationException::withMessages(['month' => "{$month} is not a Nepali month this app knows."]);
+        }
+
+        return [NepaliDate::toAd($y, $m, 1)->startOfDay(), NepaliDate::toAd($y, $m, NepaliDate::monthLength($y, $m))->endOfDay()];
+    }
+
+    private function listTransactions(array $input): array
+    {
+        $d = $this->validate($input, ['month' => ['nullable', 'regex:/^\d{4}-\d{1,2}$/'], 'kind' => ['nullable', Rule::in(['income', 'expense', 'all'])]]);
+        [$from, $to] = $this->monthRange($d['month'] ?? null);
+        $kind = $d['kind'] ?? 'all';
+
+        $rows = collect()
+            ->concat(Payment::with('client')->whereNotNull('paid_at')->whereBetween('paid_at', [$from, $to])->get()
+                ->map(fn ($p) => ['kind' => 'income', 'date' => $p->paid_at, 'title' => $p->client?->displayName(), 'category' => 'Client payment', 'amount' => (float) $p->amount, 'method' => $p->method]))
+            ->concat(SalaryPayment::with('employee')->whereBetween('paid_on', [$from, $to])->get()
+                ->map(fn ($s) => ['kind' => 'expense', 'date' => $s->paid_on, 'title' => $s->employee?->name, 'category' => 'Salary', 'amount' => (float) $s->amount, 'method' => null]))
+            ->concat(Transaction::whereBetween('date', [$from->toDateString(), $to->toDateString()])->get()
+                ->map(fn ($t) => ['kind' => $t->kind, 'date' => $t->date, 'title' => $t->title, 'category' => $t->categoryLabel(), 'amount' => (float) $t->amount, 'method' => $t->method]))
+            ->filter(fn ($r) => $kind === 'all' || $r['kind'] === $kind)
+            ->sortByDesc(fn ($r) => $r['date']->timestamp)->values();
+
+        return [
+            'month' => NepaliDate::monthYear($from),
+            'money_in' => $this->money($rows->where('kind', 'income')->sum('amount')),
+            'money_out' => $this->money($rows->where('kind', 'expense')->sum('amount')),
+            'entries' => $rows->take(60)->map(fn ($r) => ['kind' => $r['kind'], 'date' => $this->show($r['date']), 'title' => $r['title'], 'category' => $r['category'], 'amount' => $this->money($r['amount']), 'method' => $r['method']])->all(),
+        ];
+    }
+
+    private function addTransaction(array $input): array
+    {
+        $d = $this->validate($input, [
+            'kind' => ['required', Rule::in(['income', 'expense'])], 'title' => ['required', 'string', 'max:150'],
+            'amount' => ['required', 'numeric', 'gt:0', 'max:9999999999'], 'date' => ['nullable', 'string'],
+            'category' => ['nullable', 'string'], 'method' => ['nullable', Rule::in(Payment::METHODS)], 'note' => ['nullable', 'string', 'max:1000'],
+        ]);
+        $categories = Transaction::categories($d['kind']);
+        $category = array_key_exists($d['category'] ?? '', $categories) ? $d['category'] : 'other';
+        $t = Transaction::create([
+            'kind' => $d['kind'], 'category' => $category, 'title' => $d['title'], 'amount' => $d['amount'],
+            'date' => $this->date($d['date'] ?? null, $d['calendar'] ?? null) ?? today(), 'method' => $d['method'] ?? null, 'note' => $d['note'] ?? null,
+        ]);
+        $this->actions[] = ['icon' => $t->kind === 'income' ? 'arrow-down-left' : 'arrow-up-right', 'text' => __('Recorded :kind “:title” :amount', ['kind' => $t->kind, 'title' => $t->title, 'amount' => $this->money($t->amount)]), 'url' => route('finance.index')];
+
+        return ['transaction' => ['id' => $t->id, 'kind' => $t->kind, 'category' => $t->categoryLabel(), 'title' => $t->title, 'amount' => $this->money($t->amount), 'date' => $this->show($t->date)]];
+    }
+
+    private function listInvoices(array $input): array
+    {
+        $d = $this->validate($input, ['type' => ['nullable', Rule::in(['invoice', 'quotation'])], 'status' => ['nullable', 'string'], 'client_id' => ['nullable', 'integer']]);
+
+        return Invoice::with('items')->where('type', $d['type'] ?? 'invoice')
+            ->when($d['client_id'] ?? null, fn ($q, $id) => $q->where('client_id', $id))
+            ->latest('issue_date')->limit(50)->get()
+            ->filter(fn ($i) => empty($d['status']) || $i->displayStatus() === $d['status'])
+            ->map(fn ($i) => ['id' => $i->id, 'number' => $i->number, 'for' => $i->bill_company ?: $i->bill_name, 'total' => $this->money($i->totals()['total']), 'status' => $i->displayStatus(), 'issued' => $this->show($i->issue_date), 'due' => $this->show($i->due_date), 'link' => route('invoices.show', $i)])
+            ->values()->all();
+    }
+
+    private function leadRow(Lead $l): array
+    {
+        return ['id' => $l->id, 'name' => $l->name, 'company' => $l->company, 'phone' => $l->phone, 'stage' => Lead::STAGES[$l->stage]['label'] ?? $l->stage, 'source' => Lead::SOURCES[$l->source]['label'] ?? $l->source, 'value' => $l->value ? $this->money($l->value) : null, 'next_follow_up' => $this->show($l->next_follow_up), 'handled_by' => $l->employee?->name, 'notes' => $l->notes];
+    }
+
+    private function listLeads(array $input): array
+    {
+        $d = $this->validate($input, ['stage' => ['nullable', 'string'], 'query' => ['nullable', 'string']]);
+        $q = trim((string) ($d['query'] ?? ''));
+
+        return Lead::with('employee')
+            ->when(($d['stage'] ?? 'open') === 'open', fn ($w) => $w->whereNotIn('stage', ['won', 'lost']))
+            ->when(isset($d['stage']) && $d['stage'] !== 'open', fn ($w) => $w->where('stage', $d['stage']))
+            ->when($q !== '', fn ($w) => $w->where(fn ($w) => $w->where('name', 'like', "%{$q}%")->orWhere('company', 'like', "%{$q}%")))
+            ->orderByRaw('next_follow_up is null')->orderBy('next_follow_up')->limit(50)->get()
+            ->map(fn ($l) => $this->leadRow($l))->all();
+    }
+
+    private function createLead(array $input): array
+    {
+        $d = $this->validate($input, collect(Lead::rules())->except(['stage', 'employee_id'])->all() + ['next_follow_up' => ['nullable', 'string']]);
+        $d['next_follow_up'] = $this->date($d['next_follow_up'] ?? null, $d['calendar'] ?? null);
+        unset($d['calendar']);
+        $l = Lead::create($d + ['stage' => 'new']);
+        $l->activities()->create(['user_id' => auth()->id(), 'type' => 'note', 'body' => __('Lead added by the AI assistant')]);
+        $this->actions[] = ['icon' => 'user-plus', 'text' => __('Added lead “:name”', ['name' => $l->company ?: $l->name]), 'url' => route('sales.leads.show', $l)];
+
+        return ['created_lead' => $this->leadRow($l)];
+    }
+
+    private function updateLead(array $input): array
+    {
+        $d = $this->validate($input, [
+            'lead_id' => ['required', 'integer', 'exists:leads,id'], 'stage' => ['nullable', Rule::in(array_keys(Lead::STAGES))],
+            'lost_reason' => ['nullable', 'string', 'max:255'], 'next_follow_up' => ['nullable', 'string'],
+            'value' => ['nullable', 'numeric', 'min:0', 'max:9999999999'], 'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $l = Lead::findOrFail($d['lead_id']);
+        $changes = array_filter(['value' => $d['value'] ?? null, 'notes' => $d['notes'] ?? null], fn ($v) => $v !== null);
+        if (! empty($d['next_follow_up'])) {
+            $changes['next_follow_up'] = $this->date($d['next_follow_up'], $d['calendar'] ?? null);
+        }
+        $l->update($changes);
+        if (! empty($d['stage'])) {
+            $l->moveTo($d['stage'], $d['lost_reason'] ?? null);
+        }
+        $this->actions[] = ['icon' => 'arrows-right-left', 'text' => __('Updated lead “:name”', ['name' => $l->company ?: $l->name]), 'url' => route('sales.leads.show', $l)];
+
+        return ['updated_lead' => $this->leadRow($l->fresh('employee'))];
+    }
+
+    private function teamToday(): array
+    {
+        $marks = Attendance::whereDate('date', today())->get()->keyBy('employee_id');
+
+        return [
+            'today' => $this->show(today()),
+            'holiday' => today()->isHoliday(),
+            'team' => Employee::where('status', '!=', 'inactive')->orderBy('name')->get()->map(fn ($e) => [
+                'id' => $e->id, 'name' => $e->name,
+                'status' => $marks[$e->id]->status ?? 'not marked',
+                'check_in' => Attendance::clock($marks[$e->id]->check_in ?? null),
+                'check_out' => Attendance::clock($marks[$e->id]->check_out ?? null),
+            ])->all(),
+        ];
+    }
+
+    private function getEmployee(array $input): array
+    {
+        $d = $this->validate($input, ['employee_id' => ['required', 'integer', 'exists:employees,id']]);
+        $e = Employee::findOrFail($d['employee_id']);
+        [$from, $to] = NepaliDate::monthRange(today());
+        $month = Attendance::where('employee_id', $e->id)->whereBetween('date', [$from->toDateString(), $to->toDateString()])->pluck('status')->countBy();
+        $open = $e->tasks()->with(['client', 'group', 'assignees'])->whereNull('completed_at')->orderByRaw('due_date is null')->orderBy('due_date')->limit(15)->get();
+
+        return [
+            'id' => $e->id, 'name' => $e->name, 'job' => $e->designation, 'department' => $e->departmentMeta()['label'] ?? null,
+            'phone' => $e->phone, 'email' => $e->email, 'status' => $e->status, 'joined' => $this->show($e->joined_on),
+            'salary' => $e->salary ? $this->money($e->salary) : null,
+            'salary_left_this_month' => ($left = $e->salaryLeftFor(NepaliDate::period(today()))) === null ? null : $this->money($left),
+            'attendance_this_month' => $month->all(),
+            'open_tasks' => $open->map(fn ($t) => $this->taskRow($t))->all(),
         ];
     }
 

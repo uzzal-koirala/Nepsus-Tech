@@ -5,6 +5,7 @@
             ['route' => 'settings.preferences', 'icon' => 'adjustments-horizontal', 'label' => __('Preferences'), 'hint' => __('Currency, reminders and holidays')],
             ['route' => 'settings.work-types', 'icon' => 'swatch', 'label' => __('Work types'), 'hint' => __('Post, reel, edit and more')],
             ['route' => 'settings.attendance-device', 'icon' => 'finger-print', 'label' => __('Attendance device'), 'hint' => __('Hikvision fingerprint machine')],
+            ['route' => 'settings.ai-connections', 'icon' => 'link', 'label' => __('AI connections'), 'hint' => __('Use ChatGPT or Claude with this system')],
             ['route' => 'settings.updates', 'icon' => 'cloud-arrow-down', 'label' => __('Updates'), 'hint' => __('Put the newest version live')],
         ],
         __('Your account') => [

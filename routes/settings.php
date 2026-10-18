@@ -15,6 +15,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('settings/work-types', 'pages::settings.work-types')->name('settings.work-types');
     Route::livewire('settings/attendance-device', 'pages::settings.attendance-device')->name('settings.attendance-device');
     Route::livewire('settings/updates', 'pages::settings.updates')->name('settings.updates');
+    Route::livewire('settings/ai-connections', 'pages::settings.ai-connections')->name('settings.ai-connections');
 
     // Zip with the office PC helper, already set up for this website and its secret key.
     Route::get('settings/attendance-device/helper', function () {
