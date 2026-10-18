@@ -74,11 +74,15 @@ new #[Title('AI Assistant')] class extends Component {
             return;
         }
 
+        // Free models can take a minute or more with several tool calls; PHP's default limit is 30 seconds.
+        set_time_limit(300);
+
         $chat = $this->conversation ?? AiConversation::create(['user_id' => auth()->id(), 'title' => Str::limit($text, 60)]);
         $chat->messages()->create(['role' => 'user', 'content' => $text]);
 
         // Plain text of the recent turns is enough context; actions are already saved in the app.
-        $history = $chat->messages()->latest('id')->limit(30)->get()->reverse()
+        // The relation sorts oldest first; replace that to take the newest 30, then put them back in order.
+        $history = $chat->messages()->reorder('id', 'desc')->limit(30)->get()->reverse()
             ->map(fn ($m) => ['role' => $m->role, 'content' => $m->content])->values()->all();
 
         $reply = app(AiAssistant::class)->reply($history, auth()->user()->name);

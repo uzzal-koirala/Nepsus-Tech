@@ -107,6 +107,8 @@ class AiAssistantTest extends TestCase
         // Follow-ups send the earlier turns.
         $page->call('send', 'And another');
         $this->assertSame(['user', 'assistant', 'user'], array_column(app(AiAssistant::class)->seen, 'role'));
+        $this->assertSame('And another', end(app(AiAssistant::class)->seen)['content']); // the newest message is last
+        $this->assertSame('Add a task to design posts', app(AiAssistant::class)->seen[0]['content']);
 
         // Someone else cannot open or delete it.
         $this->actingAs(User::factory()->create());
