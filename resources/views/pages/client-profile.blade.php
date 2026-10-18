@@ -1838,7 +1838,7 @@ new #[Title('Client profile')] class extends Component {
                             <flux:icon.chevron-up-down variant="mini" class="ms-auto size-4 shrink-0 text-zinc-400" />
                         </button>
                         <div x-show="typeOpen" x-transition.origin.top x-cloak class="{{ $panelBox }}" role="listbox">
-                            <div class="max-h-60 overflow-y-auto p-1.5">
+                            <div class="max-h-60 overflow-y-auto p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                                 @foreach ($types as $key => $type)
                                     <div wire:key="type-opt-{{ $key }}" class="group flex items-center gap-1 rounded-lg transition hover:bg-zinc-50 dark:hover:bg-white/5" :class="$wire.taskType === @js($key) && 'bg-brand-50/70 dark:bg-brand-500/10'">
                                         <button type="button" role="option" @click="$wire.taskType = @js($key); typeOpen = false" class="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-start">
@@ -1890,7 +1890,7 @@ new #[Title('Client profile')] class extends Component {
                                     <input x-model="q" type="text" placeholder="{{ __('Search the team') }}" class="h-8 w-full rounded-lg border-0 bg-zinc-50 ps-8 pe-2.5 text-sm ring-1 ring-zinc-200 placeholder:text-zinc-400 focus:ring-2 focus:ring-brand-500 focus:outline-none dark:bg-white/5 dark:text-white dark:ring-white/10" />
                                 </div>
                             </div>
-                            <div class="max-h-60 overflow-y-auto p-1.5">
+                            <div class="max-h-60 overflow-y-auto p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                                 <template x-for="e in found" :key="e.id">
                                     <button type="button" role="option" @click="toggle(e.id)" :aria-selected="has(e.id)" class="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-start transition hover:bg-zinc-50 dark:hover:bg-white/5">
                                         <span class="flex size-8 shrink-0 items-center justify-center rounded-full text-[0.6875rem] font-semibold" :class="e.tint" x-text="e.initials"></span>

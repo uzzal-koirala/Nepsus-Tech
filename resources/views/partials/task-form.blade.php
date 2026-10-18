@@ -29,7 +29,7 @@
             @if ($this->people->isNotEmpty())
                 <div class="sm:col-span-2">
                     <p class="mb-2 text-sm font-medium text-zinc-800 dark:text-white">{{ __('Assign to') }}</p>
-                    <div class="flex max-h-44 flex-wrap gap-2 overflow-y-auto [scrollbar-width:thin]">
+                    <div class="flex max-h-44 flex-wrap gap-2 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                         @foreach ($this->people as $e)
                             <label wire:key="as-{{ $e->id }}" class="group/p flex cursor-pointer items-center gap-2 rounded-full py-1 ps-1 pe-3 text-sm text-zinc-700 ring-1 ring-zinc-200 transition hover:ring-zinc-300 has-checked:bg-brand-50 has-checked:text-brand-700 has-checked:ring-2 has-checked:ring-brand-500 dark:text-zinc-200 dark:ring-white/10 dark:has-checked:bg-brand-500/10 dark:has-checked:text-brand-200" data-test="assign-{{ $e->id }}">
                                 <input type="checkbox" wire:model="task.assignees" value="{{ $e->id }}" class="peer sr-only">
