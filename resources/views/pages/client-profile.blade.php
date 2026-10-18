@@ -38,6 +38,7 @@ new #[Title('Client profile')] class extends Component {
     public array $taskAssignees = [];
     public string $newTypeName = '';
     public ?int $viewTaskId = null;
+    public ?string $deletingType = null;
 
 
     /** BS month shown on the work calendar. */
@@ -205,8 +206,16 @@ new #[Title('Client profile')] class extends Component {
         unset($this->types);
     }
 
+    public function confirmDeleteType(string $slug): void
+    {
+        $this->deletingType = $slug;
+        Flux::modal('type-delete')->show();
+    }
+
     public function deleteWorkType(string $slug): void
     {
+        $this->deletingType = null;
+        Flux::modal('type-delete')->close();
         if (WorkType::count() <= 1) {
             Flux::toast(variant: 'warning', text: __('Keep at least one type of work.'));
 
@@ -1851,7 +1860,7 @@ new #[Title('Client profile')] class extends Component {
                                             <span class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $type['label'] }}</span>
                                             <flux:icon.check variant="mini" class="ms-auto size-4 text-brand-600" x-show="$wire.taskType === @js($key)" />
                                         </button>
-                                        <button type="button" wire:click="deleteWorkType('{{ $key }}')" wire:confirm="{{ __('Delete the type “:name”? Work already using it keeps its name.', ['name' => $type['label']]) }}" class="me-1 rounded-md p-1.5 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 focus:opacity-100 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete :name', ['name' => $type['label']]) }}">
+                                        <button type="button" wire:click="confirmDeleteType('{{ $key }}')" class="me-1 rounded-md p-1.5 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 focus:opacity-100 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete :name', ['name' => $type['label']]) }}">
                                             <flux:icon.trash variant="micro" class="size-3.5" />
                                         </button>
                                     </div>
@@ -2195,5 +2204,34 @@ new #[Title('Client profile')] class extends Component {
                 <flux:button type="submit" variant="primary">{{ __('Save notes') }}</flux:button>
             </div>
         </form>
+    </flux:modal>
+    {{-- Delete a type of work --}}
+    <flux:modal name="type-delete" class="w-full max-w-sm">
+        @php
+            $dt = $deletingType ? ($types[$deletingType] ?? null) : null;
+            $dtCount = $deletingType ? Task::where('type', $deletingType)->count() : 0;
+        @endphp
+        @if ($dt)
+            <div class="flex flex-col items-center gap-4 text-center">
+                <div class="relative">
+                    <span class="{{ $toneOf($deletingType)['chip'] }} flex size-16 items-center justify-center rounded-2xl ring-1 ring-inset"><flux:icon :icon="$dt['icon']" class="size-8" /></span>
+                    <span class="absolute -right-2 -bottom-2 flex size-8 items-center justify-center rounded-full bg-rose-500 text-white shadow-md ring-4 ring-white dark:ring-zinc-900"><flux:icon.trash variant="micro" class="size-4" /></span>
+                </div>
+                <div>
+                    <flux:heading size="lg">{{ __('Delete “:name”?', ['name' => $dt['label']]) }}</flux:heading>
+                    <flux:text class="mt-1.5">{{ __('It is removed from the type of work list and its box disappears from every client.') }}</flux:text>
+                </div>
+                @if ($dtCount)
+                    <p class="flex w-full items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-start text-xs text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-200 dark:ring-amber-500/20">
+                        <flux:icon.information-circle variant="mini" class="size-4 shrink-0" />
+                        {{ trans_choice(':count task using it moves to Task, so nothing is lost.|:count tasks using it move to Task, so nothing is lost.', $dtCount) }}
+                    </p>
+                @endif
+                <div class="flex w-full gap-2">
+                    <flux:modal.close class="flex-1"><flux:button variant="ghost" class="w-full">{{ __('Keep it') }}</flux:button></flux:modal.close>
+                    <flux:button variant="danger" icon="trash" wire:click="deleteWorkType('{{ $deletingType }}')" class="flex-1" data-test="confirm-delete-type">{{ __('Delete') }}</flux:button>
+                </div>
+            </div>
+        @endif
     </flux:modal>
 </div>

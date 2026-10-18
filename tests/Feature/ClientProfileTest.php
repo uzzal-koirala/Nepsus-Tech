@@ -315,7 +315,8 @@ class ClientProfileTest extends TestCase
             ->call('addTask');
         $this->assertSame([$kiran->id], $task->fresh()->assignees->pluck('id')->all());
 
-        $page->call('deleteWorkType', 'blog-article');
+        $page->call('confirmDeleteType', 'blog-article')->assertSee(['Delete “Blog article”?', '1 task using it moves to Task'])
+            ->call('deleteWorkType', 'blog-article');
         $this->assertNull(WorkType::firstWhere('slug', 'blog-article'));
         $this->assertSame('task', $task->fresh()->type); // its work moves to the general type
         $page->call('setTab', 'tasks')->assertDontSee('Blog article')->assertSee('Write Dashain blog');
