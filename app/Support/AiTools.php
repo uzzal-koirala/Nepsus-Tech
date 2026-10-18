@@ -256,6 +256,36 @@ class AiTools
                 'inputSchema' => ['type' => 'object', 'properties' => new \stdClass],
             ],
             [
+                'name' => 'create_employee',
+                'description' => 'Add a team member. Check with find_people first that they are not already there.',
+                'inputSchema' => ['type' => 'object', 'required' => ['name'], 'properties' => [
+                    'name' => ['type' => 'string'],
+                    'designation' => ['type' => 'string', 'description' => 'Job title, e.g. Graphic Designer'],
+                    'department' => ['type' => 'string', 'description' => 'Department name, e.g. Management, Design, Development, Marketing, Content, Sales'],
+                    'phone' => ['type' => 'string'],
+                    'email' => ['type' => 'string'],
+                    'salary' => ['type' => 'number', 'description' => 'Monthly salary in NPR'],
+                    'joined_on' => $date,
+                    'calendar' => $calendar,
+                ]],
+            ],
+            [
+                'name' => 'update_employee',
+                'description' => 'Change a team member: job, department, contact, salary, joining date, or status (active, on_leave, inactive). Only send what changes.',
+                'inputSchema' => ['type' => 'object', 'required' => ['employee_id'], 'properties' => [
+                    'employee_id' => ['type' => 'integer'],
+                    'name' => ['type' => 'string'],
+                    'designation' => ['type' => 'string', 'description' => 'Job title, e.g. Graphic Designer'],
+                    'department' => ['type' => 'string', 'description' => 'Department name, e.g. Management, Design, Development, Marketing, Content, Sales'],
+                    'phone' => ['type' => 'string'],
+                    'email' => ['type' => 'string'],
+                    'salary' => ['type' => 'number', 'description' => 'Monthly salary in NPR'],
+                    'joined_on' => $date,
+                    'calendar' => $calendar,
+                    'status' => ['type' => 'string', 'enum' => array_keys(Employee::STATUSES)],
+                ]],
+            ],
+            [
                 'name' => 'get_employee',
                 'description' => 'One team member: job, contact, salary and how much is left to pay this month, attendance this month, open tasks.',
                 'inputSchema' => ['type' => 'object', 'required' => ['employee_id'], 'properties' => ['employee_id' => ['type' => 'integer']]],
@@ -306,6 +336,8 @@ class AiTools
             'update_lead' => $this->updateLead($input),
             'team_today' => $this->teamToday(),
             'get_employee' => $this->getEmployee($input),
+            'create_employee' => $this->saveEmployee($input),
+            'update_employee' => $this->saveEmployee($input, true),
             'check_for_updates' => $this->checkForUpdates(),
             'put_update_live' => $this->putUpdateLive($input),
             'business_overview' => $this->overview(),
@@ -824,6 +856,50 @@ class AiTools
                 'check_out' => Attendance::clock($marks[$e->id]->check_out ?? null),
             ])->all(),
         ];
+    }
+
+    /** A department by slug or name; new people default to the first one. */
+    private function department(?string $wanted): ?string
+    {
+        $departments = Employee::departments();
+        foreach ($departments as $slug => $d) {
+            if ($wanted && (strcasecmp($slug, $wanted) === 0 || strcasecmp($d['label'], $wanted) === 0)) {
+                return $slug;
+            }
+        }
+        if ($wanted) {
+            throw ValidationException::withMessages(['department' => "No department called {$wanted}. Choose one of: ".implode(', ', array_column($departments, 'label')).'.']);
+        }
+
+        return null;
+    }
+
+    private function saveEmployee(array $input, bool $update = false): array
+    {
+        $d = $this->validate($input, [
+            'employee_id' => [$update ? 'required' : 'prohibited', 'integer', 'exists:employees,id'],
+            'name' => [$update ? 'nullable' : 'required', 'string', 'max:255'],
+            'designation' => ['nullable', 'string', 'max:255'], 'department' => ['nullable', 'string'],
+            'phone' => ['nullable', 'string', 'max:50'], 'email' => ['nullable', 'email', 'max:255'],
+            'salary' => ['nullable', 'numeric', 'min:0', 'max:9999999999'], 'joined_on' => ['nullable', 'string'],
+            'status' => ['nullable', Rule::in(array_keys(Employee::STATUSES))],
+        ]);
+        $fields = array_filter([
+            'name' => $d['name'] ?? null, 'designation' => $d['designation'] ?? null, 'phone' => $d['phone'] ?? null,
+            'email' => $d['email'] ?? null, 'salary' => $d['salary'] ?? null, 'status' => $d['status'] ?? null,
+            'department' => $this->department($d['department'] ?? null),
+            'joined_on' => $this->date($d['joined_on'] ?? null, $d['calendar'] ?? null),
+        ], fn ($v) => $v !== null);
+
+        if ($update) {
+            $e = Employee::findOrFail($d['employee_id']);
+            $e->update($fields);
+        } else {
+            $e = Employee::create($fields + ['status' => 'active', 'department' => array_key_first(Employee::departments()) ?? 'management']);
+        }
+        $this->actions[] = ['icon' => $update ? 'pencil-square' : 'user-plus', 'text' => ($update ? __('Updated :name', ['name' => $e->name]) : __('Added :name to the team', ['name' => $e->name])), 'url' => route('employees.show', $e)];
+
+        return [($update ? 'updated' : 'created').'_employee' => $this->getEmployee(['employee_id' => $e->id])];
     }
 
     private function getEmployee(array $input): array

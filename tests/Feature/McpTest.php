@@ -100,6 +100,20 @@ class McpTest extends TestCase
         $this->assertSame('proposal', Lead::find($lead['id'])->stage);
         $this->assertCount(1, $run('list_leads'));
 
+        // The record ChatGPT tried to save.
+        $made = $run('create_employee', ['name' => 'Uzzal Koirala', 'designation' => 'Founder & CEO', 'department' => 'management', 'salary' => 25000, 'phone' => '9829399342', 'joined_on' => today()->toDateString()])['created_employee'];
+        $boss = Employee::findOrFail($made['id']);
+        $this->assertSame(['Founder & CEO', 'management', 'active', '9829399342'], [$boss->designation, $boss->department, $boss->status, $boss->phone]);
+        $this->assertSame(25000.0, (float) $boss->salary);
+        $run('update_employee', ['employee_id' => $boss->id, 'salary' => 30000, 'status' => 'on_leave']);
+        $this->assertSame([30000.0, 'on_leave'], [(float) $boss->fresh()->salary, $boss->fresh()->status]);
+        try {
+            $run('create_employee', ['name' => 'X', 'department' => 'Spaceships']);
+            $this->fail('unknown department should be refused');
+        } catch (\Illuminate\Validation\ValidationException $ex) {
+            $this->assertStringContainsString('Choose one of', $ex->getMessage());
+        }
+
         $e = Employee::factory()->create(['name' => 'Asha', 'status' => 'active']);
         $this->assertSame('Asha', $run('get_employee', ['employee_id' => $e->id])['name']);
         $this->assertSame('not marked', collect($run('team_today')['team'])->firstWhere('id', $e->id)['status']);
