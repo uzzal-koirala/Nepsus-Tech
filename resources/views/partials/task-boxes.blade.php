@@ -29,7 +29,7 @@
                     ? '<img src="'.e($e->avatarUrl()).'" alt="" title="'.e($e->name).'" class="'.$size.' shrink-0 rounded-full object-cover ring-2 ring-white dark:ring-zinc-900">'
                     : '<span title="'.e($e->name).'" class="'.$size.' flex shrink-0 items-center justify-center rounded-full bg-zinc-100 font-semibold text-zinc-600 ring-2 ring-white dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-900">'.e($e->initials()).'</span>';
             @endphp
-            <article wire:key="box-{{ $b->id }}" x-data="{ all: false, adding: false }" data-test="box-{{ $b->id }}"
+            <article wire:key="box-{{ $b->id }}" x-data="{ all: false }" data-test="box-{{ $b->id }}"
                 class="flex flex-col rounded-xl bg-white p-2 shadow-[0_1px_2px_rgb(15_23_42/0.05),0_8px_24px_-12px_rgb(15_23_42/0.12)] transition hover:shadow-[0_1px_2px_rgb(15_23_42/0.05),0_16px_36px_-14px_rgb(15_23_42/0.2)] dark:bg-zinc-900">
 
                 {{-- Header: tinted with the box colour --}}
@@ -101,11 +101,6 @@
                     @endif
                 </ul>
 
-                {{-- Quick add --}}
-                <form x-show="adding" x-cloak wire:submit="quickAdd({{ $b->id }})" class="px-2 pt-2">
-                    <input x-ref="quick" type="text" wire:model="quick.{{ $b->id }}" @keydown.escape="adding = false" placeholder="{{ __('Task name, then Enter') }}" class="h-10 w-full rounded-lg border-0 bg-zinc-100 px-3.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:bg-white focus:ring-2 dark:bg-white/10 dark:text-white" style="--tw-ring-color: {{ $accent }}66" data-test="quick-{{ $b->id }}">
-                </form>
-                @error("quick.{$b->id}")<p class="px-4 pt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
 
                 {{-- Team and add --}}
                 <div class="flex items-center gap-2 px-4 pt-3 pb-3">
@@ -117,7 +112,7 @@
                     @else
                         <span class="text-xs text-zinc-400">{{ __('No one assigned') }}</span>
                     @endif
-                    <button type="button" @click="adding = ! adding; $nextTick(() => adding && $refs.quick.focus())" class="ms-auto inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold transition hover:brightness-95" style="color: {{ $accent }}; background: {{ $accent }}14" data-test="quick-open-{{ $b->id }}">
+                    <button type="button" wire:click="openQuick({{ $b->id }})" class="ms-auto inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold transition hover:brightness-95" style="color: {{ $accent }}; background: {{ $accent }}14" data-test="quick-open-{{ $b->id }}">
                         <flux:icon.plus variant="micro" class="size-3.5" />{{ __('Add task') }}
                     </button>
                 </div>
@@ -130,6 +125,41 @@
         </button>
     </section>
 @endif
+
+{{-- Add task to a box: name and people --}}
+<flux:modal name="box-task" class="w-full max-w-md">
+    @php $qBox = $quick['box'] ? $boxes->firstWhere('id', $quick['box']) : null; @endphp
+    <form wire:submit="saveQuick" class="flex flex-col gap-5">
+        <div class="flex items-center gap-3">
+            <span class="flex size-10 items-center justify-center rounded-lg text-white shadow-md" style="background: {{ ($palette[$qBox?->color] ?? $palette['violet'])['hex'] }}"><flux:icon.plus variant="mini" class="size-5" /></span>
+            <div class="min-w-0">
+                <flux:heading size="lg">{{ __('Add task') }}</flux:heading>
+                <flux:text class="truncate">{{ __('to :box', ['box' => $qBox?->name]) }}</flux:text>
+            </div>
+        </div>
+        <flux:input wire:model="quick.title" :label="__('Task name')" :placeholder="__('e.g. Design 4 posts')" required autofocus data-test="quick-title" />
+        @if ($this->people->isNotEmpty())
+            <div>
+                <p class="mb-2 text-sm font-medium text-zinc-800 dark:text-white">{{ __('Assign to') }}</p>
+                <div class="flex max-h-52 flex-wrap gap-2 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    @foreach ($this->people as $e)
+                        <label wire:key="qa-{{ $e->id }}" class="flex cursor-pointer items-center gap-2 rounded-full py-1 ps-1 pe-3 text-sm text-zinc-700 ring-1 ring-zinc-200 transition hover:ring-zinc-300 has-checked:bg-brand-50 has-checked:text-brand-700 has-checked:ring-2 has-checked:ring-brand-500 dark:text-zinc-200 dark:ring-white/10 dark:has-checked:bg-brand-500/10 dark:has-checked:text-brand-200" data-test="quick-assign-{{ $e->id }}">
+                            <input type="checkbox" wire:model="quick.assignees" value="{{ $e->id }}" class="peer sr-only">
+                            <x-employee-avatar :employee="$e" class="size-6 text-[0.625rem]" />
+                            {{ $e->name }}
+                            <flux:icon.check variant="micro" class="hidden size-3.5 peer-checked:block" />
+                        </label>
+                    @endforeach
+                </div>
+            </div>
+        @endif
+        <div class="flex items-center gap-2">
+            <button type="button" wire:click="newTaskIn({{ $quick['box'] ?? 0 }})" x-on:click="$flux.modal('box-task').close()" class="text-xs font-medium text-zinc-500 hover:text-zinc-800 dark:hover:text-white">{{ __('More options') }}</button>
+            <flux:modal.close class="ms-auto"><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
+            <flux:button type="submit" variant="primary" icon="check" data-test="save-quick">{{ __('Add task') }}</flux:button>
+        </div>
+    </form>
+</flux:modal>
 
 {{-- Add / edit box --}}
 <flux:modal name="box-form" class="w-full max-w-lg overflow-visible!">

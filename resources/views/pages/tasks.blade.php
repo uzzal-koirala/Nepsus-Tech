@@ -32,8 +32,8 @@ new #[Title('Tasks')] class extends Component {
 
     public ?int $deletingBoxId = null;
 
-    /** @var array<int|string, string> Quick-add title typed in each box. */
-    public array $quick = [];
+    /** @var array{box: ?int, title: string, assignees: list<string>} The quick "Add task" popup of a box. */
+    public array $quick = ['box' => null, 'title' => '', 'assignees' => []];
 
     public function mount(): void
     {
@@ -54,16 +54,31 @@ new #[Title('Tasks')] class extends Component {
         $this->task['client_id'] = (string) $box->client_id;
     }
 
-    /** Typing a title in a box and pressing Enter adds a to-do there. */
-    public function quickAdd(int $boxId): void
+    /** "Add task" in a box: just a name and who does it. */
+    public function openQuick(int $boxId): void
     {
-        $box = TaskGroup::findOrFail($boxId);
-        $title = trim($this->quick[$boxId] ?? '');
-        $this->validate(["quick.$boxId" => ['required', 'string', 'max:255']], attributes: ["quick.$boxId" => __('task')]);
+        $this->quick = ['box' => TaskGroup::findOrFail($boxId)->id, 'title' => '', 'assignees' => []];
+        $this->resetErrorBag();
+        Flux::modal('box-task')->show();
+    }
 
-        $box->tasks()->create(['title' => $title, 'type' => array_key_first($this->types), 'priority' => 'medium', 'status' => 'todo'])
-            ->forceFill(['client_id' => $box->client_id])->save();
-        unset($this->quick[$boxId]);
+    public function saveQuick(): void
+    {
+        $data = $this->validate([
+            'quick.title' => ['required', 'string', 'max:255'],
+            'quick.assignees' => ['array'],
+            'quick.assignees.*' => ['integer', \Illuminate\Validation\Rule::exists('employees', 'id')],
+        ], attributes: ['quick.title' => __('task name')])['quick'];
+        $box = TaskGroup::findOrFail($this->quick['box']);
+
+        $t = new Task(['title' => trim($data['title']), 'type' => array_key_first($this->types), 'priority' => 'medium', 'status' => 'todo']);
+        $t->task_group_id = $box->id;
+        $t->client_id = $box->client_id;
+        $t->save();
+        $t->assignees()->sync($data['assignees'] ?? []);
+
+        Flux::modal('box-task')->close();
+        Flux::toast(variant: 'success', text: __('Task added to :box.', ['box' => $box->name]));
     }
 
     #[Computed]

@@ -89,7 +89,11 @@ class TasksTest extends TestCase
         $this->assertTrue($box->due_date->isSameDay(today()->addDays(5)));
 
         // Quick add and a detailed task with a person.
-        $page->set("quick.{$box->id}", 'Write captions')->call('quickAdd', $box->id)->assertHasNoErrors()
+        $page->call('openQuick', $box->id)
+            ->call('saveQuick')->assertHasErrors(['quick.title'])
+            ->set('quick.title', 'Write captions')
+            ->set('quick.assignees', [(string) $asha->id])
+            ->call('saveQuick')->assertHasNoErrors()
             ->call('newTaskIn', $box->id)
             ->assertSet('task.task_group_id', (string) $box->id)
             ->set('task.title', 'Shoot greeting video')
@@ -101,6 +105,7 @@ class TasksTest extends TestCase
         $this->assertSame([$client->id], $box->tasks()->pluck('client_id')->unique()->values()->all()); // tasks follow the box's client
 
         $first = $box->tasks()->where('title', 'Write captions')->sole();
+        $this->assertSame([$asha->id], $first->assignees->pluck('id')->all());
         $page->call('toggleDone', $first->id)
             ->assertSee(['Dashain campaign', 'Everest Gym', '1 / 2 done', 'Asha Gurung', 'Shoot greeting video']);
 
