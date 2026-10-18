@@ -6,7 +6,8 @@ use App\Models\Payment;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
-Route::view('/', 'welcome')->name('home');
+// The app is the site: signed-in users land on the Overview, everyone else on sign-in.
+Route::redirect('/', '/dashboard')->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('dashboard', 'pages::dashboard')->name('dashboard');

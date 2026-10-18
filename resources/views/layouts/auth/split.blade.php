@@ -13,12 +13,6 @@
 
                     <div class="flex items-center justify-between">
                         <img src="{{ asset('images/nepsus-logo.png') }}" alt="Nepsus Tech" class="h-12 w-auto rounded-xl lg:h-14">
-                        <a href="{{ route('home') }}" class="group inline-flex items-center gap-2 rounded-full bg-white/10 py-1 ps-1 pe-4 text-sm font-medium ring-1 ring-white/20 transition duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-white/20 active:scale-[0.98]" wire:navigate>
-                            <span class="flex size-8 items-center justify-center rounded-full bg-white text-brand-600 transition duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:-translate-x-0.5 group-hover:scale-105">
-                                <flux:icon.arrow-left variant="micro" />
-                            </span>
-                            {{ __('Back to site') }}
-                        </a>
                     </div>
 
                     <div class="reveal relative z-10 mt-14 hidden text-center lg:block">
