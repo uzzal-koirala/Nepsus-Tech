@@ -14,7 +14,7 @@
         <flux:button variant="primary" icon="plus" wire:click="newBox">{{ __('Create a box') }}</flux:button>
     </section>
 @else
-    <section class="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+    <section class="grid items-start gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))]">
         @foreach ($boxes as $b)
             @php
                 $tone = $palette[$b->color] ?? $palette['violet'];
