@@ -1,0 +1,109 @@
+name: deploy
+
+# Every push to main is tested, built and uploaded to Hostinger.
+# One-time setup: DEPLOY.md. Run it by hand from the Actions tab with "Run workflow".
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never run two deploys at once; a newer push waits for the current one.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_PORT: ${{ secrets.SSH_PORT }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      APP_DIR: ${{ secrets.APP_DIR }}
+      PHP_BIN: ${{ vars.PHP_BIN || 'php' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Check the secrets are set
+        run: |
+          for name in SSH_HOST SSH_PORT SSH_USER APP_DIR; do
+            if [ -z "${!name}" ]; then echo "::error::Secret $name is missing. See DEPLOY.md."; exit 1; fi
+          done
+          if [ -z "${{ secrets.SSH_KEY }}" ]; then echo "::error::Secret SSH_KEY is missing. See DEPLOY.md."; exit 1; fi
+
+      # A failing test stops the deploy, so a broken version never goes live.
+      - name: Run tests
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          cp .env.example .env
+          php artisan key:generate
+          php artisan test
+
+      - name: Build the design files
+        run: |
+          npm ci
+          npm run build
+
+      - name: Keep only what the live site needs
+        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare the SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts
+
+      # Files that only exist on the server (.env, uploads, logs) are left alone.
+      - name: Upload the files
+        run: |
+          rsync -az --delete \
+            -e "ssh -p $SSH_PORT -i ~/.ssh/deploy_key" \
+            --exclude='.git/' --exclude='.github/' --exclude='node_modules/' --exclude='tests/' \
+            --exclude='/.env' --exclude='/.env.backup' --exclude='/.env.production' \
+            --exclude='/storage/' --exclude='/public/storage' --exclude='/public/hot' \
+            --exclude='/bootstrap/cache/*.php' \
+            --exclude='database/database.sqlite' \
+            ./ "$SSH_USER@$SSH_HOST:$APP_DIR/"
+
+      - name: Update the database and caches
+        run: |
+          ssh -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" bash -s <<EOF
+          set -e
+          cd "$APP_DIR"
+          mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache
+          if [ ! -f .env ]; then
+            echo "::warning::No .env on the server yet. Files are uploaded; create .env (DEPLOY.md step 6), then run this workflow again."
+            exit 0
+          fi
+          $PHP_BIN artisan down --retry=15 || true
+          # Bring the site back even if a step below fails.
+          trap "$PHP_BIN artisan up >/dev/null 2>&1 || true" EXIT
+          $PHP_BIN artisan migrate --force
+          $PHP_BIN artisan optimize:clear
+          $PHP_BIN artisan optimize
+          [ -L public/storage ] || $PHP_BIN artisan storage:link
+          $PHP_BIN artisan up
+          echo "Deployed."
+          EOF
