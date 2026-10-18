@@ -1,11 +1,8 @@
 <?php
 
-use App\Models\Attendance;
 use App\Models\Client;
-use App\Models\Employee;
 use App\Models\Payment;
 use App\Models\SalaryPayment;
-use App\Models\Task;
 use App\Models\Transaction;
 use App\Support\NepaliDate;
 use Illuminate\Support\Carbon;
@@ -62,37 +59,27 @@ new #[Title('Overview')] class extends Component {
         return Payment::with('client')->whereNull('paid_at')->whereNotNull('due_date')->orderBy('due_date')->limit(5)->get();
     }
 
+    /** The latest money movements: client payments, other income, expenses and salaries (same as Finance). */
     #[Computed]
-    public function openTasks()
+    public function recentTransactions()
     {
-        return Task::with(['client', 'assignees'])->whereNull('completed_at')->where('status', '!=', 'done')
-            ->orderByRaw('due_date is null')->orderBy('due_date')->limit(6)->get();
-    }
+        $limit = 8;
+        $payments = Payment::with('client')->whereNotNull('paid_at')->latest('paid_at')->latest('id')->limit($limit)->get()
+            ->map(fn ($p) => ['key' => 'p'.$p->id, 'kind' => 'income', 'date' => $p->paid_at, 'title' => $p->client?->displayName() ?? __('Client payment'),
+                'category' => __('Client payment'), 'icon' => 'building-office-2', 'amount' => (float) $p->amount, 'method' => $p->method,
+                'link' => $p->client ? route('clients.show', ['client' => $p->client_id, 'tab' => 'payments']) : null]);
+        $salaries = SalaryPayment::with('employee')->latest('paid_on')->latest('id')->limit($limit)->get()
+            ->map(fn ($x) => ['key' => 's'.$x->id, 'kind' => 'expense', 'date' => $x->paid_on, 'title' => $x->employee?->name ?? __('Salary'),
+                'category' => __('Salary'), 'icon' => 'user-group', 'amount' => (float) $x->amount, 'method' => null,
+                'link' => $x->employee ? route('employees.show', ['employee' => $x->employee_id, 'tab' => 'salary']) : null]);
+        $manual = Transaction::latest('date')->latest('id')->limit($limit)->get()
+            ->map(fn ($t) => ['key' => 't'.$t->id, 'kind' => $t->kind, 'date' => $t->date, 'title' => $t->title,
+                'category' => $t->categoryLabel(), 'icon' => Transaction::categories($t->kind)[$t->category]['icon'] ?? 'tag', 'amount' => (float) $t->amount, 'method' => $t->method,
+                'link' => route('finance.index')]);
 
-    #[Computed]
-    public function openTaskCount(): int
-    {
-        return Task::whereNull('completed_at')->where('status', '!=', 'done')->count();
-    }
-
-    #[Computed]
-    public function team(): array
-    {
-        $employees = Employee::where('status', '!=', 'inactive')->get();
-        $today = Attendance::whereDate('date', today())->pluck('status')->countBy();
-        $payroll = (float) $employees->sum('salary');
-        $paid = (float) SalaryPayment::where('period', NepaliDate::period(today()))->sum('amount');
-
-        return [
-            'count' => $employees->count(),
-            'present' => ($today['present'] ?? 0) + ($today['half_day'] ?? 0),
-            'leave' => $today['leave'] ?? 0,
-            'absent' => $today['absent'] ?? 0,
-            'unmarked' => max(0, $employees->count() - $today->sum()),
-            'payroll' => $payroll,
-            'paid' => min($paid, $payroll),
-            'holiday' => today()->isHoliday(),
-        ];
+        return $payments->concat($salaries)->concat($manual)
+            ->sortByDesc(fn ($e) => $e['date']->copy()->startOfDay()->timestamp.'-'.$e['key'])
+            ->take($limit)->values();
     }
 
     #[Computed]
@@ -106,14 +93,9 @@ new #[Title('Overview')] class extends Component {
     $panel = 'rounded-xl bg-white ring-1 ring-zinc-200/70 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:ring-white/10';
     $money = fn ($v) => Client::money($v);
     $s = $this->stats;
-    $team = $this->team;
     $hour = (int) now()->format('G');
     $greeting = $hour < 12 ? __('Good morning') : ($hour < 17 ? __('Good afternoon') : __('Good evening'));
     $max = max(1, collect($this->flow)->flatMap(fn ($f) => [$f['income'], $f['spent']])->max());
-    $taskColors = [
-        'rose' => 'bg-rose-500', 'amber' => 'bg-amber-500', 'emerald' => 'bg-emerald-500', 'sky' => 'bg-sky-500',
-        'violet' => 'bg-violet-500', 'brand' => 'bg-brand-500', 'zinc' => 'bg-zinc-400', 'orange' => 'bg-orange-500', 'teal' => 'bg-teal-500', 'pink' => 'bg-pink-500',
-    ];
 @endphp
 
 <div class="stagger flex w-full flex-col gap-6">
@@ -128,7 +110,7 @@ new #[Title('Overview')] class extends Component {
         </p>
         <h1 class="mt-4 text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">{{ $greeting }}, {{ str(auth()->user()->name)->before(' ') }}</h1>
         <p class="mt-2 max-w-lg text-sm leading-relaxed text-brand-100">
-            {{ trans_choice(':count open task|:count open tasks', $this->openTaskCount) }} · {{ trans_choice(':count payment overdue|:count payments overdue', $s['overdue']) }} · {{ $team['holiday'] ? __('Today is a holiday') : trans_choice(':count teammate in today|:count teammates in today', $team['present']) }}
+            {{ trans_choice(':count payment overdue|:count payments overdue', $s['overdue']) }} · {{ __(':amount in this month', ['amount' => $money($s['income'])]) }}
         </p>
         <div class="mt-6 flex flex-wrap gap-2">
             <a href="{{ route('clients.index') }}" wire:navigate class="inline-flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:bg-brand-50"><flux:icon.plus variant="micro" class="size-4" />{{ __('New client') }}</a>
@@ -198,39 +180,43 @@ new #[Title('Overview')] class extends Component {
                 </div>
             </section>
 
-            {{-- Open tasks --}}
-            <section class="{{ $panel }} overflow-hidden">
-                <div class="flex items-center gap-3 border-b border-zinc-100 px-5 py-4 dark:border-white/5">
-                    <h2 class="flex-1 font-semibold text-zinc-900 dark:text-white">{{ __('Open tasks') }} <span class="ms-1 rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs font-semibold text-zinc-600 tabular-nums dark:bg-white/10 dark:text-zinc-300">{{ $this->openTaskCount }}</span></h2>
-                </div>
-                @forelse ($this->openTasks as $task)
-                    @php
-                        $type = Task::types()[$task->type] ?? Task::unknownType($task->type);
-                        $overdue = $task->isOverdue();
-                    @endphp
-                    <a href="{{ $task->client ? route('clients.show', ['client' => $task->client_id, 'tab' => 'work']) : '#' }}" wire:navigate class="flex items-center gap-4 border-b border-zinc-100 px-5 py-3.5 transition last:border-0 hover:bg-zinc-50 dark:border-white/5 dark:hover:bg-white/[0.03]">
-                        <span class="{{ $taskColors[$type['color']] ?? 'bg-zinc-400' }} h-9 w-1 shrink-0 rounded-full"></span>
-                        <div class="min-w-0 flex-1">
-                            <p class="truncate text-sm font-medium text-zinc-900 dark:text-white">{{ $task->title }}</p>
-                            <p class="truncate text-xs text-zinc-500">{{ $type['label'] }}@if ($task->client) · {{ $task->client->displayName() }}@endif</p>
-                        </div>
-                        <div class="hidden -space-x-1.5 sm:flex">
-                            @foreach ($task->assignees->take(3) as $person)
-                                <x-employee-avatar :employee="$person" class="size-7 text-[0.65rem] ring-2 ring-white dark:ring-zinc-950" />
-                            @endforeach
-                        </div>
-                        <span @class([
-                            'w-24 shrink-0 rounded-md px-2 py-1 text-center text-xs font-medium',
-                            'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300' => $overdue,
-                            'bg-zinc-100 text-zinc-600 dark:bg-white/5 dark:text-zinc-300' => ! $overdue,
-                        ])>{{ $task->due_date ? $task->due_date->toNepali() : __('No date') }}</span>
-                    </a>
-                @empty
-                    <div class="flex flex-col items-center gap-2 px-5 py-10 text-center">
-                        <span class="flex size-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10"><flux:icon.check variant="mini" class="size-5" /></span>
-                        <p class="text-sm font-medium text-zinc-700 dark:text-zinc-200">{{ __('All caught up') }}</p>
+            {{-- Recent transactions --}}
+            <section class="{{ $panel }} overflow-hidden" data-test="recent-transactions">
+                <div class="flex items-center gap-3 px-5 pt-5 pb-3">
+                    <div class="flex-1">
+                        <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Recent transactions') }}</h2>
+                        <p class="text-sm text-zinc-500">{{ __('Latest money in and out') }}</p>
                     </div>
-                @endforelse
+                    <a href="{{ route('finance.index') }}" wire:navigate class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm font-medium text-brand-600 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-500/10">{{ __('View all') }}<flux:icon.arrow-right variant="micro" class="size-4" /></a>
+                </div>
+                <div class="px-2 pb-2">
+                    @forelse ($this->recentTransactions as $t)
+                        @php $in = $t['kind'] === 'income'; @endphp
+                        <a href="{{ $t['link'] ?? '#' }}" wire:navigate wire:key="tx-{{ $t['key'] }}" class="group flex items-center gap-4 rounded-xl px-3 py-3 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
+                            <span @class([
+                                'relative flex size-11 shrink-0 items-center justify-center rounded-xl',
+                                'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300' => $in,
+                                'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300' => ! $in,
+                            ])>
+                                <flux:icon :icon="$t['icon']" variant="mini" class="size-5" />
+                                <span @class(['absolute -right-1 -bottom-1 flex size-5 items-center justify-center rounded-full text-white ring-2 ring-white dark:ring-zinc-950', 'bg-emerald-500' => $in, 'bg-rose-500' => ! $in])>
+                                    <flux:icon :icon="$in ? 'arrow-down-left' : 'arrow-up-right'" variant="micro" class="size-3" />
+                                </span>
+                            </span>
+                            <div class="min-w-0 flex-1">
+                                <p class="truncate text-sm font-semibold text-zinc-900 group-hover:text-brand-600 dark:text-white">{{ $t['title'] }}</p>
+                                <p class="truncate text-xs text-zinc-500">{{ $t['category'] }}@if ($t['method']) · {{ $t['method'] }}@endif</p>
+                            </div>
+                            <span class="hidden w-28 shrink-0 text-end text-xs text-zinc-500 sm:block">{{ $t['date']->isToday() ? __('Today') : ($t['date']->isYesterday() ? __('Yesterday') : $t['date']->toNepali()) }}</span>
+                            <span @class(['w-32 shrink-0 text-end text-sm font-bold tabular-nums', 'text-emerald-600 dark:text-emerald-400' => $in, 'text-zinc-900 dark:text-white' => ! $in])>{{ $in ? '+' : '−' }} {{ $money($t['amount']) }}</span>
+                        </a>
+                    @empty
+                        <div class="flex flex-col items-center gap-2 px-5 py-10 text-center">
+                            <span class="flex size-11 items-center justify-center rounded-xl bg-zinc-100 text-zinc-400 dark:bg-white/5"><flux:icon.banknotes variant="mini" class="size-5" /></span>
+                            <p class="text-sm text-zinc-500">{{ __('No money movements yet.') }}</p>
+                        </div>
+                    @endforelse
+                </div>
             </section>
         </div>
 
@@ -263,36 +249,6 @@ new #[Title('Overview')] class extends Component {
                 @empty
                     <p class="px-5 py-8 text-center text-sm text-zinc-500">{{ __('No payments waiting.') }}</p>
                 @endforelse
-            </section>
-
-            {{-- Team today --}}
-            <section class="{{ $panel }} p-5">
-                <div class="flex items-center gap-2">
-                    <h2 class="flex-1 font-semibold text-zinc-900 dark:text-white">{{ __('Team today') }}</h2>
-                    <span class="text-xs text-zinc-500">{{ trans_choice(':count person|:count people', $team['count']) }}</span>
-                </div>
-                @if ($team['holiday'])
-                    <p class="mt-3 rounded-lg bg-sky-50 px-3 py-2 text-sm font-medium text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">{{ __('Weekly holiday, enjoy the day off.') }}</p>
-                @else
-                    <div class="mt-4 grid grid-cols-4 gap-2 text-center">
-                        @foreach ([[__('In'), $team['present'], 'text-emerald-600 dark:text-emerald-400'], [__('Leave'), $team['leave'], 'text-sky-600 dark:text-sky-400'], [__('Absent'), $team['absent'], 'text-rose-600 dark:text-rose-400'], [__('Unmarked'), $team['unmarked'], 'text-zinc-500']] as [$label, $count, $tone])
-                            <div class="rounded-lg bg-zinc-50 py-2.5 dark:bg-white/[0.03]">
-                                <p class="{{ $tone }} text-xl font-bold tabular-nums">{{ $count }}</p>
-                                <p class="text-[0.7rem] text-zinc-500">{{ $label }}</p>
-                            </div>
-                        @endforeach
-                    </div>
-                @endif
-
-                <div class="mt-5 border-t border-zinc-100 pt-4 dark:border-white/5">
-                    @php $paidPct = $team['payroll'] > 0 ? (int) round($team['paid'] / $team['payroll'] * 100) : 0; @endphp
-                    <div class="flex items-baseline justify-between text-sm">
-                        <span class="font-medium text-zinc-700 dark:text-zinc-200">{{ __(':month salaries', ['month' => NepaliDate::periodLabel(NepaliDate::period(today()))]) }}</span>
-                        <span class="text-xs text-zinc-500 tabular-nums">{{ $paidPct }}%</span>
-                    </div>
-                    <div class="mt-2 h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div class="h-full rounded-full bg-brand-500" style="width: {{ $paidPct }}%"></div></div>
-                    <p class="mt-2 text-xs text-zinc-500">{{ __(':paid paid of :total', ['paid' => $money($team['paid']), 'total' => $money($team['payroll'])]) }}</p>
-                </div>
             </section>
 
             {{-- Agreements ending --}}

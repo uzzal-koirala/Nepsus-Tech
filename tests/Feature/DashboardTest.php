@@ -29,11 +29,12 @@ class DashboardTest extends TestCase
     public function test_overview_shows_live_numbers(): void
     {
         $this->actingAs(User::factory()->create());
-        $client = Client::factory()->create(['status' => 'active']);
+        $client = Client::factory()->create(['status' => 'active', 'company' => 'Everest Gym']);
         $client->payments()->create(['amount' => 7500, 'due_date' => today()->subDays(3)]);
         $client->payments()->create(['amount' => 4200, 'paid_at' => now()]);
 
         $this->get(route('dashboard'))->assertOk()
-            ->assertSee(['Active clients', 'Cash flow', 'Payments due', 'Team today', '3 days late', '1 payment overdue']);
+            ->assertSee(['Active clients', 'Cash flow', 'Payments due', '3 days late', '1 payment overdue', 'Recent transactions', 'Everest Gym', '+ NPR 4,200'])
+            ->assertDontSee(['Team today', 'Open tasks']);
     }
 }
