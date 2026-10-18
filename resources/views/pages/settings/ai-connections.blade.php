@@ -40,6 +40,7 @@ new #[Title('AI connections')] class extends Component {
         [__('Payments & finance'), 'banknotes', ['list_payments', 'add_payment', 'mark_payment_paid', 'list_transactions', 'add_transaction', 'list_invoices', 'business_overview']],
         [__('Sales'), 'presentation-chart-line', ['list_leads', 'create_lead', 'update_lead']],
         [__('Team'), 'user-group', ['find_people', 'get_employee', 'team_today']],
+        [__('App updates'), 'cloud-arrow-down', ['check_for_updates', 'put_update_live']],
     ];
     $count = count(AiTools::definitions());
     $step = 'flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs font-bold text-white';

@@ -21,7 +21,7 @@ class Mcp
     /** Tools that only read; assistants can run these without asking. */
     private const READ_ONLY = [
         'find_clients', 'find_people', 'list_boxes', 'list_tasks', 'calendar', 'get_client', 'list_payments',
-        'list_transactions', 'list_invoices', 'list_leads', 'team_today', 'get_employee', 'business_overview',
+        'list_transactions', 'list_invoices', 'list_leads', 'team_today', 'get_employee', 'business_overview', 'check_for_updates',
     ];
 
     public static function token(): ?string

@@ -261,6 +261,18 @@ class AiTools
                 'inputSchema' => ['type' => 'object', 'required' => ['employee_id'], 'properties' => ['employee_id' => ['type' => 'integer']]],
             ],
             [
+                'name' => 'check_for_updates',
+                'description' => 'Which version of the app is live, what is new on GitHub since then, and how the last update went.',
+                'inputSchema' => ['type' => 'object', 'properties' => new \stdClass],
+            ],
+            [
+                'name' => 'put_update_live',
+                'description' => 'Put the latest version from GitHub live, like the Update now button in Settings > Updates. GitHub runs the tests first; if any fail, nothing changes. Takes about two minutes; use check_for_updates afterwards to see the result. Only do this when the user asks.',
+                'inputSchema' => ['type' => 'object', 'properties' => [
+                    'even_if_up_to_date' => ['type' => 'boolean', 'description' => 'Run it again although nothing is new.'],
+                ]],
+            ],
+            [
                 'name' => 'business_overview',
                 'description' => 'Numbers for this Nepali month: clients, money in and out, money owed by clients, unpaid invoices, open leads, task status.',
                 'inputSchema' => ['type' => 'object', 'properties' => new \stdClass],
@@ -294,6 +306,8 @@ class AiTools
             'update_lead' => $this->updateLead($input),
             'team_today' => $this->teamToday(),
             'get_employee' => $this->getEmployee($input),
+            'check_for_updates' => $this->checkForUpdates(),
+            'put_update_live' => $this->putUpdateLive($input),
             'business_overview' => $this->overview(),
             default => throw ValidationException::withMessages(['tool' => "Unknown tool {$name}."]),
         };
@@ -828,6 +842,53 @@ class AiTools
             'attendance_this_month' => $month->all(),
             'open_tasks' => $open->map(fn ($t) => $this->taskRow($t))->all(),
         ];
+    }
+
+    private function updater(): Updater
+    {
+        if (! Updater::configured()) {
+            throw ValidationException::withMessages(['updates' => 'Updates are not set up yet: a GitHub token is needed (Settings > Updates explains how).']);
+        }
+
+        return app(Updater::class);
+    }
+
+    private function checkForUpdates(): array
+    {
+        $updater = $this->updater();
+        $status = $updater->status();
+        $run = $updater->lastRun(fresh: true);
+        $live = Updater::deployed();
+        $short = fn ($sha) => $sha ? substr($sha, 0, 7) : null;
+
+        return [
+            'live' => $live ? ['version' => $short($live['sha']), 'change' => $live['message'] ?? null, 'since' => $live['at'] ?? null] : 'unknown',
+            'newest_on_github' => $status['latest'] ? ['version' => $short($status['latest']['sha']), 'change' => $status['latest']['message']] : $status['error'],
+            'updates_waiting' => $status['ahead'],
+            'whats_new' => array_column($status['commits'], 'message'),
+            'last_update' => $run ? ['state' => $run['status'] === 'completed' ? ($run['conclusion'] === 'success' ? 'finished' : 'failed, nothing was changed') : 'running now', 'started' => $run['started'], 'details' => $run['url']] : null,
+        ];
+    }
+
+    private function putUpdateLive(array $input): array
+    {
+        $d = $this->validate($input, ['even_if_up_to_date' => ['nullable', 'boolean']]);
+        $updater = $this->updater();
+        $run = $updater->lastRun(fresh: true);
+
+        if ($run && $run['status'] !== 'completed') {
+            return ['started' => false, 'message' => 'An update is already running. Check again in a minute.', 'details' => $run['url']];
+        }
+        $status = $updater->status();
+        if ($status['latest'] && $status['ahead'] === 0 && ! ($d['even_if_up_to_date'] ?? false)) {
+            return ['started' => false, 'message' => 'The live site already runs the newest version. Nothing to do.'];
+        }
+        if ($error = $updater->start()) {
+            throw ValidationException::withMessages(['updates' => $error]);
+        }
+        $this->actions[] = ['icon' => 'cloud-arrow-down', 'text' => __('Started putting the latest update live'), 'url' => route('settings.updates')];
+
+        return ['started' => true, 'updates' => array_column($status['commits'], 'message'), 'message' => 'Started. GitHub runs the tests, builds and uploads; it takes about two minutes. If a test fails, the live site stays as it is.'];
     }
 
     private function overview(): array

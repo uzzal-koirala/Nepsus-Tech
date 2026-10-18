@@ -59,6 +59,38 @@ class UpdaterTest extends TestCase
         Http::assertSent(fn ($r) => str_ends_with($r->url(), '/dispatches') && $r['ref'] === 'main' && $r->hasHeader('Authorization', 'Bearer github_pat_test'));
     }
 
+    public function test_chatgpt_can_check_and_put_the_update_live(): void
+    {
+        $tools = new \App\Support\AiTools;
+
+        // Not set up: a clear message instead of a crash.
+        config(['services.github.token' => null]);
+        try {
+            $tools->run('put_update_live', []);
+            $this->fail('should explain that updates are not set up');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertStringContainsString('GitHub token', $e->getMessage());
+        }
+
+        config(['services.github.token' => 'github_pat_test', 'services.github.repo' => 'acme/app']);
+        file_put_contents($this->file, json_encode(['sha' => 'aaa1111', 'message' => 'Old', 'at' => now()->toIso8601String()]));
+        $commit = fn ($sha, $msg) => ['sha' => $sha, 'commit' => ['message' => $msg, 'author' => ['name' => 'U', 'date' => now()->toIso8601String()]]];
+        Http::fake([
+            'api.github.com/repos/acme/app/commits/main' => Http::response($commit('ccc3333', 'AI connections')),
+            'api.github.com/repos/acme/app/compare/*' => Http::response(['ahead_by' => 1, 'commits' => [$commit('ccc3333', 'AI connections')]]),
+            'api.github.com/repos/acme/app/actions/workflows/deploy.yml/runs*' => Http::response(['workflow_runs' => [['status' => 'completed', 'conclusion' => 'success', 'run_started_at' => now()->toIso8601String(), 'created_at' => now()->toIso8601String(), 'html_url' => 'https://github.com/x', 'head_sha' => 'aaa1111']]]),
+            'api.github.com/repos/acme/app/actions/workflows/deploy.yml/dispatches' => Http::response(null, 204),
+        ]);
+
+        $check = json_decode($tools->run('check_for_updates', []), true);
+        $this->assertSame([1, ['AI connections'], 'finished'], [$check['updates_waiting'], $check['whats_new'], $check['last_update']['state']]);
+
+        $started = json_decode($tools->run('put_update_live', []), true);
+        $this->assertTrue($started['started']);
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/dispatches'));
+        $this->assertCount(1, $tools->actions);
+    }
+
     public function test_up_to_date_and_clear_errors(): void
     {
         config(['services.github.token' => 'github_pat_test', 'services.github.repo' => 'acme/app']);
