@@ -213,8 +213,12 @@ new #[Title('Client profile')] class extends Component {
             return;
         }
 
-        WorkType::where('slug', $slug)->delete(); // tasks keep the name; they show it in grey
+        WorkType::where('slug', $slug)->delete();
         unset($this->types);
+        // Its box goes away; any work in it moves to the general type so nothing is lost.
+        $fallback = array_key_exists('task', $this->types) ? 'task' : (string) array_key_first($this->types);
+        Task::where('type', $slug)->update(['type' => $fallback]);
+        unset($this->tasks);
 
         if ($this->taskType === $slug) {
             $this->taskType = array_key_first($this->types);
@@ -1286,7 +1290,8 @@ new #[Title('Client profile')] class extends Component {
             $historyCount = $historyTasks->count();
             $order = array_flip(array_keys($types));
             $sortTypes = fn ($groups) => $groups->sortBy(fn ($g, $k) => $order[$k] ?? PHP_INT_MAX);
-            $pinned = collect(array_slice(array_keys($types), 0, 4))->mapWithKeys(fn ($k) => [$k => collect()]);
+            // A box for every type of work, empty or not.
+            $pinned = collect(array_keys($types))->mapWithKeys(fn ($k) => [$k => collect()]);
             $boxes = $sortTypes($pinned->merge($boardTasks->groupBy('type')));
             $historyBoxes = $sortTypes($historyTasks->groupBy('type'));
             $doneCount = isset($byStage['done']) ? $byStage['done']->count() : 0;

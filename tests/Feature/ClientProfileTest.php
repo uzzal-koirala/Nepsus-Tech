@@ -317,8 +317,8 @@ class ClientProfileTest extends TestCase
 
         $page->call('deleteWorkType', 'blog-article');
         $this->assertNull(WorkType::firstWhere('slug', 'blog-article'));
-        $this->assertSame('blog-article', $task->fresh()->type); // the task keeps its name
-        $page->call('setTab', 'tasks')->assertSee('Blog Article');
+        $this->assertSame('task', $task->fresh()->type); // its work moves to the general type
+        $page->call('setTab', 'tasks')->assertDontSee('Blog article')->assertSee('Write Dashain blog');
     }
 
     public function test_a_task_can_be_opened_changed_and_closed(): void
