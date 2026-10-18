@@ -23,6 +23,14 @@ return [
         'model' => env('ANTHROPIC_MODEL', 'claude-opus-5-5'),
     ],
 
+    // Used instead of Anthropic when a key is set. Free models: openrouter.ai/models?max_price=0
+    'openrouter' => [
+        'key' => env('OPENROUTER_API_KEY'),
+        'model' => env('OPENROUTER_MODEL', 'nvidia/nemotron-3-super-120b-a12b:free'),
+        // Tried in order when the main model is busy or down.
+        'fallbacks' => array_filter(explode(',', env('OPENROUTER_FALLBACK_MODELS', 'google/gemma-4-31b-it:free,nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free'))),
+    ],
+
     'resend' => [
         'key' => env('RESEND_API_KEY'),
     ],

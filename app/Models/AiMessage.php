@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['role', 'content', 'actions'])]
+#[Fillable(['role', 'content', 'actions', 'model'])]
 class AiMessage extends Model
 {
     protected function casts(): array

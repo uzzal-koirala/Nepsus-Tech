@@ -13,6 +13,7 @@ use App\Support\AiAssistant;
 use App\Support\AiTools;
 use App\Support\NepaliDate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -69,13 +70,14 @@ class AiAssistantTest extends TestCase
         $this->get(route('ai.index'))->assertRedirect(route('login'));
         $user = User::factory()->create(['name' => 'Uzzal Koirala']);
         $this->actingAs($user);
-        config(['services.anthropic.key' => null]);
+        config(['services.anthropic.key' => null, 'services.openrouter.key' => null]);
 
         Livewire::test('pages::ai')
             ->assertSee('Connect the AI')
             ->set('apiKey', 'wrong')->call('saveKey')->assertHasErrors(['apiKey'])
             ->set('apiKey', 'sk-ant-test-123')->call('saveKey')->assertHasNoErrors();
-        $this->assertSame('sk-ant-test-123', AiAssistant::apiKey());
+        $this->assertSame('sk-ant-test-123', AiAssistant::key('anthropic'));
+        $this->assertSame('anthropic', AiAssistant::provider());
         $this->assertNotSame('sk-ant-test-123', Setting::get('anthropic_api_key')); // stored encrypted
 
         // A fake assistant: no real API calls in tests.
@@ -86,7 +88,7 @@ class AiAssistantTest extends TestCase
             {
                 $this->seen = $history;
 
-                return ['text' => "Done. Added **Design posts**.", 'actions' => [['icon' => 'plus-circle', 'text' => 'Created task “Design posts”', 'url' => '/tasks']]];
+                return ['text' => "Done. Added **Design posts**.", 'actions' => [['icon' => 'plus-circle', 'text' => 'Created task “Design posts”', 'url' => '/tasks']], 'model' => 'vendor/some-model:free'];
             }
         });
 
@@ -94,7 +96,8 @@ class AiAssistantTest extends TestCase
             ->assertSee('Hi Uzzal')
             ->call('send', 'Add a task to design posts')
             ->assertSee(['Add a task to design posts', 'Created task “Design posts”'])
-            ->assertSeeHtml('<strong>Design posts</strong>');
+            ->assertSeeHtml('<strong>Design posts</strong>')
+            ->assertSee('some-model (free)'); // which model answered
 
         $chat = AiConversation::sole();
         $this->assertSame(['Add a task to design posts', $user->id], [$chat->title, $chat->user_id]);
@@ -109,5 +112,34 @@ class AiAssistantTest extends TestCase
         $this->actingAs(User::factory()->create());
         Livewire::test('pages::ai', ['conversationId' => $chat->id])->assertSet('conversationId', null)->call('deleteChat', $chat->id);
         $this->assertModelExists($chat);
+    }
+
+    public function test_openrouter_runs_tools_and_reports_the_model(): void
+    {
+        $this->actingAs(User::factory()->create());
+        config(['services.openrouter.key' => 'sk-or-test', 'services.openrouter.model' => 'nvidia/test-model:free']);
+
+        Http::fake(['openrouter.ai/*' => Http::sequence()
+            ->push(['model' => 'nvidia/test-model:free', 'choices' => [['finish_reason' => 'tool_calls', 'message' => ['role' => 'assistant', 'content' => '', 'tool_calls' => [
+                ['id' => 'call_1', 'type' => 'function', 'function' => ['name' => 'create_task', 'arguments' => json_encode(['title' => 'Edit reel'])]],
+            ]]]]])
+            ->push(['model' => 'nvidia/test-model:free', 'choices' => [['finish_reason' => 'stop', 'message' => ['role' => 'assistant', 'content' => 'Added **Edit reel**.']]]])
+            ->push([], 429)]);
+
+        $this->assertSame('openrouter', AiAssistant::provider());
+        $reply = (new AiAssistant)->reply([['role' => 'user', 'content' => 'Add a task to edit the reel']], 'Uzzal');
+
+        $this->assertSame(['Added **Edit reel**.', 'nvidia/test-model:free'], [$reply['text'], $reply['model']]);
+        $this->assertSame('Edit reel', Task::sole()->title);
+        $this->assertCount(1, $reply['actions']);
+
+        // The tool result went back with the call id, and fallback models were offered.
+        Http::assertSent(fn ($r) => $r->hasHeader('Authorization', 'Bearer sk-or-test') && in_array('nvidia/test-model:free', $r['models'] ?? [], true));
+        Http::assertSent(fn ($r) => collect($r['messages'] ?? [])->contains(fn ($m) => ($m['role'] ?? null) === 'tool' && $m['tool_call_id'] === 'call_1'));
+
+        // Busy free models give a friendly message.
+        $busy = (new AiAssistant)->reply([['role' => 'user', 'content' => 'hi']], 'Uzzal');
+        $this->assertStringContainsString('busy', $busy['text']);
+        $this->assertNull($busy['model']);
     }
 }

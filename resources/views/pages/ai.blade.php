@@ -60,8 +60,9 @@ new #[Title('AI Assistant')] class extends Component {
 
     public function saveKey(): void
     {
-        $this->validate(['apiKey' => ['required', 'string', 'starts_with:sk-ant-', 'max:300']], ['apiKey.starts_with' => __('An Anthropic key starts with sk-ant-.')], ['apiKey' => __('API key')]);
-        Setting::put(['anthropic_api_key' => Crypt::encryptString(trim($this->apiKey))]);
+        $this->validate(['apiKey' => ['required', 'string', 'starts_with:sk-or-,sk-ant-', 'max:300']], ['apiKey.starts_with' => __('Paste an OpenRouter key (sk-or-...) or an Anthropic key (sk-ant-...).')], ['apiKey' => __('API key')]);
+        $key = trim($this->apiKey);
+        Setting::put([(str_starts_with($key, 'sk-or-') ? 'openrouter' : 'anthropic').'_api_key' => Crypt::encryptString($key)]);
         $this->apiKey = '';
         Flux::toast(variant: 'success', text: __('AI connected.'));
     }
@@ -82,7 +83,7 @@ new #[Title('AI Assistant')] class extends Component {
 
         $reply = app(AiAssistant::class)->reply($history, auth()->user()->name);
 
-        $chat->messages()->create(['role' => 'assistant', 'content' => $reply['text'], 'actions' => $reply['actions'] ?: null]);
+        $chat->messages()->create(['role' => 'assistant', 'content' => $reply['text'], 'actions' => $reply['actions'] ?: null, 'model' => $reply['model'] ?? null]);
         $chat->touch();
 
         $this->conversationId = $chat->id;
@@ -94,6 +95,8 @@ new #[Title('AI Assistant')] class extends Component {
 @php
     $chat = $this->conversation;
     $ready = AiAssistant::configured();
+    $provider = AiAssistant::provider();
+    $modelLabel = AiAssistant::label(AiAssistant::model());
     $suggestions = [
         ['clipboard-document-check', __('Add a task'), __('Add a task for Ram to design 4 Dashain posts for Everest Gym, due 25 Kartik')],
         ['exclamation-triangle', __('What is late?'), __('Which tasks are overdue, and who has them?')],
@@ -148,9 +151,9 @@ new #[Title('AI Assistant')] class extends Component {
                     <div class="mx-auto mt-10 w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-[0_1px_2px_rgb(15_23_42/0.05),0_8px_24px_-12px_rgb(15_23_42/0.12)] dark:bg-zinc-900">
                         <span class="mx-auto flex size-14 items-center justify-center rounded-2xl bg-linear-to-br from-brand-500 to-violet-600 text-white shadow-lg shadow-brand-500/30"><flux:icon.sparkles class="size-7" /></span>
                         <h2 class="mt-4 text-lg font-semibold text-zinc-900 dark:text-white">{{ __('Connect the AI') }}</h2>
-                        <p class="mt-1 text-sm text-zinc-500">{{ __('Paste an Anthropic API key to turn on the assistant. You can create one at platform.claude.com. It is stored encrypted.') }}</p>
+                        <p class="mt-1 text-sm text-zinc-500">{{ __('Paste an OpenRouter key (free models at openrouter.ai) or an Anthropic key. It is stored encrypted.') }}</p>
                         <form wire:submit="saveKey" class="mt-5 flex flex-col gap-3 text-start">
-                            <flux:input wire:model="apiKey" type="password" :label="__('API key')" placeholder="sk-ant-..." viewable data-test="api-key" />
+                            <flux:input wire:model="apiKey" type="password" :label="__('API key')" placeholder="sk-or-... or sk-ant-..." viewable data-test="api-key" />
                             <flux:button type="submit" variant="primary" icon="check">{{ __('Connect') }}</flux:button>
                         </form>
                     </div>
@@ -185,6 +188,9 @@ new #[Title('AI Assistant')] class extends Component {
                                 <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-brand-500 to-violet-600 text-white"><flux:icon.sparkles variant="micro" class="size-4" /></span>
                                 <div class="min-w-0 flex-1 pt-1">
                                     <div class="ai-answer text-sm leading-relaxed text-zinc-800 dark:text-zinc-100">{!! $md($m->content) !!}</div>
+                                    @if ($m->model)
+                                        <p class="mt-2 text-[0.6875rem] text-zinc-400" title="{{ $m->model }}">{{ AiAssistant::label($m->model) }}</p>
+                                    @endif
                                     @if ($m->actions)
                                         <div class="mt-3 flex flex-wrap gap-2">
                                             @foreach ($m->actions as $a)
@@ -227,7 +233,14 @@ new #[Title('AI Assistant')] class extends Component {
                     <flux:icon.arrow-up variant="mini" class="size-5" />
                 </button>
             </form>
-            <p class="mx-auto mt-2 max-w-3xl text-center text-[0.6875rem] text-zinc-400">{{ __('The assistant can make mistakes. It can add and change tasks, but never deletes anything.') }}</p>
+            <div class="mx-auto mt-2 flex max-w-3xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[0.6875rem] text-zinc-400">
+                @if ($ready)
+                    <span class="inline-flex items-center gap-1.5 rounded-full bg-white px-2 py-0.5 ring-1 ring-zinc-200/70 dark:bg-zinc-900 dark:ring-white/10" title="{{ AiAssistant::model() }}" data-test="ai-model">
+                        <span class="size-1.5 rounded-full bg-emerald-500"></span>{{ $modelLabel }} · {{ $provider === 'openrouter' ? 'OpenRouter' : 'Anthropic' }}
+                    </span>
+                @endif
+                <span>{{ __('The assistant can make mistakes. It can add and change tasks, but never deletes anything.') }}</span>
+            </div>
         </div>
     </section>
 </div>
