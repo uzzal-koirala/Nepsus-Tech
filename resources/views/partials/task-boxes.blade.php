@@ -30,12 +30,12 @@
                     : '<span title="'.e($e->name).'" class="'.$size.' flex shrink-0 items-center justify-center rounded-full bg-zinc-100 font-semibold text-zinc-600 ring-2 ring-white dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-900">'.e($e->initials()).'</span>';
             @endphp
             <article wire:key="box-{{ $b->id }}" x-data="{ all: false, adding: false }" data-test="box-{{ $b->id }}"
-                class="flex flex-col rounded-3xl bg-white p-2 shadow-[0_1px_2px_rgb(15_23_42/0.05),0_8px_24px_-12px_rgb(15_23_42/0.12)] transition hover:shadow-[0_1px_2px_rgb(15_23_42/0.05),0_16px_36px_-14px_rgb(15_23_42/0.2)] dark:bg-zinc-900">
+                class="flex flex-col rounded-xl bg-white p-2 shadow-[0_1px_2px_rgb(15_23_42/0.05),0_8px_24px_-12px_rgb(15_23_42/0.12)] transition hover:shadow-[0_1px_2px_rgb(15_23_42/0.05),0_16px_36px_-14px_rgb(15_23_42/0.2)] dark:bg-zinc-900">
 
                 {{-- Header: tinted with the box colour --}}
-                <div class="rounded-2xl p-4" style="background: {{ $accent }}14">
+                <div class="rounded-lg p-4" style="background: {{ $accent }}14">
                     <div class="flex items-start gap-3">
-                        <span class="flex size-10 shrink-0 items-center justify-center rounded-xl text-white shadow-md" style="background: {{ $accent }}; box-shadow: 0 6px 14px -6px {{ $accent }}"><flux:icon.folder variant="mini" class="size-5" /></span>
+                        <span class="flex size-10 shrink-0 items-center justify-center rounded-lg text-white shadow-md" style="background: {{ $accent }}; box-shadow: 0 6px 14px -6px {{ $accent }}"><flux:icon.folder variant="mini" class="size-5" /></span>
                         <div class="min-w-0 flex-1">
                             <h3 class="text-[0.9375rem] leading-snug font-semibold text-zinc-900 dark:text-white">{{ $b->name }}</h3>
                             <p class="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">
@@ -71,7 +71,7 @@
                             $d = $due($t);
                             $urgent = ! $t->completed_at && in_array($t->priority, ['high', 'urgent'], true);
                         @endphp
-                        <li wire:key="bt-{{ $t->id }}" @if ($i >= 4) x-show="all" x-cloak @endif class="group flex items-center gap-3 rounded-xl px-2 py-2 transition hover:bg-zinc-50 dark:hover:bg-white/[0.04]">
+                        <li wire:key="bt-{{ $t->id }}" @if ($i >= 4) x-show="all" x-cloak @endif class="group flex items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-zinc-50 dark:hover:bg-white/[0.04]">
                             <button type="button" wire:click="toggleDone({{ $t->id }})"
                                 class="flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition {{ $t->completed_at ? 'text-white' : 'text-transparent hover:text-zinc-300' }}"
                                 style="border-color: {{ $t->completed_at ? $accent : $accent.'55' }}; {{ $t->completed_at ? 'background: '.$accent : '' }}"
@@ -103,7 +103,7 @@
 
                 {{-- Quick add --}}
                 <form x-show="adding" x-cloak wire:submit="quickAdd({{ $b->id }})" class="px-2 pt-2">
-                    <input x-ref="quick" type="text" wire:model="quick.{{ $b->id }}" @keydown.escape="adding = false" placeholder="{{ __('Task name, then Enter') }}" class="h-10 w-full rounded-xl border-0 bg-zinc-100 px-3.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:bg-white focus:ring-2 dark:bg-white/10 dark:text-white" style="--tw-ring-color: {{ $accent }}66" data-test="quick-{{ $b->id }}">
+                    <input x-ref="quick" type="text" wire:model="quick.{{ $b->id }}" @keydown.escape="adding = false" placeholder="{{ __('Task name, then Enter') }}" class="h-10 w-full rounded-lg border-0 bg-zinc-100 px-3.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:bg-white focus:ring-2 dark:bg-white/10 dark:text-white" style="--tw-ring-color: {{ $accent }}66" data-test="quick-{{ $b->id }}">
                 </form>
                 @error("quick.{$b->id}")<p class="px-4 pt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
 
@@ -124,7 +124,7 @@
             </article>
         @endforeach
 
-        <button type="button" wire:click="newBox" class="flex min-h-56 flex-col items-center justify-center gap-3 rounded-3xl bg-zinc-200/40 text-zinc-500 transition hover:bg-zinc-200/70 hover:text-zinc-800 dark:bg-white/5 dark:hover:bg-white/10 dark:hover:text-white">
+        <button type="button" wire:click="newBox" class="flex min-h-56 flex-col items-center justify-center gap-3 rounded-xl bg-zinc-200/40 text-zinc-500 transition hover:bg-zinc-200/70 hover:text-zinc-800 dark:bg-white/5 dark:hover:bg-white/10 dark:hover:text-white">
             <span class="flex size-11 items-center justify-center rounded-2xl bg-white shadow-sm dark:bg-white/10"><flux:icon.plus variant="mini" class="size-5" /></span>
             <span class="text-sm font-medium">{{ __('New box') }}</span>
         </button>
