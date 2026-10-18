@@ -25,20 +25,18 @@ class TasksTest extends TestCase
         $client = Client::factory()->create(['company' => 'Everest Gym']);
         [$asha, $bikash] = Employee::factory()->count(2)->create();
 
-        // Internal task without a client or date, picked person is pre-assigned.
+        // Internal task without a client or date.
         $page = Livewire::test('pages::tasks')
-            ->set('person', (string) $asha->id)
             ->call('newTaskFor', 'in_progress')
             ->assertSet('task.status', 'in_progress')
-            ->assertSet('task.assignees', [(string) $asha->id])
             ->call('saveTask')
             ->assertHasErrors(['task.title'])
             ->set('task.title', 'Update office wifi')
+            ->set('task.assignees', [(string) $asha->id])
             ->call('saveTask')
             ->assertHasNoErrors();
 
-        $page->set('person', '')
-            ->call('newTaskFor', 'todo')
+        $page->call('newTaskFor', 'todo')
             ->set('task.title', 'Shoot gym reel')
             ->set('task.client_id', (string) $client->id)
             ->set('task.type', $type)
@@ -55,8 +53,7 @@ class TasksTest extends TestCase
         $this->assertSame([$client->id, 'urgent', [$bikash->id]], [$reel->client_id, $reel->priority, $reel->assignees->pluck('id')->all()]);
 
         // Filters
-        $page->set('person', (string) $bikash->id)->assertSee('Shoot gym reel')->assertDontSee('Update office wifi')
-            ->set('person', '')->set('clientFilter', 'none')->assertSee('Update office wifi')->assertDontSee('Shoot gym reel')
+        $page->set('clientFilter', 'none')->assertSee('Update office wifi')->assertDontSee('Shoot gym reel')
             ->set('clientFilter', '')->set('search', 'wifi')->assertDontSee('Shoot gym reel')
             ->call('clearFilters')->set('view', 'list')->assertSee(['Shoot gym reel', 'Update office wifi']);
 

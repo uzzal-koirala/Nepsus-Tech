@@ -17,10 +17,6 @@ new #[Title('Tasks')] class extends Component {
     #[Url(except: '')]
     public string $search = '';
 
-    /** Employee id, 'none' for unassigned, '' for everyone. */
-    #[Url(except: '')]
-    public string $person = '';
-
     #[Url(except: '')]
     public string $clientFilter = '';
 
@@ -36,15 +32,11 @@ new #[Title('Tasks')] class extends Component {
     public function newTaskFor(string $status): void
     {
         $this->newTask(null, $status);
-        // Picked a person above? New work goes to them.
-        if (ctype_digit($this->person)) {
-            $this->task['assignees'] = [$this->person];
-        }
     }
 
     public function clearFilters(): void
     {
-        $this->reset('search', 'person', 'clientFilter', 'priority');
+        $this->reset('search', 'clientFilter', 'priority');
     }
 
     /** Open work plus anything finished in the last 30 days. */
@@ -64,8 +56,6 @@ new #[Title('Tasks')] class extends Component {
         $q = mb_strtolower(trim($this->search));
 
         return $this->all
-            ->when($this->person === 'none', fn ($c) => $c->filter(fn ($t) => $t->assignees->isEmpty()))
-            ->when(ctype_digit($this->person), fn ($c) => $c->filter(fn ($t) => $t->assignees->contains('id', (int) $this->person)))
             ->when($this->clientFilter === 'none', fn ($c) => $c->whereNull('client_id'))
             ->when(ctype_digit($this->clientFilter), fn ($c) => $c->where('client_id', (int) $this->clientFilter))
             ->when($this->priority !== '', fn ($c) => $c->where('priority', $this->priority))
@@ -85,18 +75,6 @@ new #[Title('Tasks')] class extends Component {
             'week' => $this->all->filter(fn ($t) => $t->completed_at?->gte(now()->subDays(7)))->count(),
         ];
     }
-
-    /** Open tasks per person, for the team strip. */
-    #[Computed]
-    public function workload(): array
-    {
-        $open = $this->all->whereNull('completed_at');
-
-        return [
-            'none' => $open->filter(fn ($t) => $t->assignees->isEmpty())->count(),
-            'people' => $this->people->mapWithKeys(fn ($e) => [$e->id => $open->filter(fn ($t) => $t->assignees->contains('id', $e->id))->count()])->all(),
-        ];
-    }
 }; ?>
 
 @php
@@ -113,8 +91,7 @@ new #[Title('Tasks')] class extends Component {
     ];
     $tasks = $this->visible;
     $s = $this->stats;
-    $load = $this->workload;
-    $filtered = $search !== '' || $person !== '' || $clientFilter !== '' || $priority !== '';
+    $filtered = $search !== '' || $clientFilter !== '' || $priority !== '';
     $due = function ($t) {
         if (! $t->due_date) {
             return null;
@@ -156,41 +133,6 @@ new #[Title('Tasks')] class extends Component {
                 </div>
             </div>
         @endforeach
-    </section>
-
-    {{-- Team --}}
-    <section class="{{ $panel }} p-4">
-        <div class="flex items-center gap-2 px-1 pb-3">
-            <flux:icon.user-group variant="mini" class="size-5 text-brand-500" />
-            <p class="font-semibold text-zinc-900 dark:text-white">{{ __('Who is doing what') }}</p>
-            <span class="text-xs text-zinc-500">{{ __('Pick a person to see their tasks') }}</span>
-        </div>
-        <div class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
-            @php
-                $chip = fn ($on) => 'flex shrink-0 items-center gap-2.5 rounded-xl py-2 ps-2 pe-4 text-start ring-1 transition '.($on ? 'bg-brand-50 ring-2 ring-brand-500 dark:bg-brand-500/10' : 'ring-zinc-200 hover:bg-zinc-50 hover:ring-zinc-300 dark:ring-white/10 dark:hover:bg-white/5');
-            @endphp
-            <button type="button" wire:click="$set('person', '')" class="{{ $chip($person === '') }}">
-                <span class="flex size-9 items-center justify-center rounded-full bg-linear-to-br from-brand-500 to-violet-600 text-white"><flux:icon.users variant="mini" class="size-4.5" /></span>
-                <span><span class="block text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Everyone') }}</span><span class="block text-xs text-zinc-500">{{ trans_choice(':count open|:count open', $s['open']) }}</span></span>
-            </button>
-            @foreach ($this->people as $e)
-                @php $n = $load['people'][$e->id] ?? 0; @endphp
-                <button type="button" wire:key="p-{{ $e->id }}" wire:click="$set('person', '{{ $e->id }}')" class="{{ $chip($person === (string) $e->id) }}" data-test="person-{{ $e->id }}">
-                    <x-employee-avatar :employee="$e" class="size-9 text-xs" />
-                    <span>
-                        <span class="block max-w-36 truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $e->name }}</span>
-                        <span class="flex items-center gap-1.5 text-xs text-zinc-500">
-                            <span class="h-1.5 w-12 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><span class="block h-full rounded-full {{ $n >= 8 ? 'bg-rose-500' : ($n >= 4 ? 'bg-amber-400' : 'bg-emerald-500') }}" style="width: {{ min(100, $n * 12.5) }}%"></span></span>
-                            {{ trans_choice(':count task|:count tasks', $n) }}
-                        </span>
-                    </span>
-                </button>
-            @endforeach
-            <button type="button" wire:click="$set('person', 'none')" class="{{ $chip($person === 'none') }}">
-                <span class="flex size-9 items-center justify-center rounded-full border-2 border-dashed border-zinc-300 text-zinc-400 dark:border-white/20"><flux:icon.user variant="mini" class="size-4.5" /></span>
-                <span><span class="block text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Unassigned') }}</span><span class="block text-xs text-zinc-500">{{ trans_choice(':count open|:count open', $load['none']) }}</span></span>
-            </button>
-        </div>
     </section>
 
     {{-- Toolbar --}}
