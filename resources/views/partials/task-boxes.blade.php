@@ -14,7 +14,7 @@
         <flux:button variant="primary" icon="plus" wire:click="newBox">{{ __('Create a box') }}</flux:button>
     </section>
 @else
-    <section class="grid items-start gap-5 sm:grid-cols-2 xl:grid-cols-3">
+    <section class="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
         @foreach ($boxes as $b)
             @php
                 $tone = $palette[$b->color] ?? $palette['violet'];
@@ -26,7 +26,7 @@
                 $barColor = $pct === 100 ? '#10b981' : $tone['hex'];
             @endphp
             <article wire:key="box-{{ $b->id }}" x-data="{ all: false, adding: false }" data-test="box-{{ $b->id }}"
-                class="group/box flex flex-col rounded-2xl bg-white p-5 shadow-[0_1px_3px_rgb(15_23_42/0.06)] ring-1 ring-zinc-200/80 transition hover:shadow-[0_10px_30px_-12px_rgb(15_23_42/0.2)] dark:bg-zinc-950 dark:ring-white/10">
+                class="group/box flex flex-col rounded-2xl bg-white p-4 shadow-[0_1px_3px_rgb(15_23_42/0.06)] ring-1 ring-zinc-200/80 transition hover:shadow-[0_10px_30px_-12px_rgb(15_23_42/0.2)] dark:bg-zinc-950 dark:ring-white/10">
                 {{-- Title --}}
                 <div class="flex items-start gap-3">
                     <span class="flex size-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm" style="background: {{ $tone['hex'] }}"><flux:icon.folder variant="mini" class="size-5" /></span>
@@ -51,8 +51,27 @@
                     </flux:dropdown>
                 </div>
 
+                {{-- Due date and priority --}}
+                @php
+                    $bp = \App\Models\Task::PRIORITY_STYLES[$b->priority] ?? \App\Models\Task::PRIORITY_STYLES['medium'];
+                    $boxLate = $b->due_date && $pct < 100 && $b->due_date->lt(today());
+                @endphp
+                <div class="mt-3 flex flex-wrap items-center gap-1.5">
+                    <span class="{{ $bp['tone'] }} inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium ring-1"><flux:icon :icon="$bp['icon']" variant="micro" class="size-3" />{{ __(\App\Models\Task::PRIORITIES[$b->priority] ?? 'Medium') }}</span>
+                    @if ($b->due_date)
+                        <span @class(['inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium ring-1',
+                            'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20' => $boxLate,
+                            'bg-zinc-50 text-zinc-600 ring-zinc-200 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10' => ! $boxLate])>
+                            <flux:icon.calendar variant="micro" class="size-3" />{{ $b->due_date->isToday() ? __('Today') : $b->due_date->toNepali(false) }}
+                        </span>
+                    @endif
+                    @if ($overdue)
+                        <span class="inline-flex items-center gap-1 rounded-md bg-rose-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-rose-600 ring-1 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20"><flux:icon.clock variant="micro" class="size-3" />{{ trans_choice(':count late|:count late', $overdue) }}</span>
+                    @endif
+                </div>
+
                 {{-- Progress --}}
-                <div class="mt-4">
+                <div class="mt-3">
                     <div class="flex items-center justify-between text-xs">
                         <span class="text-zinc-500">{{ trans_choice(':done of :count task done|:done of :count tasks done', $total, ['done' => $done]) }}</span>
                         <span class="font-semibold tabular-nums" style="color: {{ $barColor }}" data-test="box-progress-{{ $b->id }}">{{ $pct }}%</span>
@@ -66,14 +85,26 @@
                 <ul class="mt-4 flex flex-col gap-0.5">
                     @forelse ($b->tasks as $i => $t)
                         @php $d = $due($t); @endphp
-                        <li wire:key="bt-{{ $t->id }}" @if ($i >= 4) x-show="all" x-cloak @endif class="group -mx-2 flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
+                        @php $tt = $typeOf($t->type); $tp = \App\Models\Task::PRIORITY_STYLES[$t->priority] ?? \App\Models\Task::PRIORITY_STYLES['medium']; @endphp
+                        <li wire:key="bt-{{ $t->id }}" @if ($i >= 4) x-show="all" x-cloak @endif class="group -mx-2 flex items-start gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
                             <button type="button" wire:click="toggleDone({{ $t->id }})" @class([
-                                'flex size-[1.125rem] shrink-0 items-center justify-center rounded-md border transition',
+                                'mt-0.5 flex size-[1.125rem] shrink-0 items-center justify-center rounded-md border transition',
                                 'border-emerald-500 bg-emerald-500 text-white' => $t->completed_at,
                                 'border-zinc-300 hover:border-zinc-400 dark:border-white/20' => ! $t->completed_at,
                             ]) aria-label="{{ $t->completed_at ? __('Mark as not done') : __('Mark as done') }}" data-test="box-task-toggle-{{ $t->id }}">@if ($t->completed_at)<flux:icon.check variant="micro" class="size-3" />@endif</button>
-                            <button type="button" wire:click="editTask({{ $t->id }})" @class(['min-w-0 flex-1 truncate text-start text-sm', 'text-zinc-400 line-through' => $t->completed_at, 'text-zinc-700 hover:text-zinc-950 dark:text-zinc-200 dark:hover:text-white' => ! $t->completed_at])>{{ $t->title }}</button>
-                            @if ($d && ! $t->completed_at)<span class="{{ $d[0] }} shrink-0 text-xs">{{ $d[1] }}</span>@endif
+                            <button type="button" wire:click="editTask({{ $t->id }})" class="min-w-0 flex-1 text-start">
+                                <span @class(['block truncate text-sm', 'text-zinc-400 line-through' => $t->completed_at, 'text-zinc-800 group-hover:text-zinc-950 dark:text-zinc-100 dark:group-hover:text-white' => ! $t->completed_at])>{{ $t->title }}</span>
+                                <span class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[0.6875rem] text-zinc-500">
+                                    <span class="inline-flex items-center gap-1"><span class="{{ $toneOf($t->type)['dot'] }} size-1.5 rounded-full"></span>{{ $tt['label'] }}</span>
+                                    @if (in_array($t->priority, ['high', 'urgent'], true) && ! $t->completed_at)
+                                        <span class="inline-flex items-center gap-0.5 font-medium {{ $t->priority === 'urgent' ? 'text-rose-600 dark:text-rose-400' : 'text-orange-600 dark:text-orange-400' }}"><flux:icon :icon="$tp['icon']" variant="micro" class="size-3" />{{ __(\App\Models\Task::PRIORITIES[$t->priority]) }}</span>
+                                    @endif
+                                    @if ($d && ! $t->completed_at)<span class="{{ $d[0] }} inline-flex items-center gap-0.5"><flux:icon.calendar variant="micro" class="size-3" />{{ $d[1] }}</span>@endif
+                                </span>
+                            </button>
+                            @if ($t->assignees->isNotEmpty())
+                                <span class="mt-0.5 flex shrink-0 -space-x-1.5">@foreach ($t->assignees->take(2) as $a)<x-employee-avatar :employee="$a" class="size-5 text-[0.5rem] ring-2 ring-white dark:ring-zinc-950" />@endforeach</span>
+                            @endif
                         </li>
                     @empty
                         <li class="rounded-lg bg-zinc-50 px-3 py-3 text-center text-xs text-zinc-500 dark:bg-white/[0.03]">{{ __('No tasks yet') }}</li>
@@ -105,9 +136,6 @@
                     @else
                         <span class="text-xs text-zinc-400">{{ __('No one assigned') }}</span>
                     @endif
-                    @if ($overdue)
-                        <span class="inline-flex items-center gap-1 rounded-md bg-rose-50 px-1.5 py-0.5 text-xs font-medium text-rose-600 dark:bg-rose-500/10 dark:text-rose-300"><flux:icon.clock variant="micro" class="size-3" />{{ trans_choice(':count late|:count late', $overdue) }}</span>
-                    @endif
                     <button type="button" @click="adding = ! adding; $nextTick(() => adding && $refs.quick.focus())" class="ms-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/10" data-test="quick-open-{{ $b->id }}">
                         <flux:icon.plus variant="micro" class="size-3.5" />{{ __('Add task') }}
                     </button>
@@ -138,6 +166,13 @@
                 ->concat($this->clients->map(fn ($c) => ['value' => $c->id, 'label' => $c->displayName(), 'hint' => $c->company ? $c->name : $c->phone, 'initials' => $c->initials(), 'tile' => 'bg-linear-to-br from-brand-500 to-violet-600 text-white']));
         @endphp
         <x-rich-select model="box.client_id" :label="__('Client (optional)')" :options="$boxClientOptions" searchable />
+        @php
+            $boxPriorityOptions = collect(\App\Models\Task::PRIORITIES)->map(fn ($label, $k) => ['value' => $k, 'label' => __($label), 'icon' => \App\Models\Task::PRIORITY_STYLES[$k]['icon'], 'tile' => \App\Models\Task::PRIORITY_STYLES[$k]['tone']])->values();
+        @endphp
+        <div class="grid gap-4 sm:grid-cols-2">
+            <x-nepali-date wire:model="box.due_date" :label="__('Due date (optional)')" />
+            <x-rich-select model="box.priority" :label="__('Priority')" :options="$boxPriorityOptions" />
+        </div>
         <div>
             <p class="mb-2 text-sm font-medium text-zinc-800 dark:text-white">{{ __('Colour') }}</p>
             <div class="flex flex-wrap gap-2">

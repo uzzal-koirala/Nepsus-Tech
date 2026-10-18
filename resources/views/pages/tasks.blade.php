@@ -26,7 +26,7 @@ new #[Title('Tasks')] class extends Component {
     public string $priority = '';
 
     /** @var array<string, string> Add / edit box. */
-    public array $box = ['name' => '', 'client_id' => '', 'color' => 'violet'];
+    public array $box = ['name' => '', 'client_id' => '', 'color' => 'violet', 'due_date' => '', 'priority' => 'medium'];
 
     public ?int $editingBoxId = null;
 
@@ -77,7 +77,7 @@ new #[Title('Tasks')] class extends Component {
     {
         $this->view = 'boxes'; // the box form lives in the boxes view
         $this->editingBoxId = null;
-        $this->box = ['name' => '', 'client_id' => '', 'color' => array_keys(WorkType::PALETTE)[TaskGroup::count() % count(WorkType::PALETTE)]];
+        $this->box = ['name' => '', 'client_id' => '', 'color' => array_keys(WorkType::PALETTE)[TaskGroup::count() % count(WorkType::PALETTE)], 'due_date' => '', 'priority' => 'medium'];
         $this->resetErrorBag();
         Flux::modal('box-form')->show();
     }
@@ -86,7 +86,7 @@ new #[Title('Tasks')] class extends Component {
     {
         $b = TaskGroup::findOrFail($id);
         $this->editingBoxId = $b->id;
-        $this->box = ['name' => $b->name, 'client_id' => (string) $b->client_id, 'color' => $b->color];
+        $this->box = ['name' => $b->name, 'client_id' => (string) $b->client_id, 'color' => $b->color, 'due_date' => (string) $b->due_date?->toDateString(), 'priority' => $b->priority];
         $this->resetErrorBag();
         Flux::modal('box-form')->show();
     }
@@ -96,10 +96,12 @@ new #[Title('Tasks')] class extends Component {
         $data = $this->validate([
             'box.name' => ['required', 'string', 'max:120'],
             'box.client_id' => ['nullable', 'exists:clients,id'],
+            'box.due_date' => ['nullable', 'date'],
+            'box.priority' => ['required', \Illuminate\Validation\Rule::in(array_keys(Task::PRIORITIES))],
             'box.color' => ['required', \Illuminate\Validation\Rule::in(array_keys(WorkType::PALETTE))],
         ], attributes: ['box.name' => __('box name')])['box'];
 
-        $b = TaskGroup::updateOrCreate(['id' => $this->editingBoxId], ['name' => $data['name'], 'client_id' => $data['client_id'] ?: null, 'color' => $data['color']] + ($this->editingBoxId ? [] : ['position' => (int) TaskGroup::max('position') + 1]));
+        $b = TaskGroup::updateOrCreate(['id' => $this->editingBoxId], ['name' => $data['name'], 'client_id' => $data['client_id'] ?: null, 'color' => $data['color'], 'due_date' => $data['due_date'] ?: null, 'priority' => $data['priority']] + ($this->editingBoxId ? [] : ['position' => (int) TaskGroup::max('position') + 1]));
         // Tasks follow their box's client when they had none.
         if ($b->client_id) {
             $b->tasks()->whereNull('client_id')->update(['client_id' => $b->client_id]);

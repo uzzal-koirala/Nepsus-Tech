@@ -79,11 +79,14 @@ class TasksTest extends TestCase
             ->assertHasErrors(['box.name'])
             ->set('box.name', 'Dashain campaign')
             ->set('box.client_id', (string) $client->id)
+            ->set('box.priority', 'high')
+            ->set('box.due_date', today()->addDays(5)->toDateString())
             ->call('saveBox')
             ->assertHasNoErrors();
 
         $box = TaskGroup::sole();
-        $this->assertSame(['Dashain campaign', $client->id], [$box->name, $box->client_id]);
+        $this->assertSame(['Dashain campaign', $client->id, 'high'], [$box->name, $box->client_id, $box->priority]);
+        $this->assertTrue($box->due_date->isSameDay(today()->addDays(5)));
 
         // Quick add and a detailed task with a person.
         $page->set("quick.{$box->id}", 'Write captions')->call('quickAdd', $box->id)->assertHasNoErrors()
