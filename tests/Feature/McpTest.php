@@ -152,6 +152,18 @@ class McpTest extends TestCase
         $this->assertStringContainsString('Momo House', $trash);
         @array_map('unlink', glob(storage_path('app/ai-trash/*.jsonl')) ?: []);
 
+        // Packages: create, change, give to a client, delete (the client keeps its price).
+        $pkg = $run('create_package', ['name' => 'Growth', 'price' => 30000, 'billing_cycle' => 'monthly', 'features' => ['12 posts', '4 reels']])['created_package'];
+        $run('update_package', ['package_id' => $pkg['id'], 'price' => 35000]);
+        $run('update_client', ['client_id' => $c['id'], 'package_id' => $pkg['id']]);
+        $client = Client::find($c['id']);
+        $this->assertSame([$pkg['id'], 35000.0, 1], [$client->package_id, (float) $client->price, $client->billing_months]);
+        $this->assertSame(1, collect($run('list_packages'))->firstWhere('id', $pkg['id'])['clients_using_it']);
+        $run('delete', ['what' => 'package', 'id' => (string) $pkg['id']]);
+        $this->assertNull(\App\Models\Package::find($pkg['id']));
+        $this->assertSame([null, 35000.0], [$client->fresh()->package_id, (float) $client->fresh()->price]);
+        @array_map('unlink', glob(storage_path('app/ai-trash/*.jsonl')) ?: []);
+
         $e = Employee::factory()->create(['name' => 'Asha', 'status' => 'active']);
         $this->assertSame('Asha', $run('get_employee', ['employee_id' => $e->id])['name']);
         $this->assertSame('not marked', collect($run('team_today')['team'])->firstWhere('id', $e->id)['status']);

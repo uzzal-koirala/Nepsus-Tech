@@ -150,6 +150,7 @@ class AiTools
                     'email' => ['type' => 'string'],
                     'status' => ['type' => 'string', 'enum' => Client::STATUSES],
                     'notes' => ['type' => 'string'],
+                    'package_id' => ['type' => 'integer', 'description' => 'Give the client this package (its price and billing are copied). 0 removes the package.'],
                 ]],
             ],
             [
@@ -324,6 +325,31 @@ class AiTools
                 'inputSchema' => ['type' => 'object', 'properties' => new \stdClass],
             ],
             [
+                'name' => 'create_package',
+                'description' => 'Create a service package (name, price, billing, what is included).',
+                'inputSchema' => ['type' => 'object', 'required' => ['name'], 'properties' => [
+                    'name' => ['type' => 'string'],
+                    'description' => ['type' => 'string', 'description' => 'One short line'],
+                    'price' => ['type' => 'number', 'description' => 'NPR'],
+                    'billing_cycle' => ['type' => 'string', 'enum' => Client::BILLING_CYCLES],
+                    'features' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'What is included, one item each (max 12). Replaces the list.'],
+                    'active' => ['type' => 'boolean', 'description' => 'Shown when choosing a package for a client'],
+                ]],
+            ],
+            [
+                'name' => 'update_package',
+                'description' => 'Change a package: name, price, billing, description, features, or turn it on or off. Only send what changes. Existing clients keep their own price.',
+                'inputSchema' => ['type' => 'object', 'required' => ['package_id'], 'properties' => [
+                    'package_id' => ['type' => 'integer'],
+                    'name' => ['type' => 'string'],
+                    'description' => ['type' => 'string', 'description' => 'One short line'],
+                    'price' => ['type' => 'number', 'description' => 'NPR'],
+                    'billing_cycle' => ['type' => 'string', 'enum' => Client::BILLING_CYCLES],
+                    'features' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'What is included, one item each (max 12). Replaces the list.'],
+                    'active' => ['type' => 'boolean', 'description' => 'Shown when choosing a package for a client'],
+                ]],
+            ],
+            [
                 'name' => 'create_invoice',
                 'description' => 'Create an invoice or quotation (as a draft) with its items. Use a client_id, or bill_to for someone who is not a client yet.',
                 'inputSchema' => ['type' => 'object', 'required' => ['items'], 'properties' => [
@@ -361,9 +387,9 @@ class AiTools
             ],
             [
                 'name' => 'delete',
-                'description' => 'Delete something for good. Always confirm with the user first, naming exactly what will go. Deleting a client also deletes their payments, tasks and documents; deleting a box deletes its tasks; deleting an employee deletes their salary and attendance history. A copy is kept on the server for recovery.',
+                'description' => 'Delete something for good. Always confirm with the user first, naming exactly what will go. Deleting a client also deletes their payments, tasks and documents; deleting a box deletes its tasks; deleting an employee deletes their salary and attendance history; deleting a package leaves its clients with no package (they keep their price). A copy is kept on the server for recovery.',
                 'inputSchema' => ['type' => 'object', 'required' => ['what', 'id'], 'properties' => [
-                    'what' => ['type' => 'string', 'enum' => ['task', 'box', 'client', 'payment', 'transaction', 'lead', 'employee', 'invoice', 'attendance']],
+                    'what' => ['type' => 'string', 'enum' => ['task', 'box', 'client', 'payment', 'transaction', 'lead', 'employee', 'invoice', 'attendance', 'package']],
                     'id' => ['type' => 'string', 'description' => 'The id. For transaction: the key from list_transactions (like t12, s3 or p8). For attendance: employee_id:YYYY-MM-DD.'],
                 ]],
             ],
@@ -418,6 +444,8 @@ class AiTools
             'pay_salary' => $this->paySalary($input),
             'mark_attendance' => $this->markAttendance($input),
             'list_packages' => $this->listPackages(),
+            'create_package' => $this->savePackage($input),
+            'update_package' => $this->savePackage($input, true),
             'create_invoice' => $this->createInvoice($input),
             'set_invoice_status' => $this->setInvoiceStatus($input),
             'convert_quotation' => $this->convertQuotation($input),
@@ -737,9 +765,24 @@ class AiTools
             'name' => ['nullable', 'string', 'max:120'], 'company' => ['nullable', 'string', 'max:120'],
             'phone' => ['nullable', 'string', 'max:50'], 'email' => ['nullable', 'email', 'max:120'],
             'status' => ['nullable', Rule::in(Client::STATUSES)], 'notes' => ['nullable', 'string', 'max:5000'],
+            'package_id' => ['nullable', 'integer', function ($attr, $value, $fail) {
+                if ((int) $value !== 0 && ! Package::whereKey($value)->exists()) {
+                    $fail('No package with that id. Use list_packages.');
+                }
+            }],
         ]);
         $c = Client::findOrFail($d['client_id']);
-        $c->update(array_filter(collect($d)->except('client_id')->all(), fn ($v) => $v !== null));
+        $changes = array_filter(collect($d)->except(['client_id', 'package_id'])->all(), fn ($v) => $v !== null);
+        if (array_key_exists('package_id', $d) && $d['package_id'] !== null) {
+            // Same as choosing a package on the client form: its price and billing come along.
+            $p = (int) $d['package_id'] ? Package::find($d['package_id']) : null;
+            $changes['package_id'] = $p?->id;
+            if ($p && $p->price !== null) {
+                $changes['price'] = $p->price;
+                $changes['billing_months'] = Client::monthsForCycle($p->billing_cycle);
+            }
+        }
+        $c->update($changes);
         $this->actions[] = ['icon' => 'pencil-square', 'text' => __('Updated client “:name”', ['name' => $c->displayName()]), 'url' => route('clients.show', $c)];
 
         return ['updated_client' => ['id' => $c->id, 'name' => $c->displayName(), 'status' => $c->status]];
@@ -1050,7 +1093,32 @@ class AiTools
 
     private function listPackages(): array
     {
-        return Package::orderBy('position')->get()->map(fn ($p) => ['id' => $p->id, 'name' => $p->name, 'price' => $this->money($p->price), 'billing' => $p->billing_cycle, 'active' => (bool) $p->is_active, 'description' => $p->description])->all();
+        return Package::withCount('clients')->orderBy('position')->get()->map(fn ($p) => ['id' => $p->id, 'name' => $p->name, 'price' => $p->price === null ? null : $this->money($p->price), 'billing' => $p->billing_cycle, 'active' => (bool) $p->is_active, 'description' => $p->description, 'features' => $p->features ?? [], 'clients_using_it' => $p->clients_count])->all();
+    }
+
+    private function savePackage(array $input, bool $update = false): array
+    {
+        $d = $this->validate($input, [
+            'package_id' => [$update ? 'required' : 'prohibited', 'integer', 'exists:packages,id'],
+            'name' => [$update ? 'nullable' : 'required', 'string', 'max:60'], 'description' => ['nullable', 'string', 'max:160'],
+            'price' => ['nullable', 'numeric', 'min:0', 'max:9999999999'], 'billing_cycle' => ['nullable', Rule::in(Client::BILLING_CYCLES)],
+            'features' => ['nullable', 'array', 'max:12'], 'features.*' => ['string', 'max:120'], 'active' => ['nullable', 'boolean'],
+        ]);
+        $fields = array_filter([
+            'name' => $d['name'] ?? null, 'description' => $d['description'] ?? null, 'price' => $d['price'] ?? null,
+            'billing_cycle' => $d['billing_cycle'] ?? null, 'is_active' => $d['active'] ?? null,
+            'features' => isset($d['features']) ? array_values(array_filter(array_map('trim', $d['features']))) : null,
+        ], fn ($v) => $v !== null);
+
+        if ($update) {
+            $p = Package::findOrFail($d['package_id']);
+            $p->update($fields);
+        } else {
+            $p = Package::create($fields + ['billing_cycle' => 'monthly', 'is_active' => true, 'icon' => 'star', 'color' => array_key_first(PackageTheme::THEMES), 'position' => (int) Package::max('position') + 1]);
+        }
+        $this->actions[] = ['icon' => 'cube', 'text' => ($update ? __('Updated package “:name”', ['name' => $p->name]) : __('Created package “:name”', ['name' => $p->name])), 'url' => route('packages.index')];
+
+        return [($update ? 'updated' : 'created').'_package' => ['id' => $p->id, 'name' => $p->name, 'price' => $p->price === null ? null : $this->money($p->price), 'billing' => $p->billing_cycle, 'active' => (bool) $p->is_active, 'features' => $p->features ?? []]];
     }
 
     private function createInvoice(array $input): array
@@ -1143,7 +1211,7 @@ class AiTools
     /** Deletes one record, after saving a copy to storage/app/ai-trash for recovery. */
     private function delete(array $input): array
     {
-        $d = $this->validate($input, ['what' => ['required', Rule::in(['task', 'box', 'client', 'payment', 'transaction', 'lead', 'employee', 'invoice', 'attendance'])], 'id' => ['required']]);
+        $d = $this->validate($input, ['what' => ['required', Rule::in(['task', 'box', 'client', 'payment', 'transaction', 'lead', 'employee', 'invoice', 'attendance', 'package'])], 'id' => ['required']]);
         $id = (string) $d['id'];
         $find = fn (string $class, array $with = []) => $class::with($with)->find((int) $id) ?? throw ValidationException::withMessages(['id' => "No {$d['what']} with id {$id}."]);
 
@@ -1155,6 +1223,7 @@ class AiTools
             'lead' => [$m = $find(Lead::class, ['activities']), 'lead '.($m->company ?: $m->name)],
             'employee' => [$m = $find(Employee::class, ['salaryPayments', 'attendances']), "employee {$m->name} with their salary and attendance history"],
             'invoice' => [$m = $find(Invoice::class, ['items']), $m->number],
+            'package' => [$m = $find(Package::class), "package “{$m->name}”"],
             'transaction' => $this->findTransaction($id),
             'attendance' => $this->findAttendance($id),
         };

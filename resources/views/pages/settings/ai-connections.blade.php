@@ -36,7 +36,7 @@ new #[Title('AI connections')] class extends Component {
     $lastClient = Setting::get('mcp_last_client');
     $groups = [
         [__('Tasks & calendar'), 'clipboard-document-check', ['list_tasks', 'create_task', 'update_task', 'list_boxes', 'create_box', 'calendar']],
-        [__('Invoices & packages'), 'receipt-percent', ['list_invoices', 'create_invoice', 'set_invoice_status', 'convert_quotation', 'list_packages']],
+        [__('Invoices & packages'), 'receipt-percent', ['list_invoices', 'create_invoice', 'set_invoice_status', 'convert_quotation', 'list_packages', 'create_package', 'update_package']],
         [__('Clients'), 'building-office-2', ['find_clients', 'get_client', 'create_client', 'update_client']],
         [__('Payments & finance'), 'banknotes', ['list_payments', 'add_payment', 'mark_payment_paid', 'list_transactions', 'add_transaction', 'business_overview']],
         [__('Sales'), 'presentation-chart-line', ['list_leads', 'create_lead', 'update_lead']],
