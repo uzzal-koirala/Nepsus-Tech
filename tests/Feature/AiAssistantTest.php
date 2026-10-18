@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\AiConversation;
 use App\Models\Client;
 use App\Models\Employee;
 use App\Models\Setting;
@@ -65,20 +64,21 @@ class AiAssistantTest extends TestCase
         $this->assertSame(1, TaskGroup::count());
     }
 
-    public function test_chat_page_connects_sends_and_keeps_chats_private(): void
+    public function test_floating_chat_connects_and_answers_without_saving(): void
     {
-        $this->get(route('ai.index'))->assertRedirect(route('login'));
         $user = User::factory()->create(['name' => 'Uzzal Koirala']);
         $this->actingAs($user);
         config(['services.anthropic.key' => null, 'services.openrouter.key' => null]);
 
-        Livewire::test('pages::ai')
+        $this->get(route('dashboard'))->assertOk()->assertSee('data-test="ai-toggle"', false);
+
+        Livewire::test('pages::ai-widget')
             ->assertSee('Connect the AI')
             ->set('apiKey', 'wrong')->call('saveKey')->assertHasErrors(['apiKey'])
-            ->set('apiKey', 'sk-ant-test-123')->call('saveKey')->assertHasNoErrors();
-        $this->assertSame('sk-ant-test-123', AiAssistant::key('anthropic'));
-        $this->assertSame('anthropic', AiAssistant::provider());
-        $this->assertNotSame('sk-ant-test-123', Setting::get('anthropic_api_key')); // stored encrypted
+            ->set('apiKey', 'sk-or-test-123')->call('saveKey')->assertHasNoErrors();
+        $this->assertSame('sk-or-test-123', AiAssistant::key('openrouter'));
+        $this->assertSame('openrouter', AiAssistant::provider());
+        $this->assertNotSame('sk-or-test-123', Setting::get('openrouter_api_key')); // stored encrypted
 
         // A fake assistant: no real API calls in tests.
         $this->app->instance(AiAssistant::class, new class extends AiAssistant {
@@ -88,32 +88,24 @@ class AiAssistantTest extends TestCase
             {
                 $this->seen = $history;
 
-                return ['text' => "Done. Added **Design posts**.", 'actions' => [['icon' => 'plus-circle', 'text' => 'Created task “Design posts”', 'url' => '/tasks']], 'model' => 'vendor/some-model:free'];
+                return ['text' => 'Done. Added **Design posts**.', 'actions' => [['icon' => 'plus-circle', 'text' => 'Created task “Design posts”', 'url' => '/tasks']], 'model' => 'vendor/some-model:free'];
             }
         });
 
-        $page = Livewire::test('pages::ai')
+        $chat = Livewire::test('pages::ai-widget')
             ->assertSee('Hi Uzzal')
             ->call('send', 'Add a task to design posts')
             ->assertSee(['Add a task to design posts', 'Created task “Design posts”'])
             ->assertSeeHtml('<strong>Design posts</strong>')
-            ->assertSee('some-model (free)'); // which model answered
+            ->call('send', 'And another');
 
-        $chat = AiConversation::sole();
-        $this->assertSame(['Add a task to design posts', $user->id], [$chat->title, $chat->user_id]);
-        $this->assertSame(['user', 'assistant'], $chat->messages->pluck('role')->all());
-        $page->assertSet('conversationId', $chat->id);
+        // Follow-ups send the earlier turns, newest last.
+        $seen = app(AiAssistant::class)->seen;
+        $this->assertSame(['user', 'assistant', 'user'], array_column($seen, 'role'));
+        $this->assertSame('And another', end($seen)['content']);
 
-        // Follow-ups send the earlier turns.
-        $page->call('send', 'And another');
-        $this->assertSame(['user', 'assistant', 'user'], array_column(app(AiAssistant::class)->seen, 'role'));
-        $this->assertSame('And another', end(app(AiAssistant::class)->seen)['content']); // the newest message is last
-        $this->assertSame('Add a task to design posts', app(AiAssistant::class)->seen[0]['content']);
-
-        // Someone else cannot open or delete it.
-        $this->actingAs(User::factory()->create());
-        Livewire::test('pages::ai', ['conversationId' => $chat->id])->assertSet('conversationId', null)->call('deleteChat', $chat->id);
-        $this->assertModelExists($chat);
+        // Clearing starts fresh; nothing is stored anywhere.
+        $chat->call('clear')->assertSet('messages', [])->assertSee('Hi Uzzal');
     }
 
     public function test_openrouter_runs_tools_and_reports_the_model(): void

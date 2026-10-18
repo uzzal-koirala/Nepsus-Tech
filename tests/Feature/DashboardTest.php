@@ -35,6 +35,6 @@ class DashboardTest extends TestCase
 
         $this->get(route('dashboard'))->assertOk()
             ->assertSee(['Active clients', 'Cash flow', 'Payments due', '3 days late', '1 payment overdue', 'Recent transactions', 'Everest Gym', '+ NPR 4,200'])
-            ->assertDontSee(['Team today', 'Open tasks']);
+            ->assertDontSee(['Team today', 'Open tasks', 'Agreements ending soon']);
     }
 }

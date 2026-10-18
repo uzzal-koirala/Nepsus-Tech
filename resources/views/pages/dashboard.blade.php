@@ -63,10 +63,10 @@ new #[Title('Overview')] class extends Component {
     #[Computed]
     public function recentTransactions()
     {
-        $limit = 8;
+        $limit = 5;
         $payments = Payment::with('client')->whereNotNull('paid_at')->latest('paid_at')->latest('id')->limit($limit)->get()
             ->map(fn ($p) => ['key' => 'p'.$p->id, 'kind' => 'income', 'date' => $p->paid_at, 'title' => $p->client?->displayName() ?? __('Client payment'),
-                'category' => __('Client payment'), 'icon' => 'building-office-2', 'amount' => (float) $p->amount, 'method' => $p->method,
+                'category' => __(Client::SERVICE_TYPES[$p->client?->service_type]['label'] ?? 'Client'), 'icon' => 'building-office-2', 'amount' => (float) $p->amount, 'method' => $p->method,
                 'link' => $p->client ? route('clients.show', ['client' => $p->client_id, 'tab' => 'payments']) : null]);
         $salaries = SalaryPayment::with('employee')->latest('paid_on')->latest('id')->limit($limit)->get()
             ->map(fn ($x) => ['key' => 's'.$x->id, 'kind' => 'expense', 'date' => $x->paid_on, 'title' => $x->employee?->name ?? __('Salary'),
@@ -80,12 +80,6 @@ new #[Title('Overview')] class extends Component {
         return $payments->concat($salaries)->concat($manual)
             ->sortByDesc(fn ($e) => $e['date']->copy()->startOfDay()->timestamp.'-'.$e['key'])
             ->take($limit)->values();
-    }
-
-    #[Computed]
-    public function endingSoon()
-    {
-        return Client::where('status', 'active')->whereBetween('contract_end', [today(), today()->addDays(30)])->orderBy('contract_end')->limit(4)->get();
     }
 }; ?>
 
@@ -180,44 +174,6 @@ new #[Title('Overview')] class extends Component {
                 </div>
             </section>
 
-            {{-- Recent transactions --}}
-            <section class="{{ $panel }} overflow-hidden" data-test="recent-transactions">
-                <div class="flex items-center gap-3 px-5 pt-5 pb-3">
-                    <div class="flex-1">
-                        <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Recent transactions') }}</h2>
-                        <p class="text-sm text-zinc-500">{{ __('Latest money in and out') }}</p>
-                    </div>
-                    <a href="{{ route('finance.index') }}" wire:navigate class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm font-medium text-brand-600 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-500/10">{{ __('View all') }}<flux:icon.arrow-right variant="micro" class="size-4" /></a>
-                </div>
-                <div class="px-2 pb-2">
-                    @forelse ($this->recentTransactions as $t)
-                        @php $in = $t['kind'] === 'income'; @endphp
-                        <a href="{{ $t['link'] ?? '#' }}" wire:navigate wire:key="tx-{{ $t['key'] }}" class="group flex items-center gap-4 rounded-xl px-3 py-3 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
-                            <span @class([
-                                'relative flex size-11 shrink-0 items-center justify-center rounded-xl',
-                                'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300' => $in,
-                                'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300' => ! $in,
-                            ])>
-                                <flux:icon :icon="$t['icon']" variant="mini" class="size-5" />
-                                <span @class(['absolute -right-1 -bottom-1 flex size-5 items-center justify-center rounded-full text-white ring-2 ring-white dark:ring-zinc-950', 'bg-emerald-500' => $in, 'bg-rose-500' => ! $in])>
-                                    <flux:icon :icon="$in ? 'arrow-down-left' : 'arrow-up-right'" variant="micro" class="size-3" />
-                                </span>
-                            </span>
-                            <div class="min-w-0 flex-1">
-                                <p class="truncate text-sm font-semibold text-zinc-900 group-hover:text-brand-600 dark:text-white">{{ $t['title'] }}</p>
-                                <p class="truncate text-xs text-zinc-500">{{ $t['category'] }}@if ($t['method']) · {{ $t['method'] }}@endif</p>
-                            </div>
-                            <span class="hidden w-28 shrink-0 text-end text-xs text-zinc-500 sm:block">{{ $t['date']->isToday() ? __('Today') : ($t['date']->isYesterday() ? __('Yesterday') : $t['date']->toNepali()) }}</span>
-                            <span @class(['w-32 shrink-0 text-end text-sm font-bold tabular-nums', 'text-emerald-600 dark:text-emerald-400' => $in, 'text-zinc-900 dark:text-white' => ! $in])>{{ $in ? '+' : '−' }} {{ $money($t['amount']) }}</span>
-                        </a>
-                    @empty
-                        <div class="flex flex-col items-center gap-2 px-5 py-10 text-center">
-                            <span class="flex size-11 items-center justify-center rounded-xl bg-zinc-100 text-zinc-400 dark:bg-white/5"><flux:icon.banknotes variant="mini" class="size-5" /></span>
-                            <p class="text-sm text-zinc-500">{{ __('No money movements yet.') }}</p>
-                        </div>
-                    @endforelse
-                </div>
-            </section>
         </div>
 
         <aside class="flex min-w-0 flex-col gap-6">
@@ -251,26 +207,85 @@ new #[Title('Overview')] class extends Component {
                 @endforelse
             </section>
 
-            {{-- Agreements ending --}}
-            <section class="{{ $panel }} p-5">
-                <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Agreements ending soon') }}</h2>
-                <div class="mt-3 flex flex-col gap-2">
-                    @forelse ($this->endingSoon as $client)
-                        @php $left = (int) today()->diffInDays($client->contract_end); @endphp
-                        <a href="{{ route('clients.show', $client) }}" wire:navigate class="flex items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
-                            <span @class(['flex size-10 shrink-0 flex-col items-center justify-center rounded-lg leading-none', 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300' => $left <= 7, 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300' => $left > 7])>
-                                <span class="text-sm font-bold tabular-nums">{{ $left }}</span><span class="text-[0.6rem] font-medium">{{ __('days') }}</span>
-                            </span>
-                            <div class="min-w-0 flex-1">
-                                <p class="truncate text-sm font-medium text-zinc-900 dark:text-white">{{ $client->displayName() }}</p>
-                                <p class="text-xs text-zinc-500">{{ __('Ends :date', ['date' => $client->contract_end->toNepali()]) }}</p>
-                            </div>
-                        </a>
-                    @empty
-                        <p class="py-4 text-center text-sm text-zinc-500">{{ __('No agreements end in the next 30 days.') }}</p>
-                    @endforelse
-                </div>
-            </section>
         </aside>
     </div>
+
+    {{-- Recent transactions: the same list as Finance --}}
+    @php
+        $th = 'px-3 py-2.5 text-start text-[0.6875rem] font-semibold tracking-wide text-zinc-500 uppercase whitespace-nowrap';
+        $methodIcons = ['Bank' => 'building-library', 'eSewa' => 'device-phone-mobile', 'Khalti' => 'wallet', 'Cash' => 'banknotes', 'Cheque' => 'document-text', 'Other' => 'ellipsis-horizontal-circle'];
+        $recent = $this->recentTransactions;
+    @endphp
+    <section class="{{ $panel }} overflow-hidden" data-test="recent-transactions">
+        <div class="flex items-center gap-3 px-5 py-4">
+            <span class="flex size-9 items-center justify-center rounded-lg bg-brand-500 text-white shadow-md shadow-brand-500/25"><flux:icon.arrows-right-left variant="mini" class="size-4.5" /></span>
+            <div class="flex-1">
+                <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Recent transactions') }}</h2>
+                <p class="text-xs text-zinc-500">{{ __('The latest money in and out, from Finance') }}</p>
+            </div>
+        </div>
+
+        @if ($recent->isEmpty())
+            <div class="flex flex-col items-center gap-3 border-t border-zinc-100 px-5 py-12 text-center dark:border-white/5">
+                <span class="flex size-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-500 dark:bg-brand-500/15"><flux:icon.receipt-percent class="size-6" /></span>
+                <p class="text-sm text-zinc-500">{{ __('No money movements yet.') }}</p>
+            </div>
+        @else
+            <div class="overflow-x-auto border-t border-zinc-100 dark:border-white/5">
+                <table class="w-full min-w-[52rem] text-sm">
+                    <thead class="bg-zinc-50/80 dark:bg-white/[0.02]">
+                        <tr>
+                            <th class="{{ $th }} ps-5">{{ __('Title') }}</th>
+                            <th class="{{ $th }}">{{ __('Date') }}</th>
+                            <th class="{{ $th }}">{{ __('Category') }}</th>
+                            <th class="{{ $th }}">{{ __('Payment type') }}</th>
+                            <th class="{{ $th }}">{{ __('Method') }}</th>
+                            <th class="{{ str_replace('text-start', 'text-end', $th) }} pe-5">{{ __('Amount') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-zinc-100 dark:divide-white/5">
+                        @foreach ($recent as $e)
+                            @php $in = $e['kind'] === 'income'; @endphp
+                            <tr wire:key="tx-{{ $e['key'] }}" class="cursor-pointer transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]" onclick="Livewire.navigate('{{ $e['link'] ?? route('finance.index') }}')">
+                                <td class="max-w-80 px-3 py-2.5 ps-5">
+                                    <div class="flex items-center gap-3">
+                                        <span @class(['flex size-8 shrink-0 items-center justify-center rounded-lg', 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300' => $in, 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300' => ! $in])>
+                                            <flux:icon :icon="$in ? 'arrow-down-left' : 'arrow-up-right'" variant="micro" class="size-4" />
+                                        </span>
+                                        <p class="truncate font-semibold text-zinc-900 dark:text-white">{{ $e['title'] }}</p>
+                                    </div>
+                                </td>
+                                <td class="px-3 py-2.5 font-medium whitespace-nowrap text-zinc-900 dark:text-white">{{ NepaliDate::format($e['date']) }}</td>
+                                <td class="px-3 py-2.5">
+                                    <span class="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium whitespace-nowrap text-zinc-700 dark:bg-white/10 dark:text-zinc-200"><flux:icon :icon="$e['icon']" variant="micro" class="size-3.5" />{{ $e['category'] }}</span>
+                                </td>
+                                <td class="px-3 py-2.5 whitespace-nowrap">
+                                    <span @class(['inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset', 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20' => $in, 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20' => ! $in])>
+                                        <flux:icon :icon="$in ? 'arrow-down-left' : 'arrow-up-right'" variant="micro" class="size-3" />{{ $in ? __('Income') : __('Expense') }}
+                                    </span>
+                                </td>
+                                <td class="px-3 py-2.5 whitespace-nowrap text-zinc-700 dark:text-zinc-300">
+                                    @if ($e['method'])
+                                        <span class="inline-flex items-center gap-1.5"><flux:icon :icon="$methodIcons[$e['method']] ?? 'credit-card'" variant="micro" class="size-4 text-zinc-400" />{{ __($e['method']) }}</span>
+                                    @else
+                                        <span class="text-zinc-300 dark:text-zinc-600">—</span>
+                                    @endif
+                                </td>
+                                <td class="px-3 py-2.5 pe-5 text-end whitespace-nowrap">
+                                    <span @class([
+                                        'inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-sm font-bold tabular-nums ring-1 ring-inset',
+                                        'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20' => $in,
+                                        'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20' => ! $in,
+                                    ])>{{ $in ? '+' : '−' }} {{ $money($e['amount']) }}</span>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+            <a href="{{ route('finance.index') }}" wire:navigate class="group flex items-center justify-center gap-1.5 border-t border-zinc-100 py-3 text-sm font-medium text-brand-600 transition hover:bg-brand-50/60 dark:border-white/5 dark:text-brand-300 dark:hover:bg-brand-500/10" data-test="view-all-transactions">
+                {{ __('View all transactions') }}<flux:icon.arrow-right variant="micro" class="size-4 transition group-hover:translate-x-0.5" />
+            </a>
+        @endif
+    </section>
 </div>
