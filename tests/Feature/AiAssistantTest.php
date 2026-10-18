@@ -25,7 +25,7 @@ class AiAssistantTest extends TestCase
     {
         $this->actingAs(User::factory()->create());
         $client = Client::factory()->create(['name' => 'Sita Rai', 'company' => 'Everest Gym']);
-        $ram = Employee::factory()->create(['name' => 'Ram Thapa']);
+        $ram = Employee::factory()->create(['name' => 'Ram Thapa', 'status' => 'active']);
         $tools = new AiTools;
 
         $found = json_decode($tools->run('find_clients', ['query' => 'everest']), true);
