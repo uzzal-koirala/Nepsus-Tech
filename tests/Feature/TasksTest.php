@@ -102,7 +102,7 @@ class TasksTest extends TestCase
 
         $first = $box->tasks()->where('title', 'Write captions')->sole();
         $page->call('toggleDone', $first->id)
-            ->assertSee(['Dashain campaign', 'Everest Gym', '50%', '1 of 2 tasks done', 'Asha Gurung', 'Shoot greeting video']);
+            ->assertSee(['Dashain campaign', 'Everest Gym', '1 / 2 done', 'Asha Gurung', 'Shoot greeting video']);
 
         $page->call('confirmDeleteBox', $box->id)->call('deleteBox');
         $this->assertModelMissing($box);
