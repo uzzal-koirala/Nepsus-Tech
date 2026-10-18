@@ -116,7 +116,7 @@ new #[Title('Overview')] class extends Component {
     ];
 @endphp
 
-<div class="stagger mx-auto flex w-full max-w-7xl flex-col gap-6">
+<div class="stagger flex w-full flex-col gap-6">
     {{-- Hero --}}
     <section class="grain relative isolate overflow-hidden rounded-2xl bg-brand-500 p-6 text-white sm:p-8">
         <div class="absolute inset-0 -z-10 opacity-20 [background-image:radial-gradient(white_1px,transparent_1px)] [background-size:22px_22px] [mask-image:linear-gradient(to_right,black,transparent_70%)]"></div>
