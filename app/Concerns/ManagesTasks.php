@@ -1,0 +1,125 @@
+<?php
+
+namespace App\Concerns;
+
+use App\Models\Client;
+use App\Models\Employee;
+use App\Models\Task;
+use Flux\Flux;
+use Illuminate\Validation\Rule;
+use Livewire\Attributes\Computed;
+
+/** The add / edit / tick off / delete task flow shared by the Tasks and Calendar pages (form: partials.task-form). */
+trait ManagesTasks
+{
+    public ?int $editingId = null;
+
+    /** @var array<string, mixed> Add / edit task. */
+    public array $task = [];
+
+    public ?int $deletingId = null;
+
+    /** The calendar only holds client work with a date. */
+    public function needsClientAndDate(): bool
+    {
+        return false;
+    }
+
+    protected function taskSaved(Task $task): void {}
+
+    protected function blankTask(?string $date = null, array $preset = []): array
+    {
+        return $preset + ['client_id' => '', 'title' => '', 'type' => array_key_first($this->types) ?? '', 'priority' => 'medium', 'status' => 'todo', 'due_date' => $date ?? '', 'description' => '', 'assignees' => []];
+    }
+
+    #[Computed]
+    public function types(): array
+    {
+        return Task::types();
+    }
+
+    #[Computed]
+    public function clients()
+    {
+        return Client::orderBy('company')->orderBy('name')->get();
+    }
+
+    #[Computed]
+    public function people()
+    {
+        return Employee::where('status', '!=', 'inactive')->orderBy('name')->get();
+    }
+
+    public function newTask(?string $date = null, ?string $status = null): void
+    {
+        $this->editingId = null;
+        $this->task = $this->blankTask($date, $status && array_key_exists($status, Task::STATUSES) ? ['status' => $status] : []);
+        $this->resetErrorBag();
+        Flux::modal('task-form')->show();
+    }
+
+    public function editTask(int $id): void
+    {
+        $t = Task::with('assignees')->findOrFail($id);
+        $this->editingId = $t->id;
+        $this->task = ['client_id' => (string) $t->client_id, 'title' => $t->title, 'type' => $t->type, 'priority' => $t->priority, 'status' => $t->stage(), 'due_date' => (string) $t->due_date?->toDateString(), 'description' => (string) $t->description, 'assignees' => $t->assignees->pluck('id')->map('strval')->all()];
+        $this->resetErrorBag();
+        Flux::modal('task-form')->show();
+    }
+
+    public function saveTask(): void
+    {
+        $strict = $this->needsClientAndDate();
+        $data = $this->validate([
+            'task.client_id' => [$strict ? 'required' : 'nullable', 'exists:clients,id'],
+            'task.title' => ['required', 'string', 'max:255'],
+            'task.type' => ['required', Rule::exists('work_types', 'slug')],
+            'task.priority' => ['required', Rule::in(array_keys(Task::PRIORITIES))],
+            'task.status' => ['required', Rule::in(array_keys(Task::STATUSES))],
+            'task.due_date' => [$strict ? 'required' : 'nullable', 'date'],
+            'task.description' => ['nullable', 'string', 'max:2000'],
+            'task.assignees' => ['array'],
+            'task.assignees.*' => ['integer', Rule::exists('employees', 'id')],
+        ], attributes: ['task.client_id' => __('client'), 'task.title' => __('task'), 'task.due_date' => __('due date'), 'task.type' => __('work type')])['task'];
+
+        $t = $this->editingId ? Task::findOrFail($this->editingId) : new Task;
+        $t->client_id = $data['client_id'] ?: null;
+        $t->fill([
+            'title' => $data['title'], 'type' => $data['type'], 'priority' => $data['priority'], 'status' => $data['status'],
+            'due_date' => $data['due_date'] ?: null, 'description' => $data['description'] ?: null,
+            'completed_at' => $data['status'] === 'done' ? ($t->completed_at ?? now()) : null,
+        ])->save();
+        $t->assignees()->sync($data['assignees'] ?? []);
+
+        $this->taskSaved($t);
+        Flux::modal('task-form')->close();
+        Flux::toast(variant: 'success', text: $this->editingId ? __('Task updated.') : __('Task added.'));
+    }
+
+    public function toggleDone(int $id): void
+    {
+        $t = Task::findOrFail($id);
+        $t->update($t->completed_at ? ['completed_at' => null, 'status' => 'todo'] : ['completed_at' => now(), 'status' => 'done']);
+    }
+
+    public function moveTask(int $id, string $status): void
+    {
+        abort_unless(array_key_exists($status, Task::STATUSES), 422);
+        $t = Task::findOrFail($id);
+        $t->update(['status' => $status, 'completed_at' => $status === 'done' ? ($t->completed_at ?? now()) : null]);
+    }
+
+    public function confirmDelete(int $id): void
+    {
+        $this->deletingId = $id;
+        Flux::modal('task-delete')->show();
+    }
+
+    public function deleteTask(): void
+    {
+        Task::whereKey($this->deletingId)->delete();
+        $this->deletingId = null;
+        Flux::modal('task-delete')->close();
+        Flux::toast(text: __('Task deleted.'));
+    }
+}

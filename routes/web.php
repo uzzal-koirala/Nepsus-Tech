@@ -18,6 +18,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('employees/{employee}', 'pages::employee-profile')->name('employees.show');
     Route::livewire('sales', 'pages::sales')->name('sales.index');
     Route::livewire('sales/leads/{lead}', 'pages::lead-profile')->name('sales.leads.show');
+    Route::livewire('tasks', 'pages::tasks')->name('tasks.index');
     Route::livewire('calendar', 'pages::calendar')->name('calendar.index');
     Route::livewire('invoices', 'pages::invoices')->name('invoices.index');
     Route::livewire('invoices/create', 'pages::invoice-editor')->name('invoices.create');

@@ -21,8 +21,7 @@
                             ['icon' => 'building-office-2', 'label' => __('Clients'), 'route' => 'clients.index'],
                             ['icon' => 'cube', 'label' => __('Packages'), 'route' => 'packages.index'],
                             ['icon' => 'presentation-chart-line', 'label' => __('Sales & Marketing'), 'route' => 'sales.index'],
-                            ['icon' => 'folder', 'label' => __('Projects')],
-                            ['icon' => 'check-circle', 'label' => __('Tasks')],
+                            ['icon' => 'check-circle', 'label' => __('Tasks'), 'route' => 'tasks.index'],
                         ],
                         __('Money') => [
                             ['icon' => 'banknotes', 'label' => __('Finance'), 'route' => 'finance.index'],
@@ -30,7 +29,6 @@
                         ],
                         __('Team') => [
                             ['icon' => 'user-group', 'label' => __('Employees'), 'route' => 'employees.index'],
-                            ['icon' => 'clock', 'label' => __('Activity log')],
                         ],
                     ];
                 @endphp
@@ -41,34 +39,15 @@
                         <hr class="mx-auto my-3 hidden w-6 border-zinc-200 in-data-flux-sidebar-collapsed-desktop:block dark:border-white/10">
 
                         @foreach ($items as $item)
-                            @isset($item['route'])
-                                <flux:sidebar.item :icon="$item['icon']" :href="route($item['route'])" :current="request()->routeIs(str($item['route'])->before('.').'*')" wire:navigate.hover>
-                                    {{ $item['label'] }}
-                                </flux:sidebar.item>
-                            @else
-                                {{-- ponytail: placeholder until the module ships; swap in :href when its route exists --}}
-                                <flux:sidebar.item :icon="$item['icon']" badge="{{ __('Soon') }}" aria-disabled="true" class="pointer-events-none opacity-55">
-                                    {{ $item['label'] }}
-                                </flux:sidebar.item>
-                            @endisset
+                            <flux:sidebar.item :icon="$item['icon']" :href="route($item['route'])" :current="request()->routeIs(str($item['route'])->before('.').'*')" wire:navigate.hover>
+                                {{ $item['label'] }}
+                            </flux:sidebar.item>
                         @endforeach
                     </div>
                 @endforeach
             </flux:sidebar.nav>
 
             <flux:spacer />
-
-            {{-- Workspace card --}}
-            <div class="grain relative isolate mt-6 overflow-hidden rounded-2xl bg-brand-500 p-4 text-white in-data-flux-sidebar-collapsed-desktop:hidden">
-                <div class="absolute -top-10 -right-10 -z-10 size-20 rounded-full bg-sun"></div>
-                <div class="absolute inset-0 -z-10 opacity-20 [background-image:radial-gradient(white_1px,transparent_1px)] [background-size:16px_16px]"></div>
-                <p class="text-xs font-medium text-brand-100">{{ __('Up next') }}</p>
-                <p class="mt-1 pe-6 text-sm leading-snug font-semibold text-balance">{{ __('Client profiles, projects and task boards') }}</p>
-                <p class="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-[0.6875rem] font-medium ring-1 ring-white/20">
-                    <span class="size-1.5 rounded-full bg-sun"></span>
-                    {{ __('In progress') }}
-                </p>
-            </div>
 
             <flux:sidebar.nav>
                 <flux:sidebar.item icon="cog-6-tooth" :href="route('settings.business')" :current="request()->routeIs('profile.edit', 'security.edit', 'appearance.edit', 'settings.*')" wire:navigate.hover>

@@ -49,6 +49,13 @@ class Task extends Model
         'urgent' => 'Urgent',
     ];
 
+    public const PRIORITY_STYLES = [
+        'low' => ['icon' => 'arrow-down', 'tone' => 'bg-zinc-50 text-zinc-500 ring-zinc-200 dark:bg-white/5 dark:text-zinc-400 dark:ring-white/10'],
+        'medium' => ['icon' => 'minus', 'tone' => 'bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-500/20'],
+        'high' => ['icon' => 'arrow-up', 'tone' => 'bg-orange-50 text-orange-700 ring-orange-200 dark:bg-orange-500/10 dark:text-orange-300 dark:ring-orange-500/20'],
+        'urgent' => ['icon' => 'fire', 'tone' => 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20'],
+    ];
+
     protected function casts(): array
     {
         return [

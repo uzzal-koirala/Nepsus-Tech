@@ -1,19 +1,18 @@
 <?php
 
-use App\Models\Client;
-use App\Models\Employee;
+use App\Concerns\ManagesTasks;
 use App\Models\Task;
 use App\Models\WorkType;
 use App\Support\NepaliDate;
-use Flux\Flux;
 use Illuminate\Support\Carbon;
-use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
 new #[Title('Calendar')] class extends Component {
+    use ManagesTasks;
+
     /** BS month shown, e.g. "2083-07". */
     #[Url(except: '')]
     public string $month = '';
@@ -25,31 +24,12 @@ new #[Title('Calendar')] class extends Component {
     #[Url(except: [])]
     public array $off = [];
 
-    public ?int $editingId = null;
-
-    /** @var array<string, mixed> Add / edit task. */
-    public array $task = [];
-
-    public ?int $deletingId = null;
-
     public function mount(): void
     {
         if (! preg_match('/^\d{4}-\d{2}$/', $this->month)) {
             $this->month = NepaliDate::period(today());
         }
         $this->day = today()->toDateString();
-        $this->task = $this->blankTask();
-    }
-
-    private function blankTask(?string $date = null): array
-    {
-        return ['client_id' => '', 'title' => '', 'type' => array_key_first($this->types) ?? '', 'priority' => 'medium', 'status' => 'todo', 'due_date' => $date ?? today()->toDateString(), 'description' => '', 'assignees' => []];
-    }
-
-    #[Computed]
-    public function types(): array
-    {
-        return Task::types();
     }
 
     /** @return array{0: int, 1: int} */
@@ -143,75 +123,14 @@ new #[Title('Calendar')] class extends Component {
         ];
     }
 
-    #[Computed]
-    public function clients()
+    public function needsClientAndDate(): bool
     {
-        return Client::orderBy('company')->orderBy('name')->get();
+        return true;
     }
 
-    public function newTask(?string $date = null): void
+    protected function taskSaved(Task $task): void
     {
-        $this->editingId = null;
-        $this->task = $this->blankTask($date ?: $this->day);
-        $this->resetErrorBag();
-        Flux::modal('task-form')->show();
-    }
-
-    public function editTask(int $id): void
-    {
-        $t = Task::with('assignees')->whereNotNull('client_id')->findOrFail($id);
-        $this->editingId = $t->id;
-        $this->task = ['client_id' => (string) $t->client_id, 'title' => $t->title, 'type' => $t->type, 'priority' => $t->priority, 'status' => $t->stage(), 'due_date' => (string) $t->due_date?->toDateString(), 'description' => (string) $t->description, 'assignees' => $t->assignees->pluck('id')->map('strval')->all()];
-        $this->resetErrorBag();
-        Flux::modal('task-form')->show();
-    }
-
-    public function saveTask(): void
-    {
-        $data = $this->validate([
-            'task.client_id' => ['required', 'exists:clients,id'],
-            'task.title' => ['required', 'string', 'max:255'],
-            'task.type' => ['required', Rule::exists('work_types', 'slug')],
-            'task.priority' => ['required', Rule::in(array_keys(Task::PRIORITIES))],
-            'task.status' => ['required', Rule::in(array_keys(Task::STATUSES))],
-            'task.due_date' => ['required', 'date'],
-            'task.description' => ['nullable', 'string', 'max:2000'],
-            'task.assignees' => ['array'],
-            'task.assignees.*' => ['integer', Rule::exists('employees', 'id')],
-        ], attributes: ['task.client_id' => __('client'), 'task.title' => __('task'), 'task.due_date' => __('due date'), 'task.type' => __('work type')])['task'];
-
-        $t = $this->editingId ? Task::findOrFail($this->editingId) : new Task;
-        $t->client_id = $data['client_id'];
-        $t->fill([
-            'title' => $data['title'], 'type' => $data['type'], 'priority' => $data['priority'], 'status' => $data['status'],
-            'due_date' => $data['due_date'], 'description' => $data['description'] ?: null,
-            'completed_at' => $data['status'] === 'done' ? ($t->completed_at ?? now()) : null,
-        ])->save();
-        $t->assignees()->sync($data['assignees'] ?? []);
-
-        $this->pick($data['due_date']);
-        Flux::modal('task-form')->close();
-        Flux::toast(variant: 'success', text: $this->editingId ? __('Task updated.') : __('Task added.'));
-    }
-
-    public function toggleDone(int $id): void
-    {
-        $t = Task::whereNotNull('client_id')->findOrFail($id);
-        $t->update($t->completed_at ? ['completed_at' => null, 'status' => 'todo'] : ['completed_at' => now(), 'status' => 'done']);
-    }
-
-    public function confirmDelete(int $id): void
-    {
-        $this->deletingId = $id;
-        Flux::modal('task-delete')->show();
-    }
-
-    public function deleteTask(): void
-    {
-        Task::whereNotNull('client_id')->whereKey($this->deletingId)->delete();
-        $this->deletingId = null;
-        Flux::modal('task-delete')->close();
-        Flux::toast(text: __('Task deleted.'));
+        $this->pick($task->due_date->toDateString());
     }
 }; ?>
 
@@ -228,12 +147,6 @@ new #[Title('Calendar')] class extends Component {
     $weeks = $this->weeks;
     $weekdays = [__('Sun'), __('Mon'), __('Tue'), __('Wed'), __('Thu'), __('Fri'), __('Sat')];
     $bsDay = fn ($d) => NepaliDate::fromAd($d)[2] ?? $d->day;
-    $priorityTones = [
-        'urgent' => 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20',
-        'high' => 'bg-orange-50 text-orange-700 ring-orange-200 dark:bg-orange-500/10 dark:text-orange-300 dark:ring-orange-500/20',
-        'medium' => 'bg-zinc-50 text-zinc-600 ring-zinc-200 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10',
-        'low' => 'bg-zinc-50 text-zinc-500 ring-zinc-200 dark:bg-white/5 dark:text-zinc-400 dark:ring-white/10',
-    ];
 @endphp
 
 <div class="stagger flex w-full flex-col gap-6">
@@ -242,7 +155,7 @@ new #[Title('Calendar')] class extends Component {
             <h1 class="text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-3xl dark:text-white">{{ __('Calendar') }}</h1>
             <p class="mt-1 text-sm text-zinc-500">{{ __('Every client task on its due date. Plan the month and add work as it comes.') }}</p>
         </div>
-        <flux:button variant="primary" icon="plus" wire:click="newTask" class="shadow-lg shadow-brand-500/25" data-test="new-task">{{ __('Add task') }}</flux:button>
+        <flux:button variant="primary" icon="plus" wire:click="newTask('{{ $day }}')" class="shadow-lg shadow-brand-500/25" data-test="new-task">{{ __('Add task') }}</flux:button>
     </header>
 
     {{-- Month at a glance --}}
@@ -373,7 +286,7 @@ new #[Title('Calendar')] class extends Component {
                                 <a href="{{ route('clients.show', $t->client) }}" wire:navigate class="block truncate text-xs text-zinc-500 hover:text-brand-600">{{ $t->client->displayName() }}</a>
                                 <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
                                     <span class="{{ $toneOf($t->type)['chip'] }} inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium ring-1"><flux:icon :icon="$type['icon']" variant="micro" class="size-3" />{{ $type['label'] }}</span>
-                                    <span class="{{ $priorityTones[$t->priority] ?? $priorityTones['medium'] }} rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium ring-1">{{ __(Task::PRIORITIES[$t->priority] ?? 'Medium') }}</span>
+                                    <span class="{{ (Task::PRIORITY_STYLES[$t->priority] ?? Task::PRIORITY_STYLES['medium'])['tone'] }} rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium ring-1">{{ __(Task::PRIORITIES[$t->priority] ?? 'Medium') }}</span>
                                     @if ($t->isOverdue())<span class="text-[0.6875rem] font-semibold text-rose-600 dark:text-rose-400">{{ __('Overdue') }}</span>@endif
                                     @if ($t->assignees->isNotEmpty())
                                         <span class="flex -space-x-1.5">
@@ -401,62 +314,5 @@ new #[Title('Calendar')] class extends Component {
         </aside>
     </div>
 
-    {{-- Add / edit task --}}
-    <flux:modal name="task-form" class="w-full max-w-2xl overflow-visible!">
-        <form wire:submit="saveTask" class="flex flex-col gap-5">
-            <div class="flex items-center gap-3">
-                <span class="flex size-10 items-center justify-center rounded-xl bg-brand-500 text-white shadow-md shadow-brand-500/30"><flux:icon.clipboard-document-check variant="mini" class="size-5" /></span>
-                <flux:heading size="lg">{{ $editingId ? __('Edit task') : __('Add task') }}</flux:heading>
-            </div>
-            @php
-                $clientOptions = $this->clients->map(fn ($c) => ['value' => $c->id, 'label' => $c->displayName(), 'hint' => $c->company ? $c->name : $c->phone, 'initials' => $c->initials(), 'tile' => 'bg-linear-to-br from-brand-500 to-violet-600 text-white']);
-                $typeOptions = collect($types)->map(fn ($t, $slug) => ['value' => $slug, 'label' => $t['label'], 'icon' => $t['icon'], 'tile' => $toneOf($slug)['chip']])->values();
-                $priorityIcons = ['low' => 'arrow-down', 'medium' => 'minus', 'high' => 'arrow-up', 'urgent' => 'fire'];
-                $priorityOptions = collect(Task::PRIORITIES)->map(fn ($label, $k) => ['value' => $k, 'label' => __($label), 'icon' => $priorityIcons[$k] ?? 'minus', 'tile' => $priorityTones[$k]])->values();
-                $statusOptions = collect(Task::STATUSES)->map(fn ($s, $k) => ['value' => $k, 'label' => __($s['label']), 'icon' => $s['icon']])->values();
-                $employees = Employee::where('status', '!=', 'inactive')->orderBy('name')->get();
-            @endphp
-            <div class="grid gap-4 sm:grid-cols-2">
-                <x-rich-select model="task.client_id" class="sm:col-span-2" :label="__('Client')" :placeholder="__('Pick a client')" :options="$clientOptions" searchable />
-                <div class="sm:col-span-2"><flux:input wire:model="task.title" :label="__('Task')" :placeholder="__('e.g. Design 4 posts for Dashain')" required data-test="task-title" /></div>
-                <x-rich-select model="task.type" :label="__('Work type')" :options="$typeOptions" :searchable="count($types) > 6" />
-                <x-nepali-date wire:model="task.due_date" :label="__('Due date')" />
-                <x-rich-select model="task.priority" :label="__('Priority')" :options="$priorityOptions" />
-                <x-rich-select model="task.status" :label="__('Status')" :options="$statusOptions" />
-                @if ($employees->isNotEmpty())
-                    <div class="sm:col-span-2">
-                        <p class="mb-2 text-sm font-medium text-zinc-800 dark:text-white">{{ __('Assigned to') }}</p>
-                        <div class="flex flex-wrap gap-2">
-                            @foreach ($employees as $e)
-                                <label wire:key="as-{{ $e->id }}" class="flex cursor-pointer items-center gap-2 rounded-full py-1 ps-1 pe-3 text-sm ring-1 ring-zinc-200 transition has-checked:bg-brand-50 has-checked:text-brand-700 has-checked:ring-brand-500 dark:ring-white/10 dark:has-checked:bg-brand-500/10 dark:has-checked:text-brand-200">
-                                    <input type="checkbox" wire:model="task.assignees" value="{{ $e->id }}" class="sr-only">
-                                    <span class="flex size-6 items-center justify-center rounded-full bg-zinc-100 text-[0.625rem] font-bold text-zinc-600 dark:bg-white/10 dark:text-zinc-300">{{ $e->initials() }}</span>
-                                    {{ $e->name }}
-                                </label>
-                            @endforeach
-                        </div>
-                    </div>
-                @endif
-                <div class="sm:col-span-2"><flux:textarea wire:model="task.description" :label="__('Details')" rows="2" :placeholder="__('Brief, links, captions...')" /></div>
-            </div>
-            <div class="flex justify-end gap-2">
-                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
-                <flux:button type="submit" variant="primary" icon="check" data-test="save-task">{{ __('Save task') }}</flux:button>
-            </div>
-        </form>
-    </flux:modal>
-
-    <flux:modal name="task-delete" class="w-full max-w-sm">
-        <div class="flex flex-col items-center gap-4 text-center">
-            <span class="flex size-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 dark:bg-rose-500/10"><flux:icon.trash class="size-7" /></span>
-            <div>
-                <flux:heading size="lg">{{ __('Delete this task?') }}</flux:heading>
-                <flux:text class="mt-1">{{ __('It will be removed from the client too.') }}</flux:text>
-            </div>
-            <div class="flex w-full gap-2">
-                <flux:modal.close><flux:button variant="ghost" class="flex-1">{{ __('Cancel') }}</flux:button></flux:modal.close>
-                <flux:button variant="danger" wire:click="deleteTask" class="flex-1">{{ __('Delete') }}</flux:button>
-            </div>
-        </div>
-    </flux:modal>
+    @include('partials.task-form')
 </div>
