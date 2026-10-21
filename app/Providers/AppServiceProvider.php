@@ -27,6 +27,9 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
 
+        // Uploads up to 20 MB (Documents page); Livewire's own default stops at 12 MB.
+        config(['livewire.temporary_file_upload.rules' => ['required', 'file', 'max:20480']]);
+
         // Currency and app name follow the workspace settings.
         config([
             'app.currency' => \App\Models\Setting::get('currency'),

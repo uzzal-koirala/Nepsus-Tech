@@ -20,6 +20,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('sales', 'pages::sales')->name('sales.index');
     Route::livewire('sales/leads/{lead}', 'pages::lead-profile')->name('sales.leads.show');
     Route::livewire('tasks', 'pages::tasks')->name('tasks.index');
+    Route::livewire('documents', 'pages::documents')->name('library.index');
     Route::livewire('calendar', 'pages::calendar')->name('calendar.index');
     Route::livewire('invoices', 'pages::invoices')->name('invoices.index');
     Route::livewire('invoices/create', 'pages::invoice-editor')->name('invoices.create');
@@ -29,6 +30,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('documents/{document}', fn (Document $document) => Storage::disk('local')->download($document->path, $document->name))
         ->name('documents.download');
+
+    // Company documents (Documents page): open in the browser, or download.
+    Route::get('library/{companyDocument}/view', fn (App\Models\CompanyDocument $companyDocument) => Storage::disk('local')
+        ->response($companyDocument->path, $companyDocument->name.'.'.$companyDocument->extension, ['X-Content-Type-Options' => 'nosniff']))->name('library.view');
+    Route::get('library/{companyDocument}/download', fn (App\Models\CompanyDocument $companyDocument) => Storage::disk('local')
+        ->download($companyDocument->path, $companyDocument->name.'.'.$companyDocument->extension))->name('library.download');
 
     Route::get('employee-documents/{employeeDocument}', fn (EmployeeDocument $employeeDocument) => Storage::disk('local')->download($employeeDocument->path, $employeeDocument->name))
         ->name('employee-documents.download');

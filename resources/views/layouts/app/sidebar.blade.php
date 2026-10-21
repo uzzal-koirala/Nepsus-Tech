@@ -22,6 +22,7 @@
                             ['icon' => 'cube', 'label' => __('Packages'), 'route' => 'packages.index'],
                             ['icon' => 'presentation-chart-line', 'label' => __('Sales & Marketing'), 'route' => 'sales.index'],
                             ['icon' => 'check-circle', 'label' => __('Tasks'), 'route' => 'tasks.index'],
+                            ['icon' => 'folder-open', 'label' => __('Documents'), 'route' => 'library.index'],
                         ],
                         __('Money') => [
                             ['icon' => 'banknotes', 'label' => __('Finance'), 'route' => 'finance.index'],
