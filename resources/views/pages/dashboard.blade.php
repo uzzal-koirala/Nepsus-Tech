@@ -89,7 +89,6 @@ new #[Title('Overview')] class extends Component {
     $s = $this->stats;
     $hour = (int) now()->format('G');
     $greeting = $hour < 12 ? __('Good morning') : ($hour < 17 ? __('Good afternoon') : __('Good evening'));
-    $max = max(1, collect($this->flow)->flatMap(fn ($f) => [$f['income'], $f['spent']])->max());
 @endphp
 
 <div class="stagger flex w-full flex-col gap-6">
@@ -136,42 +135,149 @@ new #[Title('Overview')] class extends Component {
 
     <div class="grid items-start gap-6 lg:grid-cols-3">
         <div class="flex min-w-0 flex-col gap-6 lg:col-span-2">
-            {{-- Cash flow --}}
-            <section class="{{ $panel }} p-5 sm:p-6">
-                <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+            {{-- Cash flow: smooth area chart, money in vs out --}}
+            @php
+                $flow = $this->flow;
+                $n = count($flow);
+                $peak = max(1, collect($flow)->flatMap(fn ($f) => [$f['income'], $f['spent']])->max());
+                // A round top value so the grid reads 0 / 25k / 50k / 75k / 100k.
+                $mag = 10 ** max(0, floor(log10($peak)) - 1);
+                $top = ceil($peak * 1.08 / ($mag * 4)) * $mag * 4;
+                $short = fn ($v) => $v >= 100000 ? rtrim(rtrim(number_format($v / 100000, 1), '0'), '.').'L' : ($v >= 1000 ? rtrim(rtrim(number_format($v / 1000, 1), '0'), '.').'k' : (string) (int) $v);
+                $xs = array_map(fn ($i) => $n > 1 ? 3 + $i * 94 / ($n - 1) : 50, range(0, $n - 1));
+                $y = fn ($v) => 100 - $v / $top * 100;
+                // Monotone cubic (Fritsch-Carlson): smooth, never overshoots the real values or dips below zero.
+                $curve = function (array $vals) use ($xs, $y, $n) {
+                    $pts = array_map(fn ($i) => [$xs[$i], $y($vals[$i])], range(0, $n - 1));
+                    if ($n < 2) {
+                        return 'M'.$pts[0][0].','.$pts[0][1];
+                    }
+                    $d = [];
+                    $m = [];
+                    for ($i = 0; $i < $n - 1; $i++) {
+                        $d[$i] = ($pts[$i + 1][1] - $pts[$i][1]) / ($pts[$i + 1][0] - $pts[$i][0]);
+                    }
+                    $m[0] = $d[0];
+                    $m[$n - 1] = $d[$n - 2];
+                    for ($i = 1; $i < $n - 1; $i++) {
+                        $m[$i] = $d[$i - 1] * $d[$i] <= 0 ? 0 : ($d[$i - 1] + $d[$i]) / 2;
+                    }
+                    for ($i = 0; $i < $n - 1; $i++) {
+                        if ($d[$i] == 0) {
+                            $m[$i] = $m[$i + 1] = 0;
+
+                            continue;
+                        }
+                        $a = $m[$i] / $d[$i];
+                        $b = $m[$i + 1] / $d[$i];
+                        if ($a * $a + $b * $b > 9) {
+                            $t = 3 / sqrt($a * $a + $b * $b);
+                            $m[$i] = $t * $a * $d[$i];
+                            $m[$i + 1] = $t * $b * $d[$i];
+                        }
+                    }
+                    $path = 'M'.round($pts[0][0], 2).','.round($pts[0][1], 2);
+                    for ($i = 0; $i < $n - 1; $i++) {
+                        $h = ($pts[$i + 1][0] - $pts[$i][0]) / 3;
+                        $path .= sprintf(' C%.2f,%.2f %.2f,%.2f %.2f,%.2f', $pts[$i][0] + $h, $pts[$i][1] + $m[$i] * $h, $pts[$i + 1][0] - $h, $pts[$i + 1][1] - $m[$i + 1] * $h, $pts[$i + 1][0], $pts[$i + 1][1]);
+                    }
+
+                    return $path;
+                };
+                $in = array_column($flow, 'income');
+                $out = array_column($flow, 'spent');
+                $inLine = $curve($in);
+                $outLine = $curve($out);
+                $close = ' L'.end($xs).',100 L'.$xs[0].',100 Z';
+                $points = array_map(fn ($i) => [
+                    'x' => $xs[$i], 'month' => NepaliDate::periodLabel($flow[$i]['period']),
+                    'in' => $money($in[$i]), 'out' => $money($out[$i]), 'net' => $money(abs($in[$i] - $out[$i])), 'up' => $in[$i] >= $out[$i],
+                    'yi' => $y($in[$i]), 'yo' => $y($out[$i]),
+                ], range(0, $n - 1));
+                $totalIn = array_sum($in);
+                $totalOut = array_sum($out);
+            @endphp
+            <section class="{{ $panel }} p-5 sm:p-6 [--c-in:#0e9f6e] [--c-out:#e8590c] dark:[--c-in:#1fa576] dark:[--c-out:#e9622a]" data-test="cash-flow">
+                <div class="flex flex-wrap items-start gap-x-6 gap-y-3">
                     <div class="flex-1">
                         <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Cash flow') }}</h2>
                         <p class="text-sm text-zinc-500">{{ __('Money in and out, last 6 months') }}</p>
                     </div>
-                    <div class="flex items-center gap-4 text-xs font-medium text-zinc-600 dark:text-zinc-300">
-                        <span class="inline-flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-emerald-500"></span>{{ __('Income') }}</span>
-                        <span class="inline-flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-rose-400"></span>{{ __('Spent') }}</span>
+                    <div class="flex items-center gap-5">
+                        @foreach ([[__('Money in'), $totalIn, 'var(--c-in)', false], [__('Money out'), $totalOut, 'var(--c-out)', true]] as [$label, $total, $color, $dashed])
+                            <div>
+                                <p class="flex items-center gap-1.5 text-xs font-medium text-zinc-500">
+                                    <svg class="h-2 w-4" viewBox="0 0 16 8" aria-hidden="true"><line x1="1" y1="4" x2="15" y2="4" stroke="{{ $color }}" stroke-width="2.5" stroke-linecap="round" @if ($dashed) stroke-dasharray="4 3" @endif /></svg>
+                                    {{ $label }}
+                                </p>
+                                <p class="mt-0.5 text-base font-bold text-zinc-900 tabular-nums dark:text-white">{{ $money($total) }}</p>
+                            </div>
+                        @endforeach
                     </div>
                 </div>
 
-                <div class="relative mt-6 grid h-56 grid-cols-6 items-end gap-3 sm:gap-6">
-                    <div class="pointer-events-none absolute inset-0 flex flex-col justify-between">
-                        @foreach (range(1, 4) as $_)<div class="border-t border-dashed border-zinc-100 dark:border-white/5"></div>@endforeach
+                <div class="mt-6 flex gap-3" x-data="{ i: null, pts: @js($points) }">
+                    {{-- Amount axis --}}
+                    <div class="relative h-56 w-10 shrink-0 text-end text-[0.6875rem] text-zinc-400 tabular-nums" aria-hidden="true">
+                        @foreach ([1, 0.75, 0.5, 0.25, 0] as $f)
+                            <span class="absolute right-0 -translate-y-1/2" style="top: {{ (1 - $f) * 100 }}%">{{ $short($top * $f) }}</span>
+                        @endforeach
                     </div>
-                    @foreach ($this->flow as $f)
-                        <div class="group relative flex h-full flex-col justify-end">
-                            <div class="flex h-full items-end justify-center gap-1 sm:gap-1.5">
-                                <div class="w-full max-w-7 rounded-t-md bg-linear-to-t from-emerald-500 to-emerald-400 transition-[height] duration-700" style="height: {{ max(2, $f['income'] / $max * 100) }}%"></div>
-                                <div class="w-full max-w-7 rounded-t-md bg-linear-to-t from-rose-400 to-rose-300 transition-[height] duration-700" style="height: {{ max(2, $f['spent'] / $max * 100) }}%"></div>
-                            </div>
-                            <div class="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 hidden w-max -translate-x-1/2 rounded-lg bg-zinc-900 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
-                                <p class="font-semibold">{{ NepaliDate::periodLabel($f['period']) }}</p>
-                                <p class="text-emerald-300">{{ __('In') }} {{ $money($f['income']) }}</p>
-                                <p class="text-rose-300">{{ __('Out') }} {{ $money($f['spent']) }}</p>
-                            </div>
+                    <div class="min-w-0 flex-1">
+                        <div class="relative h-56" @mouseleave="i = null"
+                            @mousemove="const r = $el.getBoundingClientRect(); const x = ($event.clientX - r.left) / r.width * 100; i = pts.reduce((best, p, k) => Math.abs(p.x - x) < Math.abs(pts[best].x - x) ? k : best, 0)">
+                            {{-- Grid --}}
+                            @foreach ([0, 0.25, 0.5, 0.75, 1] as $f)
+                                <div @class(['pointer-events-none absolute inset-x-0 border-t', 'border-zinc-200 dark:border-white/10' => $f === 1, 'border-dashed border-zinc-100 dark:border-white/5' => $f !== 1]) style="top: {{ $f * 100 }}%"></div>
+                            @endforeach
+
+                            <svg class="absolute inset-0 size-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                                <defs>
+                                    <linearGradient id="cf-in" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--c-in)" stop-opacity=".22" /><stop offset="100%" stop-color="var(--c-in)" stop-opacity="0" /></linearGradient>
+                                    <linearGradient id="cf-out" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--c-out)" stop-opacity=".16" /><stop offset="100%" stop-color="var(--c-out)" stop-opacity="0" /></linearGradient>
+                                </defs>
+                                <path d="{{ $outLine.$close }}" fill="url(#cf-out)" />
+                                <path d="{{ $inLine.$close }}" fill="url(#cf-in)" />
+                                <path d="{{ $outLine }}" fill="none" stroke="var(--c-out)" stroke-width="2" stroke-dasharray="6 4" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+                                <path d="{{ $inLine }}" fill="none" stroke="var(--c-in)" stroke-width="2.5" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+                            </svg>
+
+                            {{-- Latest month, always marked --}}
+                            @php $last = end($points); @endphp
+                            <span x-show="i === null" class="pointer-events-none absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-zinc-950" style="left: {{ $last['x'] }}%; top: {{ $last['yi'] }}%; background: var(--c-in)"></span>
+                            <span x-show="i === null" class="pointer-events-none absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-zinc-950" style="left: {{ $last['x'] }}%; top: {{ $last['yo'] }}%; background: var(--c-out)"></span>
+
+                            {{-- Hover: guide line, points and the month's numbers --}}
+                            <template x-if="i !== null">
+                                <div class="pointer-events-none absolute inset-0">
+                                    <div class="absolute inset-y-0 border-l border-zinc-300 dark:border-white/20" :style="`left: ${pts[i].x}%`"></div>
+                                    <span class="absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-zinc-950" :style="`left: ${pts[i].x}%; top: ${pts[i].yi}%; background: var(--c-in)`"></span>
+                                    <span class="absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-zinc-950" :style="`left: ${pts[i].x}%; top: ${pts[i].yo}%; background: var(--c-out)`"></span>
+                                    <div class="absolute top-1 w-44 rounded-xl bg-white p-3 text-xs shadow-[0_12px_32px_-10px_rgb(15_23_42/0.35)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10"
+                                        :style="pts[i].x > 60 ? `right: ${100 - pts[i].x + 2}%` : `left: ${pts[i].x + 2}%`">
+                                        <p class="font-semibold text-zinc-900 dark:text-white" x-text="pts[i].month"></p>
+                                        <p class="mt-1.5 flex items-center justify-between gap-2 text-zinc-500"><span class="flex items-center gap-1.5"><span class="h-0.5 w-3 rounded" style="background: var(--c-in)"></span>{{ __('In') }}</span><span class="font-semibold text-zinc-900 tabular-nums dark:text-white" x-text="pts[i].in"></span></p>
+                                        <p class="mt-1 flex items-center justify-between gap-2 text-zinc-500"><span class="flex items-center gap-1.5"><span class="h-0.5 w-3 rounded" style="background: var(--c-out)"></span>{{ __('Out') }}</span><span class="font-semibold text-zinc-900 tabular-nums dark:text-white" x-text="pts[i].out"></span></p>
+                                        <p class="mt-1.5 flex items-center justify-between gap-2 border-t border-zinc-100 pt-1.5 text-zinc-500 dark:border-white/10"><span x-text="pts[i].up ? @js(__('Saved')) : @js(__('Overspent'))"></span><span class="font-semibold tabular-nums" :class="pts[i].up ? 'text-zinc-900 dark:text-white' : 'text-rose-600 dark:text-rose-400'" x-text="pts[i].net"></span></p>
+                                    </div>
+                                </div>
+                            </template>
                         </div>
-                    @endforeach
+                        {{-- Months --}}
+                        <div class="relative mt-2 h-4 text-[0.6875rem] text-zinc-500">
+                            @foreach ($points as $k => $p)
+                                <span @class(['absolute -translate-x-1/2 whitespace-nowrap', 'font-semibold text-zinc-900 dark:text-white' => $loop->last]) style="left: {{ $p['x'] }}%">{{ str($p['month'])->before(' ') }}</span>
+                            @endforeach
+                        </div>
+                    </div>
                 </div>
-                <div class="mt-2 grid grid-cols-6 gap-3 text-center text-xs text-zinc-500 sm:gap-6">
-                    @foreach ($this->flow as $f)
-                        <span @class(['truncate', 'font-semibold text-zinc-900 dark:text-white' => $loop->last])>{{ str(NepaliDate::periodLabel($f['period']))->before(' ') }}</span>
-                    @endforeach
-                </div>
+
+                {{-- The same numbers for screen readers --}}
+                <table class="sr-only">
+                    <caption>{{ __('Cash flow, last 6 months') }}</caption>
+                    <tr><th>{{ __('Month') }}</th><th>{{ __('Money in') }}</th><th>{{ __('Money out') }}</th></tr>
+                    @foreach ($points as $p)<tr><td>{{ $p['month'] }}</td><td>{{ $p['in'] }}</td><td>{{ $p['out'] }}</td></tr>@endforeach
+                </table>
             </section>
 
         </div>
