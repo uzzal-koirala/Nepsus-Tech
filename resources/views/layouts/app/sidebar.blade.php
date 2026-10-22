@@ -38,7 +38,7 @@
 
                 @foreach ($sections as $heading => $items)
                     <div class="flex flex-col">
-                        <p class="px-3 pt-5 pb-2 text-[0.6875rem] font-semibold tracking-[0.08em] text-zinc-400 uppercase in-data-flux-sidebar-collapsed-desktop:hidden dark:text-zinc-500">{{ $heading }}</p>
+                        <p class="px-3 pt-4 pb-1.5 text-[0.6875rem] font-semibold tracking-[0.08em] text-zinc-400 uppercase in-data-flux-sidebar-collapsed-desktop:hidden dark:text-zinc-500">{{ $heading }}</p>
                         <hr class="mx-auto my-3 hidden w-6 border-zinc-200 in-data-flux-sidebar-collapsed-desktop:block dark:border-white/10">
 
                         @foreach ($items as $item)
