@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Storage;
@@ -61,6 +62,12 @@ class Employee extends Model
             'date_of_birth' => 'date',
             'salary' => 'decimal:2',
         ];
+    }
+
+    /** Their login to this system, if they have one. */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function attendances(): HasMany
@@ -161,7 +168,13 @@ class Employee extends Model
 
     protected static function booted(): void
     {
-        static::deleted(fn (Employee $employee) => $employee->avatar_path && Storage::disk('public')->delete($employee->avatar_path));
+        static::deleted(function (Employee $employee) {
+            $employee->avatar_path && Storage::disk('public')->delete($employee->avatar_path);
+            // A removed employee can no longer sign in (never your own account).
+            if ($employee->user_id && $employee->user_id !== auth()->id()) {
+                $employee->user?->delete();
+            }
+        });
     }
 
     public function avatarUrl(): ?string

@@ -5,10 +5,13 @@ use App\Models\Client;
 use App\Models\Employee;
 use App\Models\EmployeeDocument;
 use App\Models\SalaryPayment;
+use App\Models\User;
 use App\Support\NepaliDate;
 use Flux\Flux;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
@@ -21,7 +24,7 @@ new #[Title('Employee')] class extends Component {
 
     public Employee $employee;
 
-    public const TABS = ['overview', 'work', 'salary', 'documents', 'details'];
+    public const TABS = ['overview', 'work', 'salary', 'documents', 'details', 'account'];
 
     /** Personal details edited from the Details tab. */
     public const DETAIL_FIELDS = [
@@ -80,15 +83,86 @@ new #[Title('Employee')] class extends Component {
 
     public string $payNote = '';
 
+    /** Login account form. */
+    public string $accEmail = '';
+    public string $accPassword = '';
+
     public function mount(Employee $employee): void
     {
         $this->employee = $employee;
         [$this->calYear, $this->calMonth] = NepaliDate::fromAd(today());
+        $this->setTab($this->tab);
     }
 
     public function setTab(string $tab): void
     {
         $this->tab = in_array($tab, self::TABS) ? $tab : 'overview';
+        if ($this->tab === 'account') {
+            $this->accEmail = (string) ($this->employee->user?->email ?? $this->employee->email);
+            $this->accPassword = '';
+            $this->resetErrorBag();
+        }
+    }
+
+    // Login account
+
+    public function generatePassword(): void
+    {
+        $this->accPassword = Str::password(12, symbols: false);
+    }
+
+    public function createAccount(): void
+    {
+        abort_if($this->employee->user_id, 422);
+        $data = $this->validate([
+            'accEmail' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
+            'accPassword' => ['required', Password::min(8)],
+        ], attributes: ['accEmail' => __('email'), 'accPassword' => __('password')]);
+
+        $user = User::forceCreate([
+            'name' => $this->employee->name,
+            'email' => mb_strtolower($data['accEmail']),
+            'password' => $data['accPassword'],
+            'email_verified_at' => now(),
+        ]);
+        $this->linkLogin($user->id);
+        Flux::toast(variant: 'success', text: __(':name can now sign in.', ['name' => $this->employee->name]));
+    }
+
+    public function updateAccount(): void
+    {
+        $user = $this->employee->user ?? abort(404);
+        $data = $this->validate([
+            'accEmail' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'accPassword' => ['nullable', Password::min(8)],
+        ], attributes: ['accEmail' => __('email'), 'accPassword' => __('password')]);
+
+        $user->email = mb_strtolower($data['accEmail']);
+        if ($data['accPassword']) {
+            $user->password = $data['accPassword'];
+        }
+        $user->save();
+        Flux::toast(variant: 'success', text: $data['accPassword'] ? __('Account saved with the new password.') : __('Account saved.'));
+        $this->accPassword = '';
+    }
+
+    /** Only the column: the loaded employee carries computed attributes that are not columns. */
+    private function linkLogin(?int $userId): void
+    {
+        Employee::whereKey($this->employee->id)->update(['user_id' => $userId]);
+        $this->employee->setRawAttributes(['user_id' => $userId] + $this->employee->getAttributes(), true);
+        $this->employee->unsetRelation('user');
+    }
+
+    public function removeAccount(): void
+    {
+        $user = $this->employee->user ?? abort(404);
+        abort_if($user->id === auth()->id(), 403, __('You cannot remove your own login.'));
+        $this->linkLogin(null);
+        $user->delete();
+        Flux::modal('remove-account')->close();
+        Flux::toast(text: __(':name can no longer sign in.', ['name' => $this->employee->name]));
+        $this->accPassword = '';
     }
 
     // Attendance calendar
@@ -783,6 +857,7 @@ new #[Title('Employee')] class extends Component {
             'salary' => ['label' => __('Salary'), 'icon' => 'banknotes', 'count' => null],
             'documents' => ['label' => __('Documents'), 'icon' => 'document-text', 'count' => $docs->count() ?: null],
             'details' => ['label' => __('Details'), 'icon' => 'identification', 'count' => null],
+            'account' => ['label' => __('Account'), 'icon' => 'key', 'count' => null],
         ];
         $markTone = [
             'present' => ['cell' => 'bg-emerald-50/80 dark:bg-emerald-500/10', 'pill' => 'bg-emerald-500 text-white', 'dot' => 'bg-emerald-500', 'text' => 'text-emerald-700 dark:text-emerald-300'],
@@ -1321,6 +1396,90 @@ new #[Title('Employee')] class extends Component {
                 </div>
             @endif
         </section>
+    @elseif ($tab === 'account')
+        @php $login = $e->user; @endphp
+        <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+            <section class="overflow-hidden rounded-xl bg-white ring-1 ring-zinc-200/70 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:ring-white/10" data-test="account-panel">
+                {{-- Status --}}
+                <div @class([
+                    'relative overflow-hidden px-6 py-5 text-white',
+                    'bg-linear-to-br from-emerald-500 to-teal-600' => $login,
+                    'bg-linear-to-br from-zinc-700 to-zinc-900' => ! $login,
+                ])>
+                    <span class="pointer-events-none absolute -top-10 -right-8 size-32 rounded-full bg-white/10"></span>
+                    <div class="relative flex items-center gap-4">
+                        <span class="flex size-12 shrink-0 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25">
+                            @if ($login)<flux:icon.shield-check class="size-6" />@else<flux:icon.lock-closed class="size-6" />@endif
+                        </span>
+                        <div class="min-w-0">
+                            <p class="text-lg font-semibold">{{ $login ? __('Can sign in') : __('No login yet') }}</p>
+                            <p class="truncate text-sm text-white/80">
+                                {{ $login ? __(':email · since :date', ['email' => $login->email, 'date' => $login->created_at->toNepali()]) : __('Create a login so :name can use the system.', ['name' => $e->name]) }}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                {{-- Form --}}
+                <form wire:submit="{{ $login ? 'updateAccount' : 'createAccount' }}" class="flex flex-col gap-5 p-6">
+                    <flux:input wire:model="accEmail" type="email" icon="envelope" :label="__('Sign-in email')" placeholder="name@nepdude.com" required data-test="acc-email" />
+                    <div class="flex flex-col gap-2">
+                        <div class="flex items-end gap-2">
+                            <div class="flex-1">
+                                <flux:input wire:model="accPassword" type="password" viewable icon="key" :label="$login ? __('New password') : __('Password')" :placeholder="$login ? __('Leave empty to keep the current one') : __('At least 8 characters')" autocomplete="new-password" data-test="acc-password" />
+                            </div>
+                            <flux:button type="button" icon="sparkles" wire:click="generatePassword">{{ __('Generate') }}</flux:button>
+                        </div>
+                        @if ($accPassword)
+                            <div class="flex flex-wrap items-center gap-2 rounded-lg bg-brand-50/70 px-3 py-2 text-xs text-zinc-600 dark:bg-brand-500/10 dark:text-zinc-300" x-data="{ copied: false }">
+                                <flux:icon.key variant="micro" class="size-3.5 text-brand-600" />
+                                <span>{{ __('Password:') }} <code class="font-mono font-semibold text-zinc-900 dark:text-white">{{ $accPassword }}</code></span>
+                                <button type="button" class="ms-auto font-medium text-brand-600 hover:underline dark:text-brand-300" @click="navigator.clipboard.writeText($wire.accEmail + ' / ' + $wire.accPassword); copied = true; setTimeout(() => copied = false, 1500)" x-text="copied ? @js(__('Copied')) : @js(__('Copy email + password'))"></button>
+                            </div>
+                        @endif
+                    </div>
+
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-100 pt-5 dark:border-white/5">
+                        @if ($login && $login->id !== auth()->id())
+                            <flux:button type="button" variant="ghost" icon="no-symbol" class="text-rose-600!" x-on:click="$flux.modal('remove-account').show()" data-test="remove-account">{{ __('Remove access') }}</flux:button>
+                        @else
+                            <span></span>
+                        @endif
+                        <flux:button type="submit" variant="primary" :icon="$login ? 'check' : 'user-plus'" data-test="save-account">{{ $login ? __('Save account') : __('Create login') }}</flux:button>
+                    </div>
+                </form>
+            </section>
+
+            <aside class="flex flex-col gap-3 rounded-xl bg-white p-5 text-sm ring-1 ring-zinc-200/70 dark:bg-zinc-950 dark:ring-white/10">
+                <p class="font-semibold text-zinc-900 dark:text-white">{{ __('How it works') }}</p>
+                @foreach ([
+                    ['user-plus', __('Create a login with their email and a password.')],
+                    ['paper-airplane', __('Send them the link :url with the email and password.', ['url' => parse_url(config('app.url'), PHP_URL_HOST) ?: config('app.url')])],
+                    ['key', __('Forgot it? Set a new password here any time.')],
+                    ['no-symbol', __('Left the team? Remove access and they can no longer sign in.')],
+                ] as [$icon, $text])
+                    <div class="flex gap-3">
+                        <span class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300"><flux:icon :icon="$icon" variant="micro" class="size-4" /></span>
+                        <p class="text-zinc-600 dark:text-zinc-300">{{ $text }}</p>
+                    </div>
+                @endforeach
+                <p class="mt-1 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">{{ __('Everyone who can sign in sees the whole system.') }}</p>
+            </aside>
+        </div>
+
+        <flux:modal name="remove-account" class="w-full max-w-sm">
+            <div class="flex flex-col items-center gap-4 text-center">
+                <span class="flex size-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 dark:bg-rose-500/10"><flux:icon.no-symbol class="size-7" /></span>
+                <div>
+                    <flux:heading size="lg">{{ __('Remove access?') }}</flux:heading>
+                    <flux:text class="mt-1">{{ __(':name will no longer be able to sign in. Their employee profile stays.', ['name' => $e->name]) }}</flux:text>
+                </div>
+                <div class="flex w-full gap-2">
+                    <flux:modal.close class="flex-1"><flux:button variant="ghost" class="w-full">{{ __('Cancel') }}</flux:button></flux:modal.close>
+                    <flux:button variant="danger" wire:click="removeAccount" class="flex-1">{{ __('Remove') }}</flux:button>
+                </div>
+            </div>
+        </flux:modal>
     @elseif ($tab === 'details')
         @php
             $age = $e->date_of_birth ? (int) $e->date_of_birth->diffInYears(today()) : null;
