@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** A script for a reel, video, ad or podcast. */
-#[Fillable(['title', 'client_id', 'type', 'status', 'body', 'notes', 'user_id'])]
+#[Fillable(['title', 'client_id', 'type', 'status', 'shoot_date', 'body', 'notes', 'user_id'])]
 class Script extends Model
 {
     public const TYPES = [
@@ -31,6 +31,11 @@ class Script extends Model
     /** Speaking pace for the time estimate. */
     public const WORDS_PER_MINUTE = 150;
 
+    protected function casts(): array
+    {
+        return ['shoot_date' => 'date'];
+    }
+
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
@@ -39,6 +44,33 @@ class Script extends Model
     public function author(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    /** Today and upcoming shoots first (soonest first), then undated by latest edit, then past shoots. */
+    public function sortKey(): array
+    {
+        if ($this->shoot_date && $this->shoot_date->gte(today())) {
+            return [0, $this->shoot_date->timestamp];
+        }
+
+        return $this->shoot_date ? [2, -$this->shoot_date->timestamp] : [1, -$this->updated_at->timestamp];
+    }
+
+    /** "Shoot today", "Shoot tomorrow", "Shoot in 3 days", "Shot 12 Ashoj" or null. */
+    public function shootLabel(): ?string
+    {
+        if (! $this->shoot_date) {
+            return null;
+        }
+        $days = (int) today()->diffInDays($this->shoot_date, false);
+
+        return match (true) {
+            $days === 0 => __('Shoot today'),
+            $days === 1 => __('Shoot tomorrow'),
+            $days > 1 && $days <= 7 => __('Shoot in :count days', ['count' => $days]),
+            $days > 7 => __('Shoot :date', ['date' => $this->shoot_date->toNepali(false)]),
+            default => __('Shoot was :date', ['date' => $this->shoot_date->toNepali(false)]),
+        };
     }
 
     public static function wordCount(?string $text): int

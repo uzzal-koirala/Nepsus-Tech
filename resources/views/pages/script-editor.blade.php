@@ -19,6 +19,8 @@ new #[Title('Script')] class extends Component {
 
     public string $status = 'draft';
 
+    public string $shootDate = '';
+
     public string $body = '';
 
     public string $notes = '';
@@ -32,6 +34,7 @@ new #[Title('Script')] class extends Component {
         $this->clientId = (string) $script->client_id;
         $this->type = $script->type;
         $this->status = $script->status;
+        $this->shootDate = (string) $script->shoot_date?->toDateString();
         $this->body = (string) $script->body;
         $this->notes = (string) $script->notes;
     }
@@ -50,6 +53,7 @@ new #[Title('Script')] class extends Component {
             'clientId' => ['nullable', Rule::exists('clients', 'id')],
             'type' => ['required', Rule::in(array_keys(Script::TYPES))],
             'status' => ['required', Rule::in(array_keys(Script::STATUSES))],
+            'shootDate' => ['nullable', 'date'],
             'body' => ['nullable', 'string', 'max:100000'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ];
@@ -57,7 +61,7 @@ new #[Title('Script')] class extends Component {
             return;
         }
         $value = $this->validate([$field => $rules[$field]], attributes: ['title' => __('title')])[$field];
-        $column = ['clientId' => 'client_id'][$field] ?? $field;
+        $column = ['clientId' => 'client_id', 'shootDate' => 'shoot_date'][$field] ?? $field;
         $this->script->update([$column => $value === '' ? null : $value]);
         $this->savedAt = now()->format('g:i A');
     }
@@ -95,10 +99,10 @@ new #[Title('Script')] class extends Component {
     <div class="flex flex-wrap items-center gap-3">
         <a href="{{ route('scripts.index') }}" wire:navigate class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-zinc-600 transition hover:bg-white hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5"><flux:icon.arrow-left variant="micro" class="size-4" />{{ __('All scripts') }}</a>
         <span class="ms-auto inline-flex items-center gap-1.5 text-xs text-zinc-500" data-test="save-state">
-            <span wire:loading.remove wire:target="title,body,notes,type,status,clientId" class="inline-flex items-center gap-1.5">
+            <span wire:loading.remove wire:target="title,body,notes,type,status,clientId,shootDate" class="inline-flex items-center gap-1.5">
                 @if ($savedAt)<flux:icon.check-circle variant="micro" class="size-4 text-emerald-500" />{{ __('Saved :time', ['time' => $savedAt]) }}@else<flux:icon.cloud variant="micro" class="size-4" />{{ __('Saves as you type') }}@endif
             </span>
-            <span wire:loading wire:target="title,body,notes,type,status,clientId" class="inline-flex items-center gap-1.5"><flux:icon.arrow-path variant="micro" class="size-4 animate-spin" />{{ __('Saving…') }}</span>
+            <span wire:loading wire:target="title,body,notes,type,status,clientId,shootDate" class="inline-flex items-center gap-1.5"><flux:icon.arrow-path variant="micro" class="size-4 animate-spin" />{{ __('Saving…') }}</span>
         </span>
     </div>
 
@@ -124,6 +128,15 @@ new #[Title('Script')] class extends Component {
             </section>
 
             <section class="{{ $panel }} flex flex-col gap-4 p-5">
+                <div>
+                    <x-nepali-date wire:model.live="shootDate" :label="__('Shoot date')" :placeholder="__('Pick the shoot day')" />
+                    @if ($shootDate)
+                        <div class="mt-1.5 flex items-center justify-between text-xs">
+                            <span class="text-violet-700 dark:text-violet-300">{{ __('Shows on the client calendar') }}</span>
+                            <button type="button" wire:click="$set('shootDate', '')" class="text-zinc-500 hover:text-rose-600">{{ __('Clear') }}</button>
+                        </div>
+                    @endif
+                </div>
                 <x-rich-select model="status" live :label="__('Status')" :options="$statusOptions" />
                 <x-rich-select model="type" live :label="__('Type')" :options="$typeOptions" />
                 <x-rich-select model="clientId" live searchable :label="__('Client')" :options="$clientOptions" />

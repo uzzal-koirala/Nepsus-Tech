@@ -58,6 +58,18 @@ class ScriptsTest extends TestCase
         Livewire::test('pages::scripts')->assertSee(['Other scripts', '2 scripts']);
         Script::where('title', 'Untitled script')->delete();
 
+        // Shoot date: saved from the editor, shown on the client's calendar, upcoming shoots first.
+        Livewire::test('pages::script-editor', ['script' => $script])->set('shootDate', today()->addDays(2)->toDateString())->assertHasNoErrors();
+        $this->assertTrue($script->fresh()->shoot_date->isSameDay(today()->addDays(2)));
+        $this->assertSame('Shoot in 2 days', $script->fresh()->shootLabel());
+        $later = Script::create(['title' => 'Later idea', 'client_id' => $client->id, 'status' => 'idea', 'type' => 'reel']);
+        $past = Script::create(['title' => 'Old shoot', 'client_id' => $client->id, 'status' => 'shot', 'type' => 'reel', 'shoot_date' => today()->subDays(5)]);
+        $order = Livewire::test('pages::scripts')->instance()->boxes->first()['scripts']->pluck('title')->all();
+        $this->assertSame(['Momo reel', 'Later idea', 'Old shoot'], $order);
+        Livewire::test('pages::client-profile', ['client' => $client])->assertSee('Shoot: Momo reel');
+        $later->delete();
+        $past->delete();
+
         Livewire::test('pages::script-editor', ['script' => $script])->call('duplicate');
         $this->assertSame(['Momo reel', 'Momo reel (copy)'], Script::orderBy('id')->pluck('title')->all());
 

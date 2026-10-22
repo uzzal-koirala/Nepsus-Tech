@@ -99,6 +99,9 @@ new #[Title('Client profile')] class extends Component {
         $payments = $this->payments->filter(fn ($p) => $inMonth($p->due_date));
         $tasksByDay = $tasks->groupBy(fn ($t) => $t->due_date->toDateString());
         $paymentsByDay = $payments->groupBy(fn ($p) => $p->due_date->toDateString());
+        $shootsByDay = $this->client->scripts()->whereNotNull('shoot_date')
+            ->whereDate('shoot_date', '>=', $first)->whereDate('shoot_date', '<=', $last)->get()
+            ->groupBy(fn ($s) => $s->shoot_date->toDateString());
 
         $cells = array_fill(0, $first->dayOfWeek, null);
         for ($day = 1; $day <= $length; $day++) {
@@ -109,6 +112,7 @@ new #[Title('Client profile')] class extends Component {
                 'ad' => $ad,
                 'tasks' => $tasksByDay[$key] ?? collect(),
                 'payments' => $paymentsByDay[$key] ?? collect(),
+                'shoots' => $shootsByDay[$key] ?? collect(),
                 'agreementEnds' => $this->client->contract_end?->toDateString() === $key,
             ];
         }
@@ -1097,7 +1101,7 @@ new #[Title('Client profile')] class extends Component {
                                                 $key = $cell['ad']->toDateString();
                                                 $isToday = $key === $todayKey;
                                                 $isPast = $cell['ad']->lt(today());
-                                                $items = $cell['tasks']->count() + $cell['payments']->count();
+                                                $items = $cell['tasks']->count() + $cell['payments']->count() + $cell['shoots']->count();
                                             @endphp
                                             <div wire:key="day-{{ $key }}" @class([
                                                 'group relative flex min-h-28 flex-col gap-1 border-e border-zinc-100 p-1.5 transition last:border-e-0 hover:bg-brand-50/40 dark:border-white/5 dark:hover:bg-brand-500/5',
@@ -1117,6 +1121,12 @@ new #[Title('Client profile')] class extends Component {
                                                 @if ($cell['agreementEnds'])
                                                     <span class="flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[0.6875rem] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"><flux:icon.flag variant="micro" class="size-3 shrink-0" /><span class="truncate">{{ __('Agreement ends') }}</span></span>
                                                 @endif
+
+                                                @foreach ($cell['shoots'] as $sh)
+                                                    <a href="{{ route('scripts.edit', $sh) }}" wire:navigate class="flex items-center gap-1 rounded-md bg-violet-100 px-1.5 py-0.5 text-[0.6875rem] font-medium text-violet-800 transition hover:bg-violet-200 dark:bg-violet-500/15 dark:text-violet-200" title="{{ __('Shoot: :title', ['title' => $sh->title]) }}" data-test="shoot-{{ $sh->id }}">
+                                                        <flux:icon.video-camera variant="micro" class="size-3 shrink-0" /><span class="truncate">{{ __('Shoot: :title', ['title' => $sh->title]) }}</span>
+                                                    </a>
+                                                @endforeach
 
                                                 @foreach ($cell['payments'] as $p)
                                                     @php $ps = $p->status(); @endphp

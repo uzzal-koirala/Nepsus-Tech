@@ -40,13 +40,17 @@ new #[Title('Scripts')] class extends Component {
             ->values();
     }
 
-    /** One box per client that has scripts (busiest first), then the scripts without a client. */
+    /**
+     * One box per client, then "Other scripts". Inside a box, today's and upcoming shoots come
+     * first (soonest first); boxes with the soonest shoot come first too.
+     */
     #[Computed]
     public function boxes()
     {
         return $this->visible->groupBy(fn ($s) => $s->client_id ?? 0)
-            ->sortBy(fn ($group, $clientId) => [$clientId === 0 ? 1 : 0, -$group->max('updated_at')?->timestamp])
-            ->map(fn ($group, $clientId) => ['client' => $clientId ? $group->first()->client : null, 'scripts' => $group->values()]);
+            ->map(fn ($group) => $group->sortBy(fn ($s) => $s->sortKey())->values())
+            ->sortBy(fn ($group, $clientId) => [$clientId === 0 ? 1 : 0, ...$group->first()->sortKey()])
+            ->map(fn ($group, $clientId) => ['client' => $clientId ? $group->first()->client : null, 'scripts' => $group]);
     }
 
     #[Computed]
@@ -175,7 +179,16 @@ new #[Title('Scripts')] class extends Component {
                                         <span class="block truncate text-sm font-medium text-zinc-900 group-hover:text-brand-600 dark:text-white">{{ $s->title }}</span>
                                         <span class="flex items-center gap-1.5 text-xs text-zinc-500"><span class="{{ $st['dot'] }} size-1.5 rounded-full"></span>{{ __($st['label']) }} · {{ Script::speakingTime($s->body) }}</span>
                                     </span>
-                                    <span class="shrink-0 text-[0.6875rem] text-zinc-400">{{ $s->updated_at->diffForHumans(short: true) }}</span>
+                                    @if ($shoot = $s->shootLabel())
+                                        @php $soon = $s->shoot_date->gte(today()) && $s->shoot_date->lte(today()->addDays(7)); @endphp
+                                        <span @class([
+                                            'inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-semibold ring-1 ring-inset',
+                                            'bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-500/10 dark:text-violet-300 dark:ring-violet-500/20' => $soon,
+                                            'bg-zinc-50 text-zinc-500 ring-zinc-200 dark:bg-white/5 dark:text-zinc-400 dark:ring-white/10' => ! $soon,
+                                        ])><flux:icon.video-camera variant="micro" class="size-3" />{{ $shoot }}</span>
+                                    @else
+                                        <span class="shrink-0 text-[0.6875rem] text-zinc-400">{{ $s->updated_at->diffForHumans(short: true) }}</span>
+                                    @endif
                                 </a>
                             </li>
                         @endforeach
