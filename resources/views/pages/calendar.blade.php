@@ -1,6 +1,7 @@
 <?php
 
 use App\Concerns\ManagesTasks;
+use App\Models\Script;
 use App\Models\Task;
 use App\Models\WorkType;
 use App\Support\NepaliDate;
@@ -108,6 +109,16 @@ new #[Title('Calendar')] class extends Component {
         return $this->tasksBetween($weeks[0][0], end($weeks)[6])->groupBy(fn ($t) => $t->due_date->toDateString())->all();
     }
 
+    /** Script shoots on the visible grid, grouped by day. */
+    #[Computed]
+    public function shootsByDay(): array
+    {
+        $weeks = $this->weeks;
+
+        return Script::with('client')->whereDate('shoot_date', '>=', $weeks[0][0])->whereDate('shoot_date', '<=', end($weeks)[6])
+            ->orderBy('title')->get()->groupBy(fn ($s) => $s->shoot_date->toDateString())->all();
+    }
+
     /** This month at a glance (ignores the filters). */
     #[Computed]
     public function stats(): array
@@ -144,6 +155,8 @@ new #[Title('Calendar')] class extends Component {
     $stats = $this->stats;
     $selected = Carbon::parse($day);
     $dayTasks = collect($byDay[$day] ?? []);
+    $shootsByDay = $this->shootsByDay;
+    $dayShoots = collect($shootsByDay[$day] ?? []);
     $weeks = $this->weeks;
     $weekdays = [__('Sun'), __('Mon'), __('Tue'), __('Wed'), __('Thu'), __('Fri'), __('Sat')];
     $bsDay = fn ($d) => NepaliDate::fromAd($d)[2] ?? $d->day;
@@ -239,6 +252,11 @@ new #[Title('Calendar')] class extends Component {
                                         ])>{{ $bsDay($d) }}</span>
                                         <span class="text-[0.625rem] text-zinc-400 tabular-nums">{{ $d->day === 1 ? $d->format('j M') : $d->day }}</span>
                                     </div>
+                                    @foreach ($shootsByDay[$key] ?? [] as $s)
+                                        <a href="{{ route('scripts.edit', $s) }}" wire:navigate @click.stop class="flex items-center gap-1 truncate rounded-md bg-violet-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-violet-700 ring-1 ring-violet-200 hover:bg-violet-100 dark:bg-violet-500/10 dark:text-violet-300 dark:ring-violet-500/20" title="{{ $s->client?->displayName() }}" data-test="shoot-{{ $s->id }}">
+                                            <flux:icon.video-camera variant="micro" class="size-3 shrink-0" /><span class="truncate">{{ __('Shoot: :title', ['title' => $s->title]) }}</span>
+                                        </a>
+                                    @endforeach
                                     @foreach ($items->take(3) as $t)
                                         <span @class([
                                             'flex items-center gap-1 truncate rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium ring-1',
@@ -271,6 +289,19 @@ new #[Title('Calendar')] class extends Component {
                     <p class="text-xs text-white/75">{{ $selected->format('l, j F Y') }} · {{ trans_choice(':count task|:count tasks', $dayTasks->count()) }}</p>
                 </div>
                 <div class="flex flex-col gap-1 p-3">
+                    @foreach ($dayShoots as $s)
+                        <a href="{{ route('scripts.edit', $s) }}" wire:navigate wire:key="sh-{{ $s->id }}" class="group flex items-center gap-3 rounded-lg bg-violet-50/70 p-2 transition hover:bg-violet-50 dark:bg-violet-500/10">
+                            <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white"><flux:icon.video-camera variant="micro" class="size-4" /></span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block truncate text-sm font-semibold text-zinc-900 group-hover:text-violet-700 dark:text-white">{{ __('Shoot: :title', ['title' => $s->title]) }}</span>
+                                <span class="block truncate text-xs text-zinc-500">{{ $s->client?->displayName() ?? __('Other scripts') }} · {{ __(Script::STATUSES[$s->status]['label'] ?? $s->status) }}</span>
+                            </span>
+                            <flux:icon.chevron-right variant="micro" class="size-4 shrink-0 text-violet-300 group-hover:text-violet-600" />
+                        </a>
+                    @endforeach
+                    @if ($dayShoots->isNotEmpty() && $dayTasks->isEmpty())
+                        <p class="px-2 pt-2 text-xs text-zinc-400">{{ __('No tasks due on this day.') }}</p>
+                    @else
                     @forelse ($dayTasks as $t)
                         @php $type = $typeOf($t->type); @endphp
                         <div wire:key="t-{{ $t->id }}" class="group flex items-start gap-3 rounded-lg p-2 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
@@ -308,6 +339,7 @@ new #[Title('Calendar')] class extends Component {
                             <p class="text-sm text-zinc-500">{{ __('No tasks due on this day.') }}</p>
                         </div>
                     @endforelse
+                    @endif
                     <flux:button icon="plus" size="sm" wire:click="newTask('{{ $day }}')" class="mt-1 w-full">{{ __('Add task on this day') }}</flux:button>
                 </div>
             </section>

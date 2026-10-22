@@ -67,6 +67,7 @@ class ScriptsTest extends TestCase
         $order = Livewire::test('pages::scripts')->instance()->boxes->first()['scripts']->pluck('title')->all();
         $this->assertSame(['Momo reel', 'Later idea', 'Old shoot'], $order);
         Livewire::test('pages::client-profile', ['client' => $client])->assertSee('Shoot: Momo reel');
+        Livewire::test('pages::calendar')->call('pick', today()->addDays(2)->toDateString())->assertSee('Shoot: Momo reel');
         $later->delete();
         $past->delete();
 
