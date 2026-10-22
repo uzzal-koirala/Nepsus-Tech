@@ -90,6 +90,21 @@ new #[Title('Overview')] class extends Component {
         return Payment::with('client')->whereNull('paid_at')->whereNotNull('due_date')->orderBy('due_date')->limit(5)->get();
     }
 
+    /** Totals for the Payments due panel. */
+    #[Computed]
+    public function dueSummary(): array
+    {
+        $unpaid = Payment::whereNull('paid_at')->whereNotNull('due_date');
+        $late = (clone $unpaid)->whereDate('due_date', '<', today());
+        $soon = (clone $unpaid)->whereDate('due_date', '>=', today())->whereDate('due_date', '<=', today()->addDays(7));
+
+        return [
+            'count' => (clone $unpaid)->count(), 'total' => (float) (clone $unpaid)->sum('amount'),
+            'lateCount' => (clone $late)->count(), 'late' => (float) $late->sum('amount'),
+            'soonCount' => (clone $soon)->count(), 'soon' => (float) $soon->sum('amount'),
+        ];
+    }
+
     /** The latest money movements: client payments, other income, expenses and salaries (same as Finance). */
     #[Computed]
     public function recentTransactions()
@@ -318,33 +333,65 @@ new #[Title('Overview')] class extends Component {
 
         <aside class="flex min-w-0 flex-col gap-6">
             {{-- Payments due --}}
-            <section class="{{ $panel }} overflow-hidden">
-                <div class="flex items-center gap-2 border-b border-zinc-100 px-5 py-4 dark:border-white/5">
-                    <flux:icon.bell-alert variant="mini" class="size-4.5 text-amber-500" />
-                    <h2 class="flex-1 font-semibold text-zinc-900 dark:text-white">{{ __('Payments due') }}</h2>
+            @php $due = $this->dueSummary; @endphp
+            <section class="{{ $panel }} overflow-hidden" data-test="payments-due">
+                <div class="flex items-start gap-3 px-5 pt-5">
+                    <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-md shadow-amber-500/25"><flux:icon.bell-alert variant="mini" class="size-5" /></span>
+                    <div class="min-w-0 flex-1">
+                        <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Payments due') }}</h2>
+                        <p class="text-xs text-zinc-500">{{ $due['count'] ? trans_choice(':count payment waiting|:count payments waiting', $due['count']).' · '.$money($due['total']) : __('Nothing waiting') }}</p>
+                    </div>
+                    <a href="{{ route('clients.index') }}" wire:navigate class="rounded-lg px-2 py-1 text-xs font-medium text-brand-600 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-500/10">{{ __('Clients') }}</a>
                 </div>
-                @forelse ($this->duePayments as $payment)
-                    @php
-                        $days = (int) today()->diffInDays($payment->due_date, false);
-                        $tone = $days < 0 ? 'rose' : ($days <= Payment::remindDays() ? 'amber' : 'zinc');
-                    @endphp
-                    <a href="{{ route('clients.show', ['client' => $payment->client_id, 'tab' => 'payments']) }}" wire:navigate class="flex items-center gap-3 border-b border-zinc-100 px-5 py-3 transition last:border-0 hover:bg-zinc-50 dark:border-white/5 dark:hover:bg-white/[0.03]">
-                        @if ($payment->client?->avatarUrl())
-                            <img src="{{ $payment->client->avatarUrl() }}" alt="" class="size-9 shrink-0 rounded-full object-cover">
-                        @else
-                            <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">{{ $payment->client?->initials() }}</span>
-                        @endif
-                        <div class="min-w-0 flex-1">
-                            <p class="truncate text-sm font-medium text-zinc-900 dark:text-white">{{ $payment->client?->displayName() }}</p>
-                            <p @class(['text-xs', 'font-medium text-rose-600 dark:text-rose-400' => $tone === 'rose', 'font-medium text-amber-600 dark:text-amber-400' => $tone === 'amber', 'text-zinc-500' => $tone === 'zinc'])>
-                                {{ $days < 0 ? trans_choice(':count day late|:count days late', -$days) : ($days === 0 ? __('Due today') : $payment->due_date->toNepali()) }}
-                            </p>
+
+                @if ($due['count'])
+                    <div class="grid grid-cols-2 gap-2 px-5 pt-4">
+                        <div class="rounded-xl bg-rose-50 px-3 py-2.5 dark:bg-rose-500/10">
+                            <p class="flex items-center gap-1.5 text-[0.6875rem] font-semibold tracking-wide text-rose-700 uppercase dark:text-rose-300"><flux:icon.exclamation-circle variant="micro" class="size-3.5" />{{ __('Overdue') }}</p>
+                            <p class="mt-1 text-base font-bold text-zinc-900 tabular-nums dark:text-white">{{ $money($due['late']) }}</p>
+                            <p class="text-[0.6875rem] text-zinc-500">{{ trans_choice(':count payment|:count payments', $due['lateCount']) }}</p>
                         </div>
-                        <span class="text-sm font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $money($payment->amount) }}</span>
-                    </a>
-                @empty
-                    <p class="px-5 py-8 text-center text-sm text-zinc-500">{{ __('No payments waiting.') }}</p>
-                @endforelse
+                        <div class="rounded-xl bg-amber-50 px-3 py-2.5 dark:bg-amber-500/10">
+                            <p class="flex items-center gap-1.5 text-[0.6875rem] font-semibold tracking-wide text-amber-700 uppercase dark:text-amber-300"><flux:icon.clock variant="micro" class="size-3.5" />{{ __('Next 7 days') }}</p>
+                            <p class="mt-1 text-base font-bold text-zinc-900 tabular-nums dark:text-white">{{ $money($due['soon']) }}</p>
+                            <p class="text-[0.6875rem] text-zinc-500">{{ trans_choice(':count payment|:count payments', $due['soonCount']) }}</p>
+                        </div>
+                    </div>
+                @endif
+
+                <div class="flex flex-col p-2 pt-3">
+                    @forelse ($this->duePayments as $payment)
+                        @php
+                            $days = (int) today()->diffInDays($payment->due_date, false);
+                            $tone = $days < 0 ? 'late' : ($days <= max(7, Payment::remindDays()) ? 'soon' : 'later');
+                            $styles = [
+                                'late' => ['tile' => 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300', 'pill' => 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20'],
+                                'soon' => ['tile' => 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300', 'pill' => 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20'],
+                                'later' => ['tile' => 'bg-zinc-100 text-zinc-600 dark:bg-white/5 dark:text-zinc-300', 'pill' => 'bg-zinc-50 text-zinc-600 ring-zinc-200 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10'],
+                            ][$tone];
+                            $when = $days < 0 ? trans_choice(':count day late|:count days late', -$days) : ($days === 0 ? __('Due today') : ($days === 1 ? __('Tomorrow') : ($days <= 7 ? trans_choice('In :count day|In :count days', $days) : $payment->due_date->toNepali(false))));
+                        @endphp
+                        <a href="{{ route('clients.show', ['client' => $payment->client_id, 'tab' => 'payments']) }}" wire:navigate wire:key="due-{{ $payment->id }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
+                            @if ($payment->client?->avatarUrl())
+                                <img src="{{ $payment->client->avatarUrl() }}" alt="" class="size-10 shrink-0 rounded-xl object-cover">
+                            @else
+                                <span class="{{ $styles['tile'] }} flex size-10 shrink-0 items-center justify-center rounded-xl text-xs font-bold">{{ $payment->client?->initials() }}</span>
+                            @endif
+                            <div class="min-w-0 flex-1">
+                                <p class="truncate text-sm font-semibold text-zinc-900 group-hover:text-brand-600 dark:text-white">{{ $payment->client?->displayName() }}</p>
+                                <span class="{{ $styles['pill'] }} mt-1 inline-flex items-center rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium ring-1 ring-inset">{{ $when }}</span>
+                            </div>
+                            <span class="text-sm font-bold text-zinc-900 tabular-nums dark:text-white">{{ $money($payment->amount) }}</span>
+                            <flux:icon.chevron-right variant="micro" class="size-4 shrink-0 text-zinc-300 transition group-hover:translate-x-0.5 group-hover:text-zinc-500" />
+                        </a>
+                    @empty
+                        <div class="flex flex-col items-center gap-2 px-5 py-10 text-center">
+                            <span class="flex size-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.check-badge class="size-6" /></span>
+                            <p class="text-sm font-semibold text-zinc-900 dark:text-white">{{ __('All paid up') }}</p>
+                            <p class="text-xs text-zinc-500">{{ __('No client payments are waiting.') }}</p>
+                        </div>
+                    @endforelse
+                </div>
             </section>
 
         </aside>
