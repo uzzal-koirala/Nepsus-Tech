@@ -173,7 +173,7 @@ new #[Title('Overview')] class extends Component {
         @endforeach
     </section>
 
-    <div class="grid items-start gap-6 lg:grid-cols-3">
+    <div class="grid gap-6 lg:grid-cols-3">
         <div class="flex min-w-0 flex-col gap-6 lg:col-span-2">
             {{-- Cash flow: smooth area chart, money in vs out --}}
             @php
@@ -240,7 +240,7 @@ new #[Title('Overview')] class extends Component {
                 $totalIn = array_sum($in);
                 $totalOut = array_sum($out);
             @endphp
-            <section class="{{ $panel }} p-5 sm:p-6 [--c-in:#0e9f6e] [--c-out:#e8590c] dark:[--c-in:#1fa576] dark:[--c-out:#e9622a]" data-test="cash-flow">
+            <section class="{{ $panel }} flex h-full flex-col p-5 sm:p-6 [--c-in:#0e9f6e] [--c-out:#e8590c] dark:[--c-in:#1fa576] dark:[--c-out:#e9622a]" data-test="cash-flow">
                 <div class="flex flex-wrap items-start gap-x-6 gap-y-3">
                     <div class="flex-1">
                         <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Cash flow') }}</h2>
@@ -259,15 +259,18 @@ new #[Title('Overview')] class extends Component {
                     </div>
                 </div>
 
-                <div class="mt-6 flex gap-3" x-data="{ i: null, pts: @js($points) }">
+                <div class="mt-6 flex min-h-64 flex-1 gap-3" x-data="{ i: null, pts: @js($points) }">
                     {{-- Amount axis --}}
-                    <div class="relative h-56 w-10 shrink-0 text-end text-[0.6875rem] text-zinc-400 tabular-nums" aria-hidden="true">
-                        @foreach ([1, 0.75, 0.5, 0.25, 0] as $f)
-                            <span class="absolute right-0 -translate-y-1/2" style="top: {{ (1 - $f) * 100 }}%">{{ $short($top * $f) }}</span>
-                        @endforeach
+                    <div class="flex w-10 shrink-0 flex-col text-end text-[0.6875rem] text-zinc-400 tabular-nums" aria-hidden="true">
+                        <div class="relative flex-1">
+                            @foreach ([1, 0.75, 0.5, 0.25, 0] as $f)
+                                <span class="absolute right-0 -translate-y-1/2" style="top: {{ (1 - $f) * 100 }}%">{{ $short($top * $f) }}</span>
+                            @endforeach
+                        </div>
+                        <div class="h-6 shrink-0"></div>{{-- lines up with the week labels --}}
                     </div>
-                    <div class="min-w-0 flex-1">
-                        <div class="relative h-56" @mouseleave="i = null"
+                    <div class="flex min-w-0 flex-1 flex-col">
+                        <div class="relative min-h-48 flex-1" data-plot @mouseleave="i = null"
                             @mousemove="const r = $el.getBoundingClientRect(); const x = ($event.clientX - r.left) / r.width * 100; i = pts.reduce((best, p, k) => Math.abs(p.x - x) < Math.abs(pts[best].x - x) ? k : best, 0)">
                             {{-- Grid --}}
                             @foreach ([0, 0.25, 0.5, 0.75, 1] as $f)
@@ -328,7 +331,7 @@ new #[Title('Overview')] class extends Component {
         <aside class="flex min-w-0 flex-col gap-6">
             {{-- Payments due --}}
             @php $due = $this->dueSummary; @endphp
-            <section class="{{ $panel }} overflow-hidden" data-test="payments-due">
+            <section class="{{ $panel }} h-full overflow-hidden" data-test="payments-due">
                 <div class="flex items-start gap-3 px-5 pt-5">
                     <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-md shadow-amber-500/25"><flux:icon.bell-alert variant="mini" class="size-5" /></span>
                     <div class="min-w-0 flex-1">
