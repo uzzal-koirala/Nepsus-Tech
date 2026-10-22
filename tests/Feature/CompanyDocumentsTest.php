@@ -28,7 +28,7 @@ class CompanyDocumentsTest extends TestCase
             ->assertSet('names', ['PAN certificate', 'Office photo']) // file names to start with
             ->set('names.1', 'Office front photo')
             ->set('uploadFolder', 'company')
-            ->call('upload')
+            ->call('saveUploads')
             ->assertHasNoErrors()
             ->assertSee(['PAN certificate', 'Office front photo']);
 
@@ -37,7 +37,7 @@ class CompanyDocumentsTest extends TestCase
         Storage::disk('local')->assertExists($pdf->path);
 
         // Not allowed: scripts or pages.
-        Livewire::test('pages::documents')->set('uploads', [UploadedFile::fake()->create('evil.html', 1, 'text/html')])->call('upload')->assertHasErrors('uploads.0');
+        Livewire::test('pages::documents')->set('uploads', [UploadedFile::fake()->create('evil.html', 1, 'text/html')])->call('saveUploads')->assertHasErrors('uploads.0');
 
         $this->get(route('library.view', $pdf))->assertOk()->assertHeader('X-Content-Type-Options', 'nosniff');
         $this->get(route('library.download', $pdf))->assertOk()->assertDownload('PAN certificate.pdf');

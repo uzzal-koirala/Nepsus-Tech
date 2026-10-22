@@ -99,7 +99,7 @@ new #[Title('Documents')] class extends Component {
         $this->names = array_slice($this->names, 0, count($this->uploads), true);
     }
 
-    public function removeUpload(int $i): void
+    public function dropFile(int $i): void
     {
         unset($this->uploads[$i], $this->names[$i]);
         $this->uploads = array_values($this->uploads);
@@ -138,7 +138,8 @@ new #[Title('Documents')] class extends Component {
         Flux::toast(text: $moved ? trans_choice('Folder deleted. :count document moved to Other.|Folder deleted. :count documents moved to Other.', $moved) : __('Folder deleted.'));
     }
 
-    public function upload(): void
+    /** Not called upload: $wire.upload and $wire.removeUpload are Livewire's own file-upload helpers. */
+    public function saveUploads(): void
     {
         $this->validate([
             'uploads' => ['required', 'array', 'min:1', 'max:20'],
@@ -368,7 +369,7 @@ new #[Title('Documents')] class extends Component {
 
     {{-- Upload --}}
     <flux:modal name="upload" class="w-full max-w-lg overflow-visible!">
-        <form wire:submit="upload" class="flex flex-col gap-5">
+        <form wire:submit="saveUploads" class="flex flex-col gap-5">
             <div class="flex items-center gap-3">
                 <span class="flex size-10 items-center justify-center rounded-xl bg-brand-500 text-white shadow-md shadow-brand-500/30"><flux:icon.arrow-up-tray variant="mini" class="size-5" /></span>
                 <div>
@@ -397,7 +398,7 @@ new #[Title('Documents')] class extends Component {
                                     class="h-8 w-full rounded-md border-0 bg-white px-2 text-sm font-medium text-zinc-900 ring-1 ring-zinc-200 focus:ring-2 focus:ring-brand-500 dark:bg-white/5 dark:text-white dark:ring-white/10" data-test="name-{{ $i }}">
                                 <p class="mt-0.5 truncate px-0.5 text-[0.6875rem] text-zinc-400">{{ $file->getClientOriginalName() }} · {{ CompanyDocument::humanSize($file->getSize()) }}</p>
                             </div>
-                            <button type="button" wire:click="removeUpload({{ $i }})" class="rounded p-1 text-zinc-400 hover:text-rose-600" aria-label="{{ __('Remove') }}"><flux:icon.x-mark variant="micro" class="size-4" /></button>
+                            <button type="button" wire:click="dropFile({{ $i }})" class="rounded p-1 text-zinc-400 hover:text-rose-600" aria-label="{{ __('Remove') }}"><flux:icon.x-mark variant="micro" class="size-4" /></button>
                         </li>
                     @endforeach
                 </ul>
@@ -409,7 +410,7 @@ new #[Title('Documents')] class extends Component {
 
             <div class="flex justify-end gap-2">
                 <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
-                <flux:button type="submit" variant="primary" icon="check" wire:loading.attr="disabled" wire:target="uploads,upload" data-test="save-upload">{{ __('Save') }}</flux:button>
+                <flux:button type="submit" variant="primary" icon="check" wire:loading.attr="disabled" wire:target="uploads,saveUploads" data-test="save-upload">{{ __('Save') }}</flux:button>
             </div>
         </form>
     </flux:modal>
