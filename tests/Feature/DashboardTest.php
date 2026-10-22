@@ -36,5 +36,12 @@ class DashboardTest extends TestCase
         $this->get(route('dashboard'))->assertOk()
             ->assertSee(['Active clients', 'Cash flow', 'Payments due', '3 days late', '1 payment overdue', 'Recent transactions', 'Everest Gym', '+ NPR 4,200'])
             ->assertDontSee(['Team today', 'Open tasks', 'Agreements ending soon']);
+
+        // Cash flow is weekly: 12 weeks, today's payment in the last one only.
+        $weeks = \Livewire\Livewire::test('pages::dashboard')->instance()->weekly;
+        $this->assertCount(12, $weeks);
+        $this->assertSame(4200.0, end($weeks)['income']);
+        $this->assertSame(4200.0, array_sum(array_column($weeks, 'income')));
+        $this->assertTrue(end($weeks)['from']->isSunday());
     }
 }

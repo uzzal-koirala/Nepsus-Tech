@@ -34,6 +34,37 @@ new #[Title('Overview')] class extends Component {
         return array_map(fn ($p) => $this->monthTotals($p), array_reverse(NepaliDate::recentPeriods(6)));
     }
 
+    /**
+     * Money in and out for the last 12 weeks (Sunday to Saturday), oldest first.
+     * Four queries in total, bucketed here, instead of one set per week.
+     */
+    #[Computed]
+    public function weekly(): array
+    {
+        $weeks = 12;
+        $start = today()->subDays(today()->dayOfWeek)->subWeeks($weeks - 1);
+        $end = today()->endOfDay();
+        $week = fn ($date) => intdiv((int) $start->diffInDays($date->copy()->startOfDay()), 7);
+        $in = array_fill(0, $weeks, 0.0);
+        $out = array_fill(0, $weeks, 0.0);
+
+        foreach (Payment::whereNotNull('paid_at')->whereBetween('paid_at', [$start, $end])->get(['amount', 'paid_at']) as $p) {
+            $in[$week($p->paid_at)] += (float) $p->amount;
+        }
+        foreach (Transaction::whereBetween('date', [$start->toDateString(), $end->toDateString()])->get(['kind', 'amount', 'date']) as $t) {
+            $t->kind === 'income' ? $in[$week($t->date)] += (float) $t->amount : $out[$week($t->date)] += (float) $t->amount;
+        }
+        foreach (SalaryPayment::whereBetween('paid_on', [$start, $end])->get(['amount', 'paid_on']) as $sp) {
+            $out[$week($sp->paid_on)] += (float) $sp->amount;
+        }
+
+        return array_map(function ($i) use ($start, $in, $out) {
+            $from = $start->copy()->addWeeks($i);
+
+            return ['from' => $from, 'to' => $from->copy()->addDays(6), 'income' => $in[$i], 'spent' => $out[$i]];
+        }, range(0, $weeks - 1));
+    }
+
     #[Computed]
     public function stats(): array
     {
@@ -137,7 +168,7 @@ new #[Title('Overview')] class extends Component {
         <div class="flex min-w-0 flex-col gap-6 lg:col-span-2">
             {{-- Cash flow: smooth area chart, money in vs out --}}
             @php
-                $flow = $this->flow;
+                $flow = $this->weekly;
                 $n = count($flow);
                 $peak = max(1, collect($flow)->flatMap(fn ($f) => [$f['income'], $f['spent']])->max());
                 // A round top value so the grid reads 0 / 25k / 50k / 75k / 100k.
@@ -190,7 +221,10 @@ new #[Title('Overview')] class extends Component {
                 $outLine = $curve($out);
                 $close = ' L'.end($xs).',100 L'.$xs[0].',100 Z';
                 $points = array_map(fn ($i) => [
-                    'x' => $xs[$i], 'month' => NepaliDate::periodLabel($flow[$i]['period']),
+                    'x' => $xs[$i],
+                    'month' => __('Week of :from – :to', ['from' => NepaliDate::format($flow[$i]['from'], false), 'to' => NepaliDate::format(min($flow[$i]['to'], today()), false)]),
+                    // Axis: the month name where a new month starts, otherwise just the day.
+                    'tick' => $i === 0 || NepaliDate::fromAd($flow[$i]['from'])[1] !== NepaliDate::fromAd($flow[$i - 1]['from'])[1] ? NepaliDate::format($flow[$i]['from'], false) : (string) NepaliDate::fromAd($flow[$i]['from'])[2],
                     'in' => $money($in[$i]), 'out' => $money($out[$i]), 'net' => $money(abs($in[$i] - $out[$i])), 'up' => $in[$i] >= $out[$i],
                     'yi' => $y($in[$i]), 'yo' => $y($out[$i]),
                 ], range(0, $n - 1));
@@ -201,7 +235,7 @@ new #[Title('Overview')] class extends Component {
                 <div class="flex flex-wrap items-start gap-x-6 gap-y-3">
                     <div class="flex-1">
                         <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Cash flow') }}</h2>
-                        <p class="text-sm text-zinc-500">{{ __('Money in and out, last 6 months') }}</p>
+                        <p class="text-sm text-zinc-500">{{ __('Money in and out, week by week (last 12 weeks)') }}</p>
                     </div>
                     <div class="flex items-center gap-5">
                         @foreach ([[__('Money in'), $totalIn, 'var(--c-in)', false], [__('Money out'), $totalOut, 'var(--c-out)', true]] as [$label, $total, $color, $dashed])
@@ -253,7 +287,7 @@ new #[Title('Overview')] class extends Component {
                                     <div class="absolute inset-y-0 border-l border-zinc-300 dark:border-white/20" :style="`left: ${pts[i].x}%`"></div>
                                     <span class="absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-zinc-950" :style="`left: ${pts[i].x}%; top: ${pts[i].yi}%; background: var(--c-in)`"></span>
                                     <span class="absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-zinc-950" :style="`left: ${pts[i].x}%; top: ${pts[i].yo}%; background: var(--c-out)`"></span>
-                                    <div class="absolute top-1 w-44 rounded-xl bg-white p-3 text-xs shadow-[0_12px_32px_-10px_rgb(15_23_42/0.35)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10"
+                                    <div class="absolute top-1 w-52 rounded-xl bg-white p-3 text-xs shadow-[0_12px_32px_-10px_rgb(15_23_42/0.35)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10"
                                         :style="pts[i].x > 60 ? `right: ${100 - pts[i].x + 2}%` : `left: ${pts[i].x + 2}%`">
                                         <p class="font-semibold text-zinc-900 dark:text-white" x-text="pts[i].month"></p>
                                         <p class="mt-1.5 flex items-center justify-between gap-2 text-zinc-500"><span class="flex items-center gap-1.5"><span class="h-0.5 w-3 rounded" style="background: var(--c-in)"></span>{{ __('In') }}</span><span class="font-semibold text-zinc-900 tabular-nums dark:text-white" x-text="pts[i].in"></span></p>
@@ -263,10 +297,10 @@ new #[Title('Overview')] class extends Component {
                                 </div>
                             </template>
                         </div>
-                        {{-- Months --}}
+                        {{-- Weeks (start day); the month name where a new month begins --}}
                         <div class="relative mt-2 h-4 text-[0.6875rem] text-zinc-500">
                             @foreach ($points as $k => $p)
-                                <span @class(['absolute -translate-x-1/2 whitespace-nowrap', 'font-semibold text-zinc-900 dark:text-white' => $loop->last]) style="left: {{ $p['x'] }}%">{{ str($p['month'])->before(' ') }}</span>
+                                <span @class(['absolute -translate-x-1/2 whitespace-nowrap', 'font-semibold text-zinc-900 dark:text-white' => $loop->last, 'hidden sm:inline' => ! $loop->first && ! $loop->last && ! str_contains($p['tick'], ' ')]) style="left: {{ $p['x'] }}%">{{ $loop->last ? __('This week') : $p['tick'] }}</span>
                             @endforeach
                         </div>
                     </div>
@@ -274,8 +308,8 @@ new #[Title('Overview')] class extends Component {
 
                 {{-- The same numbers for screen readers --}}
                 <table class="sr-only">
-                    <caption>{{ __('Cash flow, last 6 months') }}</caption>
-                    <tr><th>{{ __('Month') }}</th><th>{{ __('Money in') }}</th><th>{{ __('Money out') }}</th></tr>
+                    <caption>{{ __('Cash flow, last 12 weeks') }}</caption>
+                    <tr><th>{{ __('Week') }}</th><th>{{ __('Money in') }}</th><th>{{ __('Money out') }}</th></tr>
                     @foreach ($points as $p)<tr><td>{{ $p['month'] }}</td><td>{{ $p['in'] }}</td><td>{{ $p['out'] }}</td></tr>@endforeach
                 </table>
             </section>
