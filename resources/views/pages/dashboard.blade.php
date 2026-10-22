@@ -95,14 +95,8 @@ new #[Title('Overview')] class extends Component {
     public function dueSummary(): array
     {
         $unpaid = Payment::whereNull('paid_at')->whereNotNull('due_date');
-        $late = (clone $unpaid)->whereDate('due_date', '<', today());
-        $soon = (clone $unpaid)->whereDate('due_date', '>=', today())->whereDate('due_date', '<=', today()->addDays(7));
 
-        return [
-            'count' => (clone $unpaid)->count(), 'total' => (float) (clone $unpaid)->sum('amount'),
-            'lateCount' => (clone $late)->count(), 'late' => (float) $late->sum('amount'),
-            'soonCount' => (clone $soon)->count(), 'soon' => (float) $soon->sum('amount'),
-        ];
+        return ['count' => (clone $unpaid)->count(), 'total' => (float) $unpaid->sum('amount')];
     }
 
     /** The latest money movements: client payments, other income, expenses and salaries (same as Finance). */
@@ -344,20 +338,6 @@ new #[Title('Overview')] class extends Component {
                     <a href="{{ route('clients.index') }}" wire:navigate class="rounded-lg px-2 py-1 text-xs font-medium text-brand-600 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-500/10">{{ __('Clients') }}</a>
                 </div>
 
-                @if ($due['count'])
-                    <div class="grid grid-cols-2 gap-2 px-5 pt-4">
-                        <div class="rounded-xl bg-rose-50 px-3 py-2.5 dark:bg-rose-500/10">
-                            <p class="flex items-center gap-1.5 text-[0.6875rem] font-semibold tracking-wide text-rose-700 uppercase dark:text-rose-300"><flux:icon.exclamation-circle variant="micro" class="size-3.5" />{{ __('Overdue') }}</p>
-                            <p class="mt-1 text-base font-bold text-zinc-900 tabular-nums dark:text-white">{{ $money($due['late']) }}</p>
-                            <p class="text-[0.6875rem] text-zinc-500">{{ trans_choice(':count payment|:count payments', $due['lateCount']) }}</p>
-                        </div>
-                        <div class="rounded-xl bg-amber-50 px-3 py-2.5 dark:bg-amber-500/10">
-                            <p class="flex items-center gap-1.5 text-[0.6875rem] font-semibold tracking-wide text-amber-700 uppercase dark:text-amber-300"><flux:icon.clock variant="micro" class="size-3.5" />{{ __('Next 7 days') }}</p>
-                            <p class="mt-1 text-base font-bold text-zinc-900 tabular-nums dark:text-white">{{ $money($due['soon']) }}</p>
-                            <p class="text-[0.6875rem] text-zinc-500">{{ trans_choice(':count payment|:count payments', $due['soonCount']) }}</p>
-                        </div>
-                    </div>
-                @endif
 
                 <div class="flex flex-col p-2 pt-3">
                     @forelse ($this->duePayments as $payment)
