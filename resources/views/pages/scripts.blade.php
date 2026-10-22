@@ -149,74 +149,85 @@ new #[Title('Scripts')] class extends Component {
                     $rest = $next ? $list->reject(fn ($s) => $s->is($next))->values() : $list;
                     $byStatus = $list->countBy('status');
                     $done = ($byStatus['approved'] ?? 0) + ($byStatus['shot'] ?? 0);
+                    $shoots = $list->filter(fn ($s) => $s->shoot_date?->gte(today()))->count();
                 @endphp
-                <article wire:key="box-{{ $key }}" x-data="{ all: false }" class="{{ $panel }} flex flex-col overflow-hidden transition hover:shadow-[0_8px_24px_-12px_rgb(15_23_42/0.18)]" data-test="script-box-{{ $key }}">
+                <article wire:key="box-{{ $key }}" x-data="{ all: false }" class="group/box flex flex-col overflow-hidden rounded-xl bg-white shadow-[0_1px_2px_rgb(15_23_42/0.06)] ring-1 ring-zinc-200/70 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_32px_-12px_rgb(15_23_42/0.22)] dark:bg-zinc-950 dark:ring-white/10" data-test="script-box-{{ $key }}">
                     {{-- Who --}}
-                    <div class="flex items-center gap-3 px-5 pt-5">
-                        @if ($c?->avatarUrl())
-                            <img src="{{ $c->avatarUrl() }}" alt="" class="size-10 shrink-0 rounded-xl object-cover">
-                        @elseif ($c)
-                            <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-linear-to-br from-brand-500 to-violet-600 text-sm font-bold text-white shadow-md shadow-brand-500/20">{{ $c->initials() }}</span>
-                        @else
-                            <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"><flux:icon.sparkles variant="mini" class="size-5" /></span>
-                        @endif
-                        <div class="min-w-0 flex-1">
-                            @if ($c)
-                                <a href="{{ route('clients.show', $c) }}" wire:navigate class="block truncate font-semibold text-zinc-900 hover:text-brand-600 dark:text-white">{{ $c->displayName() }}</a>
+                    <div @class([
+                        'relative overflow-hidden px-5 pt-5 pb-4 text-white',
+                        'bg-linear-to-br from-brand-500 via-brand-600 to-violet-600' => $c,
+                        'bg-linear-to-br from-zinc-700 to-zinc-900' => ! $c,
+                    ])>
+                        <span class="pointer-events-none absolute -top-10 -right-8 size-32 rounded-full bg-white/10"></span>
+                        <span class="pointer-events-none absolute -right-2 -bottom-14 size-24 rounded-full bg-white/5"></span>
+                        <div class="relative flex items-center gap-3">
+                            @if ($c?->avatarUrl())
+                                <img src="{{ $c->avatarUrl() }}" alt="" class="size-11 shrink-0 rounded-xl object-cover ring-2 ring-white/30">
                             @else
-                                <p class="truncate font-semibold text-zinc-900 dark:text-white">{{ __('Other scripts') }}</p>
+                                <span class="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/15 text-sm font-bold ring-1 ring-white/25 backdrop-blur">
+                                    @if ($c){{ $c->initials() }}@else<flux:icon.sparkles variant="mini" class="size-5" />@endif
+                                </span>
                             @endif
-                            <p class="text-xs text-zinc-500">{{ trans_choice(':count script|:count scripts', $list->count()) }} · {{ __(':done ready', ['done' => $done]) }}</p>
+                            <div class="min-w-0 flex-1">
+                                @if ($c)
+                                    <a href="{{ route('clients.show', $c) }}" wire:navigate class="block truncate font-semibold hover:underline">{{ $c->displayName() }}</a>
+                                @else
+                                    <p class="truncate font-semibold">{{ __('Other scripts') }}</p>
+                                @endif
+                                <p class="text-xs text-white/70">{{ trans_choice(':count script|:count scripts', $list->count()) }}</p>
+                            </div>
+                            <button type="button" wire:click="addTo({{ $c?->id ?? 0 }})" title="{{ __('Add script') }}" class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/15 ring-1 ring-white/20 transition hover:bg-white hover:text-brand-600" data-test="add-to-{{ $key }}">
+                                <flux:icon.plus variant="micro" class="size-4" /><span class="sr-only">{{ __('Add script') }}</span>
+                            </button>
                         </div>
-                        <button type="button" wire:click="addTo({{ $c?->id ?? 0 }})" title="{{ __('Add script') }}" class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600 transition hover:bg-brand-500 hover:text-white dark:bg-white/5 dark:text-zinc-300" data-test="add-to-{{ $key }}">
-                            <flux:icon.plus variant="micro" class="size-4" /><span class="sr-only">{{ __('Add script') }}</span>
-                        </button>
-                    </div>
-
-                    {{-- Where the scripts are, in working order --}}
-                    <div class="mx-5 mt-4 flex h-1.5 gap-0.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/5">
-                        @foreach (Script::STATUSES as $st => $meta)
-                            @if ($n = $byStatus[$st] ?? 0)
-                                <span class="{{ $meta['dot'] }} h-full" style="width: {{ $n / $list->count() * 100 }}%" title="{{ $n }} {{ __($meta['label']) }}"></span>
-                            @endif
-                        @endforeach
+                        <div class="relative mt-4 grid grid-cols-3 gap-2">
+                            @foreach ([[__('Writing'), $list->count() - $done], [__('Ready'), $done], [__('Shoots'), $shoots]] as [$label, $n])
+                                <div class="rounded-lg bg-white/10 px-3 py-2">
+                                    <p class="text-lg leading-none font-bold tabular-nums">{{ $n }}</p>
+                                    <p class="mt-1 text-[0.6875rem] text-white/70">{{ $label }}</p>
+                                </div>
+                            @endforeach
+                        </div>
                     </div>
 
                     {{-- Next shoot --}}
                     @if ($next)
                         @php [$day, $month] = array_pad(explode(' ', $next->shoot_date->toNepali(false), 2), 2, ''); @endphp
-                        <a href="{{ route('scripts.edit', $next) }}" wire:navigate class="group mx-3 mt-4 flex items-center gap-3 rounded-xl bg-violet-50 p-2.5 transition hover:bg-violet-100/70 dark:bg-violet-500/10 dark:hover:bg-violet-500/15" data-test="script-{{ $next->id }}">
-                            <span class="flex w-12 shrink-0 flex-col items-center rounded-lg bg-white py-1 shadow-sm dark:bg-zinc-900">
-                                <span class="text-lg leading-tight font-bold text-zinc-900 tabular-nums dark:text-white">{{ $day }}</span>
-                                <span class="text-[0.625rem] font-semibold tracking-wide text-violet-600 uppercase dark:text-violet-300">{{ mb_substr($month, 0, 3) }}</span>
+                        <a href="{{ route('scripts.edit', $next) }}" wire:navigate class="group flex items-center gap-3 border-b border-zinc-100 bg-violet-50/60 px-5 py-3 transition hover:bg-violet-50 dark:border-white/5 dark:bg-violet-500/10" data-test="script-{{ $next->id }}">
+                            <span class="flex w-11 shrink-0 flex-col items-center overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-violet-100 dark:bg-zinc-900 dark:ring-violet-500/20">
+                                <span class="w-full bg-violet-600 py-0.5 text-center text-[0.5625rem] font-bold tracking-wider text-white uppercase">{{ mb_substr($month, 0, 3) }}</span>
+                                <span class="py-0.5 text-base font-bold text-zinc-900 tabular-nums dark:text-white">{{ $day }}</span>
                             </span>
                             <span class="min-w-0 flex-1">
-                                <span class="flex items-center gap-1 text-[0.6875rem] font-semibold text-violet-700 dark:text-violet-300"><flux:icon.video-camera variant="micro" class="size-3.5" />{{ $next->shootLabel() }}</span>
+                                <span class="flex items-center gap-1 text-[0.6875rem] font-semibold tracking-wide text-violet-700 uppercase dark:text-violet-300"><flux:icon.video-camera variant="micro" class="size-3.5" />{{ $next->shootLabel() }}</span>
                                 <span class="block truncate text-sm font-semibold text-zinc-900 group-hover:text-violet-700 dark:text-white">{{ $next->title }}</span>
                             </span>
-                            <flux:icon.chevron-right variant="micro" class="size-4 shrink-0 text-violet-300 transition group-hover:translate-x-0.5 group-hover:text-violet-500" />
+                            <flux:icon.chevron-right variant="micro" class="size-4 shrink-0 text-violet-300 transition group-hover:translate-x-0.5 group-hover:text-violet-600" />
                         </a>
                     @endif
 
                     {{-- Its scripts --}}
-                    <ul class="flex flex-col p-2">
+                    <ul class="flex flex-col py-1.5">
                         @foreach ($rest as $i => $s)
                             @php $type = Script::TYPES[$s->type] ?? Script::TYPES['other']; $st = Script::STATUSES[$s->status] ?? Script::STATUSES['draft']; @endphp
                             <li wire:key="s-{{ $s->id }}" @if ($i >= 5) x-show="all" x-cloak @endif>
-                                <a href="{{ route('scripts.edit', $s) }}" wire:navigate class="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]" data-test="script-{{ $s->id }}">
-                                    <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 transition group-hover:bg-brand-50 group-hover:text-brand-600 dark:bg-white/5 dark:text-zinc-400" title="{{ __($type['label']) }}"><flux:icon :icon="$type['icon']" variant="micro" class="size-4" /></span>
+                                <a href="{{ route('scripts.edit', $s) }}" wire:navigate class="group flex items-center gap-3 px-5 py-2.5 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]" data-test="script-{{ $s->id }}">
+                                    <span class="{{ $st['dot'] }} h-8 w-1 shrink-0 rounded-full" title="{{ __($st['label']) }}"></span>
                                     <span class="min-w-0 flex-1">
                                         <span class="block truncate text-sm font-medium text-zinc-900 group-hover:text-brand-600 dark:text-white">{{ $s->title }}</span>
-                                        <span class="block truncate text-xs text-zinc-500">
-                                            {{ __($type['label']) }} · {{ Script::speakingTime($s->body) }}@if ($shoot = $s->shootLabel()) · {{ $shoot }}@endif
+                                        <span class="flex items-center gap-1.5 truncate text-xs text-zinc-500">
+                                            <flux:icon :icon="$type['icon']" variant="micro" class="size-3.5 text-zinc-400" />{{ __($type['label']) }} · {{ Script::speakingTime($s->body) }}@if ($shoot = $s->shootLabel()) · {{ $shoot }}@endif
                                         </span>
                                     </span>
-                                    <span class="{{ $st['tone'] }} shrink-0 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium ring-1 ring-inset">{{ __($st['label']) }}</span>
+                                    <span class="shrink-0 text-xs font-medium text-zinc-500">{{ __($st['label']) }}</span>
                                 </a>
                             </li>
                         @endforeach
+                        @if ($rest->isEmpty())
+                            <li class="px-5 py-3 text-xs text-zinc-400">{{ __('No other scripts yet.') }}</li>
+                        @endif
                         @if ($rest->count() > 5)
-                            <li class="px-3 pt-1 pb-1">
+                            <li class="px-5 pt-1 pb-1">
                                 <button type="button" @click="all = ! all" class="text-xs font-medium text-brand-600 hover:underline dark:text-brand-300">
                                     <span x-show="! all">{{ trans_choice('Show :count more|Show :count more', $rest->count() - 5) }}</span><span x-show="all" x-cloak>{{ __('Show less') }}</span>
                                 </button>
