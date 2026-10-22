@@ -20,13 +20,20 @@ class ScriptsTest extends TestCase
         $this->get(route('scripts.index'))->assertOk()->assertSee(['Scripts', 'No scripts yet']);
         $client = Client::factory()->create(['company' => 'Momo House']);
 
-        Livewire::test('pages::scripts')->call('create')->assertRedirect(route('scripts.edit', Script::sole()));
+        // The popup asks who it is for: a client must be chosen, or "other".
+        Livewire::test('pages::scripts')->call('openNew')->assertSet('newFor', 'client')
+            ->call('create')->assertHasErrors('newClient')
+            ->set('newClient', (string) $client->id)->set('newTitle', 'Momo reel')->call('create')
+            ->assertRedirect(route('scripts.edit', Script::sole()));
         $script = Script::sole();
+        $this->assertSame([$client->id, 'Momo reel'], [$script->client_id, $script->title]);
+        Livewire::test('pages::scripts')->call('openNew')->set('newFor', 'other')->call('create')->assertHasNoErrors();
+        $this->assertNull(Script::latest('id')->first()->client_id);
+        Script::latest('id')->first()->delete();
         $this->get(route('scripts.edit', $script))->assertOk()->assertSee('Saves as you type');
 
         $body = 'Stop scrolling if you love momo. Steam, sauce, the first bite. Visit us in Thamel today.';
         Livewire::test('pages::script-editor', ['script' => $script])
-            ->set('title', 'Momo reel')
             ->set('body', $body)
             ->set('status', 'review')
             ->set('clientId', (string) $client->id)
@@ -39,11 +46,17 @@ class ScriptsTest extends TestCase
         $this->assertSame(16, Script::wordCount($body));
         $this->assertSame('6 sec', Script::speakingTime($body));
 
+        // Boxes: one per client with its scripts; "+ Add script" in a box adds straight to that client.
         Livewire::test('pages::scripts')
-            ->assertSee(['Momo reel', 'Momo House', 'In review'])
+            ->assertSee(['Momo reel', 'Momo House', 'In review', '1 script'])
+            ->assertDontSee('Other scripts')
             ->set('status', 'approved')->assertDontSee('Momo reel')
             ->set('status', '')->set('search', 'thamel')->assertSee('Momo reel')
-            ->set('search', '')->set('clientFilter', 'none')->assertDontSee('Momo reel');
+            ->set('search', '')->call('addTo', $client->id);
+        $this->assertSame(2, Script::where('client_id', $client->id)->count());
+        Livewire::test('pages::scripts')->call('addTo', 0);
+        Livewire::test('pages::scripts')->assertSee(['Other scripts', '2 scripts']);
+        Script::where('title', 'Untitled script')->delete();
 
         Livewire::test('pages::script-editor', ['script' => $script])->call('duplicate');
         $this->assertSame(['Momo reel', 'Momo reel (copy)'], Script::orderBy('id')->pluck('title')->all());
