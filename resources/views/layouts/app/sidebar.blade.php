@@ -24,6 +24,7 @@
                             ['icon' => 'check-circle', 'label' => __('Tasks'), 'route' => 'tasks.index'],
                             ['icon' => 'folder-open', 'label' => __('Documents'), 'route' => 'library.index'],
                             ['icon' => 'pencil-square', 'label' => __('Scripts'), 'route' => 'scripts.index'],
+                            ['icon' => 'video-camera', 'label' => __('Videos'), 'route' => 'videos.index'],
                         ],
                         __('Money') => [
                             ['icon' => 'banknotes', 'label' => __('Finance'), 'route' => 'finance.index'],
