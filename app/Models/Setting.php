@@ -29,6 +29,8 @@ class Setting extends Model
         'currency' => 'NPR',
         'remind_days' => '7',
         'weekly_holiday' => '6', // 0 = Sunday ... 6 = Saturday
+        'reminder_emails' => 'info@nepdude.com', // comma separated
+        'reminder_emails_on' => '1',
     ];
 
     /** @var array<string, string|null>|null */
