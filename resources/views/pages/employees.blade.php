@@ -609,11 +609,11 @@ new #[Title('Employees')] class extends Component {
             @endphp
             <div class="grid gap-4 sm:grid-cols-2">
                 <flux:input wire:model="name" :label="__('Full name')" required autofocus />
-                <flux:select wire:model="employeeStatus" :label="__('Status')">
-                    @foreach (Employee::STATUSES as $key => $label)
-                        <flux:select.option :value="$key">{{ __($label) }}</flux:select.option>
-                    @endforeach
-                </flux:select>
+                <x-rich-select model="employeeStatus" :label="__('Status')" :options="[
+                    ['value' => 'active', 'label' => __('Active'), 'hint' => __('Working now'), 'icon' => 'check-circle', 'tile' => 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300'],
+                    ['value' => 'on_leave', 'label' => __('On leave'), 'hint' => __('Away for a while'), 'icon' => 'sun', 'tile' => 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300'],
+                    ['value' => 'inactive', 'label' => __('Inactive'), 'hint' => __('No longer working'), 'icon' => 'pause-circle', 'tile' => 'bg-zinc-100 text-zinc-500 dark:bg-white/10 dark:text-zinc-300'],
+                ]" />
 
                 <flux:input wire:model="designation" :label="__('Role')" :placeholder="__('e.g. Graphic Designer')" />
 

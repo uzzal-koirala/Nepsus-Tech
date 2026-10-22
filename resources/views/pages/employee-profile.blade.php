@@ -1722,7 +1722,7 @@ new #[Title('Employee')] class extends Component {
     </flux:modal>
 
     {{-- Edit --}}
-    <flux:modal name="employee-form" class="w-full max-w-lg">
+    <flux:modal name="employee-form" class="w-full max-w-lg overflow-visible!">
         <form wire:submit="save" class="flex flex-col gap-5">
             <div>
                 <flux:heading size="lg">{{ __('Edit employee') }}</flux:heading>
@@ -1731,21 +1731,17 @@ new #[Title('Employee')] class extends Component {
             <div class="grid gap-4 sm:grid-cols-2">
                 <flux:input wire:model="name" :label="__('Full name')" required class="sm:col-span-2" />
                 <flux:input wire:model="designation" :label="__('Role')" :placeholder="__('e.g. Graphic Designer')" />
-                <flux:select wire:model="dept" :label="__('Department')">
-                    @foreach (Employee::departments() as $key => $d)
-                        <flux:select.option :value="$key">{{ __($d['label']) }}</flux:select.option>
-                    @endforeach
-                </flux:select>
+                <x-rich-select model="dept" searchable :label="__('Department')" :options="collect(Employee::departments())->map(fn ($d, $key) => ['value' => $key, 'label' => __($d['label']), 'icon' => $d['icon'], 'tile' => 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300'])->values()" />
                 <flux:input wire:model="salary" type="number" min="0" step="1" :label="__('Monthly salary (:currency)', ['currency' => config('app.currency')])" />
-                <flux:select wire:model="employeeStatus" :label="__('Status')">
-                    @foreach (Employee::STATUSES as $key => $label)
-                        <flux:select.option :value="$key">{{ __($label) }}</flux:select.option>
-                    @endforeach
-                </flux:select>
+                <x-rich-select model="employeeStatus" :label="__('Status')" :options="[
+                    ['value' => 'active', 'label' => __('Active'), 'hint' => __('Working now'), 'icon' => 'check-circle', 'tile' => 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300'],
+                    ['value' => 'on_leave', 'label' => __('On leave'), 'hint' => __('Away for a while'), 'icon' => 'sun', 'tile' => 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300'],
+                    ['value' => 'inactive', 'label' => __('Inactive'), 'hint' => __('No longer working'), 'icon' => 'pause-circle', 'tile' => 'bg-zinc-100 text-zinc-500 dark:bg-white/10 dark:text-zinc-300'],
+                ]" />
                 <flux:input wire:model="phone" type="tel" :label="__('Phone')" placeholder="98XXXXXXXX" />
                 <flux:input wire:model="email" type="email" :label="__('Email')" />
                 <x-nepali-date wire:model="joinedOn" :label="__('Joined on')" />
-                <flux:input wire:model="salaryDay" type="number" min="1" max="32" step="1" :label="__('Salary day')" :placeholder="__('e.g. 1')" :description="__('Nepali day of each month')" />
+                <flux:input wire:model="salaryDay" type="number" min="1" max="32" step="1" :label="__('Salary day (Nepali)')" :placeholder="__('e.g. 1')" />
                 <x-nepali-date wire:model="contractStart" :label="__('Agreement starts')" />
                 <x-nepali-date wire:model="contractEnd" :label="__('Agreement ends')" />
                 <flux:error name="contractEnd" class="sm:col-span-2" />
