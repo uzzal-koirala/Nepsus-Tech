@@ -1,7 +1,19 @@
 {{-- Folder dropdown for the Documents page: pick, add or delete a folder. Needs $model (Livewire property) and $folders. --}}
-<div class="relative grid gap-2" x-data="{ open: false, value: $wire.entangle('{{ $model }}').live }" @click.outside="open = false" @keydown.escape.stop="open = false">
+<div class="relative grid gap-2" x-data="{
+        open: false,
+        up: false,
+        value: $wire.entangle('{{ $model }}').live,
+        toggle() {
+            this.open = ! this.open;
+            if (! this.open) return;
+            // Open upwards when there is not enough room below (small screens, bottom of a popup).
+            const r = this.$refs.trigger.getBoundingClientRect();
+            const below = window.innerHeight - r.bottom;
+            this.up = below < 340 && r.top > below;
+        },
+    }" @click.outside="open = false" @keydown.escape.stop="open = false">
     <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Folder') }}</span>
-    <button type="button" @click="open = ! open" :aria-expanded="open" aria-haspopup="listbox"
+    <button type="button" x-ref="trigger" @click="toggle()" :aria-expanded="open" aria-haspopup="listbox"
         class="flex h-10 w-full items-center gap-2.5 rounded-lg border border-zinc-200 bg-white px-2 text-start text-sm shadow-xs transition hover:border-zinc-300 dark:border-white/10 dark:bg-white/5"
         :class="open && 'border-brand-400 ring-2 ring-brand-500/20'" data-test="folder-picker-{{ $model }}">
         @foreach ($folders as $slug => $f)
@@ -13,8 +25,8 @@
         <flux:icon.chevron-down variant="micro" class="ms-auto size-4 shrink-0 text-zinc-400 transition" ::class="open && 'rotate-180'" />
     </button>
 
-    <div x-show="open" x-cloak x-transition.origin.top class="absolute inset-x-0 top-full z-40 mt-1.5 overflow-hidden rounded-xl bg-white shadow-[0_24px_60px_-16px_rgb(15_23_42/0.4)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10" role="listbox">
-        <div class="flex max-h-60 flex-col gap-0.5 overflow-y-auto p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div x-show="open" x-cloak x-transition :class="up ? 'bottom-full mb-1.5 origin-bottom' : 'top-full mt-1.5 origin-top'" class="absolute inset-x-0 z-40 overflow-hidden rounded-xl bg-white shadow-[0_24px_60px_-16px_rgb(15_23_42/0.4)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10" role="listbox">
+        <div class="flex max-h-[min(15rem,40vh)] flex-col gap-0.5 overflow-y-auto p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             @foreach ($folders as $slug => $f)
                 <div wire:key="fp-{{ $model }}-{{ $slug }}" class="group flex items-center gap-1 rounded-lg transition hover:bg-zinc-50 dark:hover:bg-white/5" :class="value === @js($slug) && 'bg-brand-50/80 dark:bg-brand-500/10'">
                     <button type="button" role="option" @click="value = @js($slug); open = false" class="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-start">
