@@ -23,11 +23,14 @@ class AdminOnly
             return $next($request);
         }
 
-        $route = $request->route();
-        if ($request->isMethod('GET') && ($staffPage = self::STAFF_PAGES[$route?->getName()] ?? null)) {
-            return redirect()->route($staffPage, $route->parameters());
+        // Opening a page (a link, a bookmark, or the page they were on before signing in): go to their own version, else My day.
+        if ($request->isMethod('GET') && ! $request->hasHeader('X-Livewire')) {
+            $route = $request->route();
+            $staffPage = self::STAFF_PAGES[$route?->getName()] ?? null;
+
+            return $staffPage ? redirect()->route($staffPage, $route->parameters()) : redirect()->route('my.dashboard');
         }
 
-        abort(403, __('Only admins can open this page.'));
+        abort(403, __('Only admins can do this.'));
     }
 }

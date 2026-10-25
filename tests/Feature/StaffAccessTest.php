@@ -37,13 +37,13 @@ class StaffAccessTest extends TestCase
 
         $this->actingAs($user);
 
-        // Admin pages send them to their own version, or refuse.
+        // Admin pages send them to their own version, or to My day.
         $this->get(route('dashboard'))->assertRedirect(route('my.dashboard'));
         $this->get(route('clients.index'))->assertRedirect(route('my.clients'));
         $this->get(route('clients.show', $client))->assertRedirect(route('my.clients.show', $client));
         $this->get(route('tasks.index'))->assertRedirect(route('my.tasks'));
         foreach (['finance.index', 'packages.index', 'employees.index', 'invoices.index', 'sales.index', 'library.index', 'settings.business', 'settings.ai-connections'] as $page) {
-            $this->get(route($page))->assertForbidden();
+            $this->get(route($page))->assertRedirect(route('my.dashboard'));
         }
         $this->get('/settings')->assertRedirect(route('profile.edit'));
 
