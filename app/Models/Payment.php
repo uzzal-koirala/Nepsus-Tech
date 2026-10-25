@@ -18,6 +18,21 @@ class Payment extends Model
     /** Where a payment was received. */
     public const METHODS = ['Bank', 'eSewa', 'Khalti', 'Cash', 'Cheque', 'Other'];
 
+    /** Options for x-rich-select: each method with its icon and colour. */
+    public static function methodOptions(): array
+    {
+        $style = [
+            'Bank' => ['building-library', 'Bank transfer', 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300'],
+            'eSewa' => ['device-phone-mobile', 'Wallet', 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300'],
+            'Khalti' => ['device-phone-mobile', 'Wallet', 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300'],
+            'Cash' => ['banknotes', 'Notes and coins', 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300'],
+            'Cheque' => ['document-text', 'Paper cheque', 'bg-zinc-100 text-zinc-600 dark:bg-white/10 dark:text-zinc-300'],
+            'Other' => ['ellipsis-horizontal-circle', 'Anything else', 'bg-zinc-100 text-zinc-600 dark:bg-white/10 dark:text-zinc-300'],
+        ];
+
+        return array_map(fn ($m) => ['value' => $m, 'label' => __($m), 'hint' => __($style[$m][1]), 'icon' => $style[$m][0], 'tile' => $style[$m][2]], self::METHODS);
+    }
+
     /** What a payment is for. */
     public const TYPES = [
         'advance' => ['label' => 'Advance payment', 'hint' => 'Paid before the work starts', 'icon' => 'forward'],

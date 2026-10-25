@@ -631,11 +631,8 @@ new #[Title('Finance')] class extends Component {
 
                 <div class="grid gap-4 sm:grid-cols-2">
                     <flux:input wire:model="title" :label="__('What was it for')" :placeholder="$kind === 'income' ? __('e.g. Logo design for a friend') : __('e.g. Office rent for Kartik')" required />
-                    <flux:select wire:model="category" :label="__('Category')" wire:key="category-{{ $kind }}" data-test="entry-category">
-                        @foreach (Transaction::categories($kind) as $key => $cat)
-                            <flux:select.option :value="$key">{{ __($cat['label']) }}</flux:select.option>
-                        @endforeach
-                    </flux:select>
+                    <x-rich-select model="category" :label="__('Category')" wire:key="category-{{ $kind }}" data-test="entry-category"
+                        :options="collect(Transaction::categories($kind))->map(fn ($cat, $key) => ['value' => $key, 'label' => __($cat['label']), 'icon' => $cat['icon'], 'tile' => $kind === 'income' ? 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300' : 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300'])->values()" />
                 </div>
 
                 <div class="grid gap-4 sm:grid-cols-2">
@@ -652,12 +649,8 @@ new #[Title('Finance')] class extends Component {
 
 
                 <div class="grid gap-4 sm:grid-cols-2">
-                    <flux:select wire:model="method" :label="__('Paid with / received in')">
-                        <flux:select.option value="">{{ __('Not set') }}</flux:select.option>
-                        @foreach (Payment::METHODS as $m)
-                            <flux:select.option :value="$m">{{ __($m) }}</flux:select.option>
-                        @endforeach
-                    </flux:select>
+                    <x-rich-select model="method" :label="__('Paid with / received in')"
+                        :options="array_merge([['value' => '', 'label' => __('Not set'), 'icon' => 'minus-circle']], Payment::methodOptions())" />
                     <flux:input wire:model="note" :label="__('Note')" :placeholder="__('Optional')" />
                 </div>
 
