@@ -4,12 +4,12 @@ use App\Models\Setting;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth'])->group(function () {
-    Route::redirect('settings', 'settings/business');
+    Route::get('settings', fn () => redirect()->route(auth()->user()->isAdmin() ? 'settings.business' : 'profile.edit'));
 
     Route::livewire('settings/profile', 'pages::settings.profile')->name('profile.edit');
 });
 
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', 'admin'])->group(function () {
     Route::livewire('settings/business', 'pages::settings.business')->name('settings.business');
     Route::livewire('settings/preferences', 'pages::settings.preferences')->name('settings.preferences');
     Route::livewire('settings/work-types', 'pages::settings.work-types')->name('settings.work-types');
@@ -41,6 +41,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         return response()->download($path, 'nepsus-attendance-helper.zip')->deleteFileAfterSend();
     })->name('settings.attendance-device.helper');
+});
+
+Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('settings/appearance', 'pages::settings.appearance')->name('appearance.edit');
 
     Route::livewire('settings/security', 'pages::settings.security')

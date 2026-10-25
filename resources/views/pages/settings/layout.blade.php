@@ -14,6 +14,9 @@
             ['route' => 'appearance.edit', 'icon' => 'paint-brush', 'label' => __('Appearance'), 'hint' => __('Light or dark theme')],
         ],
     ];
+    if (! auth()->user()->isAdmin()) {
+        unset($groups[__('Workspace')]);
+    }
 @endphp
 
 <div class="flex items-start gap-8 max-lg:flex-col">

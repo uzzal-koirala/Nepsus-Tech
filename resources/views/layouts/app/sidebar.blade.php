@@ -6,12 +6,26 @@
     <body class="min-h-screen bg-canvas font-sans antialiased dark:bg-zinc-900">
         <flux:sidebar sticky collapsible class="app-sidebar border-e border-zinc-200/80 bg-white dark:border-white/5 dark:bg-zinc-950">
             <flux:sidebar.header>
-                <x-app-logo :sidebar="true" href="{{ route('dashboard') }}" wire:navigate />
+                <x-app-logo :sidebar="true" href="{{ route(auth()->user()->isAdmin() ? 'dashboard' : 'my.dashboard') }}" wire:navigate />
                 <flux:sidebar.collapse />
             </flux:sidebar.header>
 
             <flux:sidebar.nav>
                 @php
+                    $isAdmin = auth()->user()->isAdmin();
+                    // Employee logins: their own day, work and the content pages. No money.
+                    $staffSections = [
+                        __('My work') => [
+                            ['icon' => 'sun', 'label' => __('My day'), 'route' => 'my.dashboard', 'current' => 'my.dashboard'],
+                            ['icon' => 'check-circle', 'label' => __('My tasks'), 'route' => 'my.tasks', 'current' => 'my.tasks'],
+                            ['icon' => 'calendar-days', 'label' => __('Calendar'), 'route' => 'calendar.index'],
+                        ],
+                        __('Content') => [
+                            ['icon' => 'building-office-2', 'label' => __('Clients'), 'route' => 'my.clients', 'current' => 'my.clients*'],
+                            ['icon' => 'pencil-square', 'label' => __('Scripts'), 'route' => 'scripts.index'],
+                            ['icon' => 'video-camera', 'label' => __('Videos'), 'route' => 'videos.index'],
+                        ],
+                    ];
                     $sections = [
                         __('Dashboard') => [
                             ['icon' => 'home', 'label' => __('Overview'), 'route' => 'dashboard'],
@@ -34,6 +48,7 @@
                             ['icon' => 'user-group', 'label' => __('Employees'), 'route' => 'employees.index'],
                         ],
                     ];
+                    $sections = $isAdmin ? $sections : $staffSections;
                 @endphp
 
                 @foreach ($sections as $heading => $items)
@@ -42,7 +57,7 @@
                         <hr class="mx-auto my-3 hidden w-6 border-zinc-200 in-data-flux-sidebar-collapsed-desktop:block dark:border-white/10">
 
                         @foreach ($items as $item)
-                            <flux:sidebar.item :icon="$item['icon']" :href="route($item['route'])" :current="request()->routeIs(str($item['route'])->before('.').'*')" wire:navigate.hover>
+                            <flux:sidebar.item :icon="$item['icon']" :href="route($item['route'])" :current="request()->routeIs($item['current'] ?? str($item['route'])->before('.').'*')" wire:navigate.hover>
                                 {{ $item['label'] }}
                             </flux:sidebar.item>
                         @endforeach
@@ -53,7 +68,7 @@
             <flux:spacer />
 
             <flux:sidebar.nav>
-                <flux:sidebar.item icon="cog-6-tooth" :href="route('settings.business')" :current="request()->routeIs('profile.edit', 'security.edit', 'appearance.edit', 'settings.*')" wire:navigate.hover>
+                <flux:sidebar.item icon="cog-6-tooth" :href="route($isAdmin ? 'settings.business' : 'profile.edit')" :current="request()->routeIs('profile.edit', 'security.edit', 'appearance.edit', 'settings.*')" wire:navigate.hover>
                     {{ __('Settings') }}
                 </flux:sidebar.item>
             </flux:sidebar.nav>
@@ -90,15 +105,17 @@
         <!-- Mobile header -->
         <flux:header class="border-b border-zinc-200/80 bg-white lg:hidden dark:border-white/5 dark:bg-zinc-950">
             <flux:sidebar.toggle icon="bars-2" inset="left" />
-            <x-app-logo href="{{ route('dashboard') }}" class="ms-2" wire:navigate />
+            <x-app-logo href="{{ route(auth()->user()->isAdmin() ? 'dashboard' : 'my.dashboard') }}" class="ms-2" wire:navigate />
         </flux:header>
 
         {{ $slot }}
 
-        {{-- Floating AI chat; kept open across page changes --}}
-        @persist('ai-widget')
-            <livewire:pages::ai-widget />
-        @endpersist
+        {{-- Floating AI chat; kept open across page changes. Admins only: it can read and change everything. --}}
+        @if (auth()->user()->isAdmin())
+            @persist('ai-widget')
+                <livewire:pages::ai-widget />
+            @endpersist
+        @endif
 
         @persist('toast')
             <flux:toast.group>

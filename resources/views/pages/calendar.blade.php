@@ -93,6 +93,8 @@ new #[Title('Calendar')] class extends Component {
     {
         return Task::with(['client', 'assignees'])->whereNotNull('client_id')
             ->whereDate('due_date', '>=', $from)->whereDate('due_date', '<=', $to)
+            // Employee logins see their own work only.
+            ->unless(auth()->user()->isAdmin(), fn ($q) => $q->whereHas('assignees', fn ($a) => $a->whereKey(auth()->user()->employee?->id ?? 0)))
             ->when($filtered && $this->off, fn ($q) => $q->whereNotIn('type', $this->off))
             ->orderByRaw('completed_at is not null')
             ->orderByRaw("case priority when 'urgent' then 0 when 'high' then 1 when 'medium' then 2 else 3 end")
@@ -166,7 +168,7 @@ new #[Title('Calendar')] class extends Component {
     <header class="flex flex-wrap items-end justify-between gap-4">
         <div>
             <h1 class="text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-3xl dark:text-white">{{ __('Calendar') }}</h1>
-            <p class="mt-1 text-sm text-zinc-500">{{ __('Every client task on its due date. Plan the month and add work as it comes.') }}</p>
+            <p class="mt-1 text-sm text-zinc-500">{{ auth()->user()->isAdmin() ? __('Every client task on its due date. Plan the month and add work as it comes.') : __('Your tasks and every shoot, on their day.') }}</p>
         </div>
         <flux:button variant="primary" icon="plus" wire:click="newTask('{{ $day }}')" class="shadow-lg shadow-brand-500/25" data-test="new-task">{{ __('Add task') }}</flux:button>
     </header>
@@ -330,7 +332,7 @@ new #[Title('Calendar')] class extends Component {
                             </div>
                             <div class="flex shrink-0 gap-0.5 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
                                 <flux:button size="xs" variant="ghost" icon="pencil-square" wire:click="editTask({{ $t->id }})" :aria-label="__('Edit')" />
-                                <flux:button size="xs" variant="ghost" icon="trash" wire:click="confirmDelete({{ $t->id }})" :aria-label="__('Delete')" class="text-rose-600!" />
+                                @if (auth()->user()->isAdmin())<flux:button size="xs" variant="ghost" icon="trash" wire:click="confirmDelete({{ $t->id }})" :aria-label="__('Delete')" class="text-rose-600!" />@endif
                             </div>
                         </div>
                     @empty

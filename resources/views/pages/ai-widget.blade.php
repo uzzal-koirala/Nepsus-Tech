@@ -14,6 +14,12 @@ new class extends Component {
 
     public string $apiKey = '';
 
+    /** The assistant can read and change everything, money included: admins only. */
+    public function boot(): void
+    {
+        abort_unless(auth()->user()?->isAdmin(), 403);
+    }
+
     public function send(string $text): void
     {
         $text = trim($text);

@@ -28,6 +28,16 @@ trait ManagesTasks
 
     protected function taskSaved(Task $task): void {}
 
+    /** A task this login may change: employee logins only reach their own. */
+    protected function findTask(int $id): Task
+    {
+        $user = auth()->user();
+
+        return Task::with('assignees')
+            ->unless($user->isAdmin(), fn ($q) => $q->whereHas('assignees', fn ($a) => $a->whereKey($user->employee?->id ?? 0)))
+            ->findOrFail($id);
+    }
+
     protected function blankTask(?string $date = null, array $preset = []): array
     {
         return $preset + ['task_group_id' => '', 'client_id' => '', 'title' => '', 'type' => array_key_first($this->types) ?? '', 'priority' => 'medium', 'status' => 'todo', 'due_date' => $date ?? '', 'description' => '', 'assignees' => []];
@@ -67,7 +77,7 @@ trait ManagesTasks
 
     public function editTask(int $id): void
     {
-        $t = Task::with('assignees')->findOrFail($id);
+        $t = $this->findTask($id);
         $this->editingId = $t->id;
         $this->task = ['task_group_id' => (string) $t->task_group_id, 'client_id' => (string) $t->client_id, 'title' => $t->title, 'type' => $t->type, 'priority' => $t->priority, 'status' => $t->stage(), 'due_date' => (string) $t->due_date?->toDateString(), 'description' => (string) $t->description, 'assignees' => $t->assignees->pluck('id')->map('strval')->all()];
         $this->resetErrorBag();
@@ -90,7 +100,7 @@ trait ManagesTasks
             'task.assignees.*' => ['integer', Rule::exists('employees', 'id')],
         ], attributes: ['task.client_id' => __('client'), 'task.title' => __('task'), 'task.due_date' => __('due date'), 'task.type' => __('work type')])['task'];
 
-        $t = $this->editingId ? Task::findOrFail($this->editingId) : new Task;
+        $t = $this->editingId ? $this->findTask($this->editingId) : new Task;
         $t->task_group_id = $data['task_group_id'] ?: null;
         // A task in a client's box belongs to that client unless one was picked.
         $t->client_id = $data['client_id'] ?: TaskGroup::find($t->task_group_id)?->client_id;
@@ -99,7 +109,12 @@ trait ManagesTasks
             'due_date' => $data['due_date'] ?: null, 'description' => $data['description'] ?: null,
             'completed_at' => $data['status'] === 'done' ? ($t->completed_at ?? now()) : null,
         ])->save();
-        $t->assignees()->sync($data['assignees'] ?? []);
+        $assignees = $data['assignees'] ?? [];
+        // An employee always stays on the tasks they add or change, so the task does not vanish from their view.
+        if (! auth()->user()->isAdmin() && $me = auth()->user()->employee?->id) {
+            $assignees = array_values(array_unique([...array_map('intval', $assignees), $me]));
+        }
+        $t->assignees()->sync($assignees);
 
         $this->taskSaved($t);
         Flux::modal('task-form')->close();
@@ -108,25 +123,27 @@ trait ManagesTasks
 
     public function toggleDone(int $id): void
     {
-        $t = Task::findOrFail($id);
+        $t = $this->findTask($id);
         $t->update($t->completed_at ? ['completed_at' => null, 'status' => 'todo'] : ['completed_at' => now(), 'status' => 'done']);
     }
 
     public function moveTask(int $id, string $status): void
     {
         abort_unless(array_key_exists($status, Task::STATUSES), 422);
-        $t = Task::findOrFail($id);
+        $t = $this->findTask($id);
         $t->update(['status' => $status, 'completed_at' => $status === 'done' ? ($t->completed_at ?? now()) : null]);
     }
 
     public function confirmDelete(int $id): void
     {
+        abort_unless(auth()->user()->isAdmin(), 403);
         $this->deletingId = $id;
         Flux::modal('task-delete')->show();
     }
 
     public function deleteTask(): void
     {
+        abort_unless(auth()->user()->isAdmin(), 403);
         Task::whereKey($this->deletingId)->delete();
         $this->deletingId = null;
         Flux::modal('task-delete')->close();

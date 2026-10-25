@@ -95,6 +95,11 @@ class Client extends Model
         return $this->hasMany(Task::class);
     }
 
+    public function videos(): HasMany
+    {
+        return $this->hasMany(Video::class);
+    }
+
     public function scripts(): HasMany
     {
         return $this->hasMany(Script::class);

@@ -86,6 +86,7 @@ new #[Title('Employee')] class extends Component {
     /** Login account form. */
     public string $accEmail = '';
     public string $accPassword = '';
+    public bool $accAdmin = false;
 
     public function mount(Employee $employee): void
     {
@@ -100,6 +101,7 @@ new #[Title('Employee')] class extends Component {
         if ($this->tab === 'account') {
             $this->accEmail = (string) ($this->employee->user?->email ?? $this->employee->email);
             $this->accPassword = '';
+            $this->accAdmin = (bool) $this->employee->user?->is_admin;
             $this->resetErrorBag();
         }
     }
@@ -124,6 +126,7 @@ new #[Title('Employee')] class extends Component {
             'email' => mb_strtolower($data['accEmail']),
             'password' => $data['accPassword'],
             'email_verified_at' => now(),
+            'is_admin' => $this->accAdmin,
         ]);
         $this->linkLogin($user->id);
         Flux::toast(variant: 'success', text: __(':name can now sign in.', ['name' => $this->employee->name]));
@@ -138,6 +141,8 @@ new #[Title('Employee')] class extends Component {
         ], attributes: ['accEmail' => __('email'), 'accPassword' => __('password')]);
 
         $user->email = mb_strtolower($data['accEmail']);
+        // You cannot take admin away from yourself.
+        $user->is_admin = $user->id === auth()->id() ? true : $this->accAdmin;
         if ($data['accPassword']) {
             $user->password = $data['accPassword'];
         }
@@ -1439,6 +1444,14 @@ new #[Title('Employee')] class extends Component {
                         @endif
                     </div>
 
+                    <label class="flex cursor-pointer items-start gap-3 rounded-xl p-3 ring-1 ring-zinc-200 transition hover:bg-zinc-50 dark:ring-white/10 dark:hover:bg-white/5">
+                        <flux:switch wire:model.live="accAdmin" :disabled="$login?->id === auth()->id()" data-test="acc-admin" />
+                        <span>
+                            <span class="block text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Admin access') }}</span>
+                            <span class="block text-xs text-zinc-500">{{ $accAdmin ? __('Sees and changes everything: money, employees and settings.') : __('Employee view: My day, their tasks, calendar, clients without prices, scripts and videos.') }}</span>
+                        </span>
+                    </label>
+
                     <div class="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-100 pt-5 dark:border-white/5">
                         @if ($login && $login->id !== auth()->id())
                             <flux:button type="button" variant="ghost" icon="no-symbol" class="text-rose-600!" x-on:click="$flux.modal('remove-account').show()" data-test="remove-account">{{ __('Remove access') }}</flux:button>
@@ -1463,7 +1476,7 @@ new #[Title('Employee')] class extends Component {
                         <p class="text-zinc-600 dark:text-zinc-300">{{ $text }}</p>
                     </div>
                 @endforeach
-                <p class="mt-1 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">{{ __('Everyone who can sign in sees the whole system.') }}</p>
+                <p class="mt-1 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-200">{{ __('Employees do not see prices, payments, salaries of others, finance or settings unless you turn on admin access.') }}</p>
             </aside>
         </div>
 

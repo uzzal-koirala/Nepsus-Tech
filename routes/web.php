@@ -9,7 +9,20 @@ use Illuminate\Support\Facades\Storage;
 // The app is the site: signed-in users land on the Overview, everyone else on sign-in.
 Route::redirect('/', '/dashboard')->name('home');
 
+// Open to every login: employee logins see these too.
 Route::middleware(['auth', 'verified'])->group(function () {
+    Route::livewire('my', 'pages::my-dashboard')->name('my.dashboard');
+    Route::livewire('my/tasks', 'pages::my-tasks')->name('my.tasks');
+    Route::livewire('my/clients', 'pages::my-clients')->name('my.clients');
+    Route::livewire('my/clients/{client}', 'pages::my-client')->name('my.clients.show');
+    Route::livewire('calendar', 'pages::calendar')->name('calendar.index');
+    Route::livewire('scripts', 'pages::scripts')->name('scripts.index');
+    Route::livewire('scripts/{script}', 'pages::script-editor')->name('scripts.edit');
+    Route::livewire('videos', 'pages::videos')->name('videos.index');
+});
+
+// Admins only. Employee logins are sent to their own page (see AdminOnly) or refused.
+Route::middleware(['auth', 'verified', 'admin'])->group(function () {
     Route::livewire('dashboard', 'pages::dashboard')->name('dashboard');
     Route::livewire('clients', 'pages::clients')->name('clients.index');
     Route::livewire('clients/{client}', 'pages::client-profile')->name('clients.show');
@@ -21,10 +34,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('sales/leads/{lead}', 'pages::lead-profile')->name('sales.leads.show');
     Route::livewire('tasks', 'pages::tasks')->name('tasks.index');
     Route::livewire('documents', 'pages::documents')->name('library.index');
-    Route::livewire('scripts', 'pages::scripts')->name('scripts.index');
-    Route::livewire('videos', 'pages::videos')->name('videos.index');
-    Route::livewire('scripts/{script}', 'pages::script-editor')->name('scripts.edit');
-    Route::livewire('calendar', 'pages::calendar')->name('calendar.index');
     Route::livewire('invoices', 'pages::invoices')->name('invoices.index');
     Route::livewire('invoices/create', 'pages::invoice-editor')->name('invoices.create');
     Route::livewire('invoices/{invoice}', 'pages::invoice-show')->name('invoices.show');

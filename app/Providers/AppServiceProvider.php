@@ -27,6 +27,9 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
 
+        // Clicks on an admin page are checked again, not only the first visit.
+        \Livewire\Livewire::addPersistentMiddleware([\App\Http\Middleware\AdminOnly::class]);
+
         // Uploads up to 20 MB (Documents page); Livewire's own default stops at 12 MB.
         config(['livewire.temporary_file_upload.rules' => ['required', 'file', 'max:20480']]);
 
