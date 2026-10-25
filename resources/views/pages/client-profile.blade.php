@@ -67,6 +67,27 @@ new #[Title('Client profile')] class extends Component {
     {
         $this->client = $client;
         [$this->calYear, $this->calMonth] = NepaliDate::fromAd(today());
+        $this->setTab($this->tab);
+    }
+
+    // Employee logins see this page without money: no payments, documents, prices or agreements to edit.
+
+    private function isAdmin(): bool
+    {
+        return auth()->user()->isAdmin();
+    }
+
+    private function adminOnly(): void
+    {
+        abort_unless($this->isAdmin(), 403);
+    }
+
+    /** A task of this client this login may change: employee logins only reach their own. */
+    private function clientTask(int $id): Task
+    {
+        return $this->client->tasks()
+            ->unless($this->isAdmin(), fn ($q) => $q->whereHas('assignees', fn ($a) => $a->whereKey(auth()->user()->employee?->id ?? 0)))
+            ->findOrFail($id);
     }
 
     // Work calendar
@@ -129,6 +150,7 @@ new #[Title('Client profile')] class extends Component {
     /** Copies last BS month's work onto the same days of the shown month (not done yet). */
     public function repeatLastMonth(): void
     {
+        $this->adminOnly();
         $index = $this->calYear * 12 + $this->calMonth - 2;
         [$py, $pm] = [intdiv($index, 12), $index % 12 + 1];
         $from = NepaliDate::toAd($py, $pm, 1);
@@ -175,12 +197,20 @@ new #[Title('Client profile')] class extends Component {
     #[Computed]
     public function payments()
     {
+        if (! $this->isAdmin()) {
+            return collect();
+        }
+
         return $this->client->payments()->orderByDesc('due_date')->latest('id')->get();
     }
 
     #[Computed]
     public function documents()
     {
+        if (! $this->isAdmin()) {
+            return collect();
+        }
+
         return $this->client->documents()->latest()->get();
     }
 
@@ -200,6 +230,7 @@ new #[Title('Client profile')] class extends Component {
 
     public function addWorkType(): void
     {
+        $this->adminOnly();
         $data = $this->validate(['newTypeName' => ['required', 'string', 'max:40']], attributes: ['newTypeName' => __('type name')]);
 
         $existing = WorkType::whereRaw('lower(name) = ?', [mb_strtolower(trim($data['newTypeName']))])->first();
@@ -212,12 +243,14 @@ new #[Title('Client profile')] class extends Component {
 
     public function confirmDeleteType(string $slug): void
     {
+        $this->adminOnly();
         $this->deletingType = $slug;
         Flux::modal('type-delete')->show();
     }
 
     public function deleteWorkType(string $slug): void
     {
+        $this->adminOnly();
         $this->deletingType = null;
         Flux::modal('type-delete')->close();
         if (WorkType::count() <= 1) {
@@ -248,6 +281,9 @@ new #[Title('Client profile')] class extends Component {
     public function setTab(string $tab): void
     {
         $this->tab = in_array($tab, self::TABS) ? $tab : 'overview';
+        if (! $this->isAdmin() && in_array($this->tab, ['payments', 'documents'], true)) {
+            $this->tab = 'overview';
+        }
     }
 
     /** The earliest unpaid payment, for the "Next up" card. */
@@ -300,7 +336,7 @@ new #[Title('Client profile')] class extends Component {
     public function editTask(int $id): void
     {
         Flux::modal('task-view')->close();
-        $task = $this->client->tasks()->findOrFail($id);
+        $task = $this->clientTask($id);
 
         $this->resetErrorBag();
         $this->taskId = $task->id;
@@ -330,7 +366,7 @@ new #[Title('Client profile')] class extends Component {
             'taskPriority' => ['required', Rule::in(array_keys(Task::PRIORITIES))],
         ], attributes: ['taskDue' => __('due date'), 'taskStart' => __('start date')]);
 
-        $task = $this->taskId ? $this->client->tasks()->findOrFail($this->taskId) : $this->client->tasks()->make();
+        $task = $this->taskId ? $this->clientTask($this->taskId) : $this->client->tasks()->make();
         $task->fill([
             'title' => $data['taskTitle'],
             'description' => $data['taskDescription'] ?: null,
@@ -341,7 +377,12 @@ new #[Title('Client profile')] class extends Component {
             'due_date' => $data['taskDue'] ?: null,
             'completed_at' => $data['taskStatus'] === 'done' ? ($task->completed_at ?? now()) : null,
         ])->save();
-        $task->assignees()->sync($data['taskAssignees'] ?? []);
+        $assignees = $data['taskAssignees'] ?? [];
+        // An employee stays on the work they add or change, so it does not vanish from their view.
+        if (! $this->isAdmin() && $me = auth()->user()->employee?->id) {
+            $assignees = array_values(array_unique([...array_map('intval', $assignees), $me]));
+        }
+        $task->assignees()->sync($assignees);
 
         Flux::modal('task-form')->close();
         Flux::toast(variant: 'success', text: $this->taskId ? __('Task updated.') : __('Task added.'));
@@ -350,20 +391,21 @@ new #[Title('Client profile')] class extends Component {
 
     public function toggleTask(int $id): void
     {
-        $task = $this->client->tasks()->findOrFail($id);
+        $task = $this->clientTask($id);
         $task->update($task->completed_at ? ['completed_at' => null, 'status' => 'todo'] : ['completed_at' => now(), 'status' => 'done']);
     }
 
     public function setTaskStatus(int $id, string $status): void
     {
         abort_unless(array_key_exists($status, Task::STATUSES), 422);
-        $task = $this->client->tasks()->findOrFail($id);
+        $task = $this->clientTask($id);
         $task->update(['status' => $status, 'completed_at' => $status === 'done' ? ($task->completed_at ?? now()) : null]);
     }
 
     /** Adds one employee to every open task of a work type. */
     public function assignBox(string $type, int $employeeId): void
     {
+        $this->adminOnly();
         $employee = Employee::findOrFail($employeeId);
         $tasks = $this->client->tasks()->where('type', $type)->whereNull('completed_at')->get();
 
@@ -377,6 +419,7 @@ new #[Title('Client profile')] class extends Component {
 
     public function completeBox(string $type): void
     {
+        $this->adminOnly();
         $this->client->tasks()->where('type', $type)->whereNull('completed_at')->update(['status' => 'done', 'completed_at' => now()]);
         unset($this->tasks);
     }
@@ -384,11 +427,12 @@ new #[Title('Client profile')] class extends Component {
     public function setTaskPriority(int $id, string $priority): void
     {
         abort_unless(array_key_exists($priority, Task::PRIORITIES), 422);
-        $this->client->tasks()->findOrFail($id)->update(['priority' => $priority]);
+        $this->clientTask($id)->update(['priority' => $priority]);
     }
 
     public function deleteTask(int $id): void
     {
+        $this->adminOnly();
         $this->client->tasks()->findOrFail($id)->delete();
 
         if ($this->viewTaskId === $id) {
@@ -403,6 +447,7 @@ new #[Title('Client profile')] class extends Component {
 
     public function newPayment(): void
     {
+        $this->adminOnly();
         $this->reset('payAmount', 'payDue', 'payMethod', 'payReference', 'payNote', 'payProof');
         $this->payType = __(Payment::TYPES[$this->client->isRecurring() ? 'monthly' : ($this->payments->isEmpty() ? 'advance' : 'partial')]['label']);
         $this->payAmount = $this->client->price === null ? '' : rtrim(rtrim((string) $this->client->price, '0'), '.');
@@ -413,6 +458,7 @@ new #[Title('Client profile')] class extends Component {
 
     public function savePayment(): void
     {
+        $this->adminOnly();
         $data = $this->validate([
             'payAmount' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
             'payDue' => ['required', 'date'],
@@ -441,6 +487,7 @@ new #[Title('Client profile')] class extends Component {
 
     public function updatedPayProof(): void
     {
+        $this->adminOnly();
         try {
             $this->validateOnly('payProof', ['payProof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:8192']], attributes: ['payProof' => __('payment proof')]);
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -451,12 +498,14 @@ new #[Title('Client profile')] class extends Component {
 
     public function togglePaid(int $id): void
     {
+        $this->adminOnly();
         $payment = $this->client->payments()->findOrFail($id);
         $payment->update(['paid_at' => $payment->paid_at ? null : now()]);
     }
 
     public function deletePayment(int $id): void
     {
+        $this->adminOnly();
         $this->client->payments()->findOrFail($id)->delete();
         Flux::toast(text: __('Payment deleted.'));
     }
@@ -465,6 +514,7 @@ new #[Title('Client profile')] class extends Component {
 
     public function editAgreement(): void
     {
+        $this->adminOnly();
         $this->contractStart = (string) $this->client->contract_start?->toDateString();
         $this->contractEnd = (string) $this->client->contract_end?->toDateString();
         $this->agreementSigned = $this->client->agreement_signed_at !== null;
@@ -475,6 +525,7 @@ new #[Title('Client profile')] class extends Component {
 
     public function saveAgreement(): void
     {
+        $this->adminOnly();
         $data = $this->validate([
             'contractStart' => ['nullable', 'date'],
             'contractEnd' => ['nullable', 'date', 'after_or_equal:contractStart'],
@@ -501,6 +552,7 @@ new #[Title('Client profile')] class extends Component {
 
     public function newDocument(): void
     {
+        $this->adminOnly();
         $this->reset('upload');
         $this->uploadType = 'invoice';
         $this->resetErrorBag();
@@ -509,6 +561,7 @@ new #[Title('Client profile')] class extends Component {
 
     public function uploadDocument(): void
     {
+        $this->adminOnly();
         $this->validate([
             'upload' => ['required', 'file', 'max:10240', 'mimes:pdf,doc,docx,png,jpg,jpeg,webp'],
             'uploadType' => ['required', Rule::in(array_keys(Document::TYPES))],
@@ -523,6 +576,7 @@ new #[Title('Client profile')] class extends Component {
 
     public function deleteDocument(int $id): void
     {
+        $this->adminOnly();
         $this->client->documents()->findOrFail($id)->delete();
         Flux::toast(text: __('Document deleted.'));
     }
@@ -541,6 +595,7 @@ new #[Title('Client profile')] class extends Component {
 
     public function editNotes(): void
     {
+        $this->adminOnly();
         $this->notes = (string) $this->client->notes;
         $this->resetErrorBag();
         Flux::modal('notes-form')->show();
@@ -548,6 +603,7 @@ new #[Title('Client profile')] class extends Component {
 
     public function saveNotes(): void
     {
+        $this->adminOnly();
         $this->validate(['notes' => ['nullable', 'string', 'max:5000']]);
         $this->client->update(['notes' => $this->notes ?: null]);
 
@@ -557,6 +613,7 @@ new #[Title('Client profile')] class extends Component {
 }; ?>
 
 @php
+    $admin = auth()->user()->isAdmin();
     $c = $client;
     $pkg = $c->package;
     $theme = $pkg?->theme();
@@ -770,6 +827,9 @@ new #[Title('Client profile')] class extends Component {
                         </a>
                         <flux:button :href="'tel:'.preg_replace('/[^\d+]/', '', $c->phone)" icon="phone" :aria-label="__('Call')" class="max-sm:px-2.5">{{ __('Call') }}</flux:button>
                     @endif
+                    @if (! $admin)
+                        <flux:button variant="primary" icon="plus" wire:click="newTask" class="shadow-lg shadow-brand-500/25" data-test="profile-add-task">{{ __('Add work') }}</flux:button>
+                    @else
                     <flux:button icon="pencil-square" :href="route('clients.index', ['open' => $c->id])" wire:navigate>{{ __('Edit') }}</flux:button>
                     <flux:dropdown align="end">
                         <flux:button variant="primary" icon="plus" icon:trailing="chevron-down" class="shadow-lg shadow-brand-500/25" data-test="profile-add-menu">{{ __('Add') }}</flux:button>
@@ -782,6 +842,7 @@ new #[Title('Client profile')] class extends Component {
                             <flux:menu.item icon="pencil" wire:click="editNotes">{{ __('Note') }}</flux:menu.item>
                         </flux:menu>
                     </flux:dropdown>
+                    @endif
                 </div>
             </div>
 
@@ -825,7 +886,7 @@ new #[Title('Client profile')] class extends Component {
                             <span class="truncate">{{ __('Signed') }}@if ($c->agreement_signed_at)<span class="font-normal text-zinc-500"> · {{ $c->agreement_signed_at->toNepali() }}</span>@endif</span>
                         @else
                             <span class="{{ $metaIcon }} bg-amber-50! text-amber-600! dark:bg-amber-500/10!"><flux:icon.document variant="micro" class="size-3.5" /></span>
-                            <button type="button" wire:click="editAgreement" class="truncate text-amber-700 hover:underline dark:text-amber-400">{{ __('Not signed yet') }}</button>
+                            @if ($admin)<button type="button" wire:click="editAgreement" class="truncate text-amber-700 hover:underline dark:text-amber-400">{{ __('Not signed yet') }}</button>@else<span class="truncate text-amber-700 dark:text-amber-400">{{ __('Not signed yet') }}</span>@endif
                         @endif
                     </dd>
                 </div>
@@ -846,6 +907,36 @@ new #[Title('Client profile')] class extends Component {
         $agreementDays = $c->contract_end ? (int) today()->diffInDays($c->contract_end, false) : null;
     @endphp
     <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        @if (! $admin)
+            @php
+                $clientScripts = $c->scripts()->get();
+                $nextShoot = $clientScripts->filter(fn ($s) => $s->shoot_date?->gte(today()))->sortBy('shoot_date')->first();
+                $clientVideos = $c->videos()->get();
+                $toEdit = $clientVideos->whereIn('status', ['raw', 'editing'])->count();
+            @endphp
+            {{-- Scripts --}}
+            <a href="{{ route('scripts.index', ['search' => $c->displayName()]) }}" wire:navigate class="relative flex flex-col gap-4 overflow-hidden rounded-xl bg-white bg-linear-to-br from-violet-50 to-white to-70% p-5 ring-1 ring-violet-200/80 shadow-[0_1px_2px_rgb(15_23_42/0.04)] transition hover:ring-violet-300 dark:bg-zinc-950 dark:from-violet-500/[0.09] dark:to-zinc-950 dark:ring-violet-500/25" data-test="card-scripts">
+                <div class="flex items-center gap-3">
+                    <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-violet-500 to-violet-700 text-white shadow-md shadow-violet-500/20"><flux:icon.pencil-square variant="mini" class="size-4.5" /></span>
+                    <p class="flex-1 text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Scripts') }}</p>
+                </div>
+                <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $clientScripts->count() }}<span class="text-base font-normal text-zinc-400"> {{ __('written') }}</span></p>
+                <p class="mt-auto inline-flex items-center gap-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                    <flux:icon.video-camera variant="micro" class="size-3.5 text-violet-500" />{{ $nextShoot ? $nextShoot->shootLabel().' · '.$nextShoot->title : __('No shoot planned') }}
+                </p>
+            </a>
+
+            {{-- Videos --}}
+            <a href="{{ route('videos.index', ['client' => $c->id]) }}" wire:navigate class="{{ $panel }} flex flex-col gap-4 p-5 transition hover:ring-zinc-300" data-test="card-videos">
+                <div class="flex items-center gap-3">
+                    <span class="{{ $iconTile }} bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300"><flux:icon.film variant="mini" class="size-4.5" /></span>
+                    <p class="flex-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Videos') }}</p>
+                    @if ($toEdit)<span class="rounded-md bg-amber-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">{{ trans_choice(':count to edit|:count to edit', $toEdit) }}</span>@endif
+                </div>
+                <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $clientVideos->count() }}<span class="text-base font-normal text-zinc-400"> {{ __('saved') }}</span></p>
+                <p class="mt-auto inline-flex items-center gap-1.5 text-xs font-medium text-brand-600 dark:text-brand-300"><flux:icon.plus variant="micro" class="size-3.5" />{{ __('Add raw footage') }}</p>
+            </a>
+        @else
         {{-- Package: name, price and billing together --}}
         <div class="{{ $theme['card'] ?? 'from-brand-50 ring-brand-200/80 dark:from-brand-500/[0.09] dark:ring-brand-500/25' }} relative flex flex-col gap-4 overflow-hidden rounded-xl bg-white bg-linear-to-br to-white to-70% p-5 ring-1 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:to-zinc-950">
             <div class="relative flex items-center gap-3">
@@ -897,6 +988,8 @@ new #[Title('Client profile')] class extends Component {
                 @endif
             </div>
         </div>
+
+        @endif
 
         {{-- Tasks --}}
         <div class="{{ $panel }} flex flex-col gap-4 p-5">
@@ -951,7 +1044,7 @@ new #[Title('Client profile')] class extends Component {
                 </div>
             @else
                 <p class="text-[1.625rem] leading-none font-semibold text-zinc-300 dark:text-zinc-600">{{ __('No end date') }}</p>
-                <button type="button" wire:click="editAgreement" class="mt-auto inline-flex items-center gap-1.5 text-start text-xs font-medium text-brand-600 hover:underline dark:text-brand-300"><flux:icon.plus variant="micro" class="size-3.5" />{{ __('Add agreement dates') }}</button>
+                @if ($admin)<button type="button" wire:click="editAgreement" class="mt-auto inline-flex items-center gap-1.5 text-start text-xs font-medium text-brand-600 hover:underline dark:text-brand-300"><flux:icon.plus variant="micro" class="size-3.5" />{{ __('Add agreement dates') }}</button>@endif
             @endif
         </div>
     </section>
@@ -966,6 +1059,9 @@ new #[Title('Client profile')] class extends Component {
             'documents' => ['label' => __('Documents'), 'icon' => 'document-text', 'count' => $this->documents->count() ?: null],
             'notes' => ['label' => __('Notes'), 'icon' => 'pencil-square', 'count' => null],
         ];
+        if (! $admin) {
+            unset($tabs['payments'], $tabs['documents']);
+        }
     @endphp
     <nav class="-mx-1 flex gap-1 overflow-x-auto rounded-2xl bg-white p-1.5 ring-1 ring-zinc-200/70 dark:bg-zinc-950 dark:ring-white/10" aria-label="{{ __('Client sections') }}">
         @php $activeTab = $tab === 'history' ? 'tasks' : $tab; @endphp
@@ -1021,12 +1117,14 @@ new #[Title('Client profile')] class extends Component {
                                 <button type="button" wire:click="goToday" @class(['h-9 border-x border-zinc-200 px-3 text-sm font-medium dark:border-white/10', 'text-brand-600 dark:text-brand-300' => $isThisMonth, 'text-zinc-600 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-white/5' => ! $isThisMonth])>{{ __('Today') }}</button>
                                 <button type="button" wire:click="shiftMonth(1)" class="flex size-9 items-center justify-center rounded-e-lg text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:hover:bg-white/5 dark:hover:text-white" aria-label="{{ __('Next month') }}"><flux:icon.chevron-right variant="mini" class="size-4" /></button>
                             </div>
+                            @if ($admin)
                             <flux:dropdown align="end">
                                 <flux:button icon="ellipsis-horizontal" :aria-label="__('Calendar options')" />
                                 <flux:menu>
                                     <flux:menu.item icon="document-duplicate" wire:click="repeatLastMonth" wire:confirm="{{ __('Copy last month\'s work onto the same days of :month?', ['month' => $cal['label']]) }}">{{ __('Repeat last month\'s plan') }}</flux:menu.item>
                                 </flux:menu>
                             </flux:dropdown>
+                            @endif
                             <flux:button variant="primary" icon="plus" wire:click="newTask" class="shadow-md shadow-brand-500/20">{{ __('Add work') }}</flux:button>
                         </div>
                     </div>
@@ -1435,6 +1533,7 @@ new #[Title('Client profile')] class extends Component {
                                         <flux:icon.chevron-down variant="micro" class="ms-auto size-4 shrink-0 opacity-60 transition" ::class="open ? '' : '-rotate-90'" />
                                     </button>
                                     <button type="button" wire:click="newTask('todo', '{{ $kind }}')" class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/70 transition hover:bg-white dark:bg-white/10 dark:hover:bg-white/20" aria-label="{{ __('Add :type', ['type' => $kt['label']]) }}" title="{{ __('Add :type', ['type' => $kt['label']]) }}"><flux:icon.plus variant="micro" class="size-4" /></button>
+                                    @if ($admin)
                                     <flux:dropdown align="end">
                                         <button type="button" class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/70 transition hover:bg-white dark:bg-white/10 dark:hover:bg-white/20" aria-label="{{ __(':type settings', ['type' => $kt['label']]) }}" title="{{ __('Settings') }}" data-test="box-settings-{{ $kind }}"><flux:icon.cog-6-tooth variant="micro" class="size-4" /></button>
                                         <flux:menu>
@@ -1450,6 +1549,7 @@ new #[Title('Client profile')] class extends Component {
                                             <flux:menu.item icon="check-circle" wire:click="completeBox('{{ $kind }}')" wire:confirm="{{ __('Mark all :type work as done?', ['type' => $kt['label']]) }}">{{ __('Mark all as done') }}</flux:menu.item>
                                         </flux:menu>
                                     </flux:dropdown>
+                                    @endif
                                 </div>
 
                                 <div x-show="open" x-collapse>
@@ -1683,7 +1783,7 @@ new #[Title('Client profile')] class extends Component {
             <section class="{{ $panel }}">
                 <div class="{{ $panelHead }}">
                     <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Notes') }}</h2>
-                    <flux:button size="sm" icon="pencil-square" wire:click="editNotes">{{ $c->notes ? __('Edit') : __('Add notes') }}</flux:button>
+                    @if ($admin)<flux:button size="sm" icon="pencil-square" wire:click="editNotes">{{ $c->notes ? __('Edit') : __('Add notes') }}</flux:button>@endif
                 </div>
                 <div class="p-5">
                     @if ($c->notes)
@@ -1796,7 +1896,7 @@ new #[Title('Client profile')] class extends Component {
                 </div>
 
                 <div class="flex items-center gap-2 rounded-b-xl border-t border-zinc-100 bg-zinc-50/70 px-6 py-4 dark:border-white/5 dark:bg-white/[0.02]">
-                    <flux:button variant="ghost" icon="trash" class="text-rose-600! hover:bg-rose-50!" wire:click="deleteTask({{ $vt->id }})" wire:confirm="{{ __('Delete this task?') }}">{{ __('Delete') }}</flux:button>
+                    @if ($admin)<flux:button variant="ghost" icon="trash" class="text-rose-600! hover:bg-rose-50!" wire:click="deleteTask({{ $vt->id }})" wire:confirm="{{ __('Delete this task?') }}">{{ __('Delete') }}</flux:button>@endif
                     <div class="ms-auto flex gap-2">
                         <flux:button icon="pencil-square" wire:click="editTask({{ $vt->id }})">{{ __('Edit') }}</flux:button>
                         @if ($vstage === 'done')
@@ -1870,17 +1970,19 @@ new #[Title('Client profile')] class extends Component {
                                             <span class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $type['label'] }}</span>
                                             <flux:icon.check variant="mini" class="ms-auto size-4 text-brand-600" x-show="$wire.taskType === @js($key)" />
                                         </button>
-                                        <button type="button" wire:click="confirmDeleteType('{{ $key }}')" class="me-1 rounded-md p-1.5 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 focus:opacity-100 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete :name', ['name' => $type['label']]) }}">
+                                        @if ($admin)<button type="button" wire:click="confirmDeleteType('{{ $key }}')" class="me-1 rounded-md p-1.5 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 focus:opacity-100 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete :name', ['name' => $type['label']]) }}">
                                             <flux:icon.trash variant="micro" class="size-3.5" />
-                                        </button>
+                                        </button>@endif
                                     </div>
                                 @endforeach
                             </div>
+                            @if ($admin)
                             <div class="flex items-center gap-1.5 border-t border-zinc-100 bg-zinc-50/70 p-2 dark:border-white/5 dark:bg-white/[0.02]">
                                 <input wire:model="newTypeName" type="text" maxlength="40" placeholder="{{ __('Add a new type…') }}" @keydown.enter.prevent="$wire.addWorkType()" class="h-8 min-w-0 flex-1 rounded-lg border-0 bg-white px-2.5 text-sm ring-1 ring-zinc-200 placeholder:text-zinc-400 focus:ring-2 focus:ring-brand-500 focus:outline-none dark:bg-white/5 dark:text-white dark:ring-white/10" data-test="new-type-input" />
                                 <button type="button" wire:click="addWorkType" class="inline-flex h-8 items-center gap-1 rounded-lg bg-brand-500 px-2.5 text-xs font-semibold text-white transition hover:bg-brand-600"><flux:icon.plus variant="micro" class="size-3.5" />{{ __('Add') }}</button>
                             </div>
                             <flux:error name="newTypeName" class="px-3 pb-2" />
+                            @endif
                         </div>
                         <flux:error name="taskType" />
                     </div>
@@ -1974,6 +2076,7 @@ new #[Title('Client profile')] class extends Component {
     </flux:modal>
 
     {{-- Record payment --}}
+    @if ($admin)
     @php
         $billed = (float) $stats['billed'];
         $received = (float) $stats['received'];
@@ -2205,6 +2308,8 @@ new #[Title('Client profile')] class extends Component {
     </flux:modal>
 
     {{-- Notes --}}
+    @endif
+
     <flux:modal name="notes-form" class="w-full max-w-lg">
         <form wire:submit="saveNotes" class="flex flex-col gap-5">
             <flux:heading size="lg">{{ __('Notes') }}</flux:heading>

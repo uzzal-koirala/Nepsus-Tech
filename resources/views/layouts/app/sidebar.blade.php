@@ -21,7 +21,7 @@
                             ['icon' => 'calendar-days', 'label' => __('Calendar'), 'route' => 'calendar.index'],
                         ],
                         __('Content') => [
-                            ['icon' => 'building-office-2', 'label' => __('Clients'), 'route' => 'my.clients', 'current' => 'my.clients*'],
+                            ['icon' => 'building-office-2', 'label' => __('Clients'), 'route' => 'my.clients', 'current' => ['my.clients', 'clients.show']],
                             ['icon' => 'pencil-square', 'label' => __('Scripts'), 'route' => 'scripts.index'],
                             ['icon' => 'video-camera', 'label' => __('Videos'), 'route' => 'videos.index'],
                         ],

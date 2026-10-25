@@ -40,7 +40,6 @@ class StaffAccessTest extends TestCase
         // Admin pages send them to their own version, or to My day.
         $this->get(route('dashboard'))->assertRedirect(route('my.dashboard'));
         $this->get(route('clients.index'))->assertRedirect(route('my.clients'));
-        $this->get(route('clients.show', $client))->assertRedirect(route('my.clients.show', $client));
         $this->get(route('tasks.index'))->assertRedirect(route('my.tasks'));
         foreach (['finance.index', 'packages.index', 'employees.index', 'invoices.index', 'sales.index', 'library.index', 'settings.business', 'settings.ai-connections'] as $page) {
             $this->get(route($page))->assertRedirect(route('my.dashboard'));
@@ -62,9 +61,16 @@ class StaffAccessTest extends TestCase
 
         // Clients: the work, no money.
         $this->get(route('my.clients'))->assertOk()->assertSee(['Momo House', 'for you'])->assertDontSee('45,000');
-        $this->get(route('my.clients.show', $client))->assertOk()
-            ->assertSee(['Momo House', 'Write Dashain caption', 'Fix the website', 'Momo reel', 'Kitchen clips'])
-            ->assertDontSee(['45,000', 'Payments', 'Outstanding']);
+        $client->payments()->create(['amount' => 7700, 'due_date' => today()]);
+        $this->get(route('clients.show', $client))->assertOk()
+            ->assertSee(['Momo House', 'Write Dashain caption', 'Scripts', 'Videos', 'Add work', 'Notes'])
+            ->assertDontSee(['45,000', '7,700', 'Outstanding', 'Record payment', 'Price not set', 'payment-form', 'Repeat last month']);
+        foreach (['newPayment', 'editAgreement', 'newDocument', 'editNotes', 'repeatLastMonth'] as $action) {
+            Livewire::test('pages::client-profile', ['client' => $client])->call($action)->assertForbidden();
+        }
+        Livewire::test('pages::client-profile', ['client' => $client])->call('setTab', 'payments')->assertSet('tab', 'overview');
+        Livewire::test('pages::client-profile', ['client' => $client])->call('toggleTask', $theirs->id)->assertNotFound();
+        Livewire::test('pages::client-profile', ['client' => $client])->call('toggleTask', $mine->id)->assertOk();
 
         // Calendar: their own tasks only; they cannot delete tasks.
         $this->get(route('calendar.index'))->assertOk()->assertSee('Write Dashain caption')->assertDontSee('Fix the website');

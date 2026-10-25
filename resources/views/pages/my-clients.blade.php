@@ -49,7 +49,7 @@ new #[Title('Clients')] class extends Component {
     @else
         <section class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             @foreach ($clients as $c)
-                <a href="{{ route('my.clients.show', $c) }}" wire:navigate wire:key="c-{{ $c->id }}" class="group flex flex-col rounded-xl bg-white p-5 shadow-[0_1px_2px_rgb(15_23_42/0.06)] ring-1 ring-zinc-200/70 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_32px_-12px_rgb(15_23_42/0.22)] dark:bg-zinc-950 dark:ring-white/10" data-test="client-{{ $c->id }}">
+                <a href="{{ route('clients.show', $c) }}" wire:navigate wire:key="c-{{ $c->id }}" class="group flex flex-col rounded-xl bg-white p-5 shadow-[0_1px_2px_rgb(15_23_42/0.06)] ring-1 ring-zinc-200/70 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_32px_-12px_rgb(15_23_42/0.22)] dark:bg-zinc-950 dark:ring-white/10" data-test="client-{{ $c->id }}">
                     <div class="flex items-start gap-3">
                         @if ($c->avatarUrl())
                             <img src="{{ $c->avatarUrl() }}" alt="" class="size-12 shrink-0 rounded-xl object-cover">

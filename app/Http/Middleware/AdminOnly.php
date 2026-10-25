@@ -13,7 +13,6 @@ class AdminOnly
     private const STAFF_PAGES = [
         'dashboard' => 'my.dashboard',
         'clients.index' => 'my.clients',
-        'clients.show' => 'my.clients.show',
         'tasks.index' => 'my.tasks',
     ];
 
