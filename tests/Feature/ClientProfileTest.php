@@ -222,6 +222,17 @@ class ClientProfileTest extends TestCase
         $this->assertNull($copy->completed_at);
 
         $page->call('goToday')->assertSet('calMonth', $m);
+
+        // Clicking a day shows only that day's work in Scheduled work; clicking it again shows the month.
+        $client->tasks()->create(['title' => 'Tihar story', 'type' => 'post', 'due_date' => NepaliDate::toAd($y, $m, 9)]);
+        $day5 = NepaliDate::toAd($y, $m, 5)->toDateString();
+        $agenda = fn () => str($page->html())->after('data-test="scheduled-work"')->before('</section>');
+        $page->call('pickDay', $day5)->assertSet('pickedDay', $day5)->assertSeeHtml('data-test="agenda-whole-month"');
+        $this->assertStringContainsString('Dashain offer reel', $agenda());
+        $this->assertStringNotContainsString('Tihar story', $agenda());
+        $page->call('pickDay', $day5)->assertSet('pickedDay', null);
+        $this->assertStringContainsString('Tihar story', $agenda());
+        $page->call('pickDay', $day5)->call('shiftMonth', 1)->assertSet('pickedDay', null);
     }
 
     public function test_tasks_tab_groups_and_filters_work(): void

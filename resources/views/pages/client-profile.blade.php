@@ -45,6 +45,9 @@ new #[Title('Client profile')] class extends Component {
     public int $calYear = 0;
     public int $calMonth = 0;
 
+    /** Day clicked on the work calendar (AD, Y-m-d): Scheduled work then shows just that day. */
+    public ?string $pickedDay = null;
+
     public string $payAmount = '';
     public string $payDue = '';
     public string $payMethod = '';
@@ -96,11 +99,20 @@ new #[Title('Client profile')] class extends Component {
     {
         $index = $this->calYear * 12 + $this->calMonth - 1 + max(-1, min(1, $by));
         [$this->calYear, $this->calMonth] = [intdiv($index, 12), $index % 12 + 1];
+        $this->pickedDay = null;
     }
 
     public function goToday(): void
     {
         [$this->calYear, $this->calMonth] = NepaliDate::fromAd(today());
+        $this->pickedDay = null;
+    }
+
+    /** Click a day to see its work; click it again (or "Whole month") to go back. */
+    public function pickDay(?string $date = null): void
+    {
+        $date = $date ? \Illuminate\Support\Carbon::parse($date)->toDateString() : null;
+        $this->pickedDay = $date === $this->pickedDay ? null : $date;
     }
 
     /**
@@ -1200,12 +1212,14 @@ new #[Title('Client profile')] class extends Component {
                                                 $isToday = $key === $todayKey;
                                                 $isPast = $cell['ad']->lt(today());
                                                 $items = $cell['tasks']->count() + $cell['payments']->count() + $cell['shoots']->count();
+                                                $isPicked = $key === $pickedDay;
                                             @endphp
-                                            <div wire:key="day-{{ $key }}" @class([
-                                                'group relative flex min-h-28 flex-col gap-1 border-e border-zinc-100 p-1.5 transition last:border-e-0 hover:bg-brand-50/40 dark:border-white/5 dark:hover:bg-brand-500/5',
-                                                'bg-brand-50/60 dark:bg-brand-500/10' => $isToday,
-                                                'bg-rose-50/30 dark:bg-rose-500/[0.03]' => $i === 6 && ! $isToday,
-                                            ])>
+                                            <div wire:key="day-{{ $key }}" wire:click="pickDay('{{ $key }}')" @class([
+                                                'group relative flex min-h-28 cursor-pointer flex-col gap-1 border-e border-zinc-100 p-1.5 transition last:border-e-0 hover:bg-brand-50/40 dark:border-white/5 dark:hover:bg-brand-500/5',
+                                                'bg-brand-50 ring-2 ring-brand-500 ring-inset dark:bg-brand-500/15' => $isPicked,
+                                                'bg-brand-50/60 dark:bg-brand-500/10' => $isToday && ! $isPicked,
+                                                'bg-rose-50/30 dark:bg-rose-500/[0.03]' => $i === 6 && ! $isToday && ! $isPicked,
+                                            ]) data-test="cal-day-{{ $key }}">
                                                 <div class="flex items-center justify-between px-0.5">
                                                     <span @class([
                                                         'flex size-6 items-center justify-center rounded-full text-xs font-semibold tabular-nums',
@@ -1221,14 +1235,14 @@ new #[Title('Client profile')] class extends Component {
                                                 @endif
 
                                                 @foreach ($cell['shoots'] as $sh)
-                                                    <a href="{{ route('scripts.edit', $sh) }}" wire:navigate class="flex items-center gap-1 rounded-md bg-violet-100 px-1.5 py-0.5 text-[0.6875rem] font-medium text-violet-800 transition hover:bg-violet-200 dark:bg-violet-500/15 dark:text-violet-200" title="{{ __('Shoot: :title', ['title' => $sh->title]) }}" data-test="shoot-{{ $sh->id }}">
+                                                    <a href="{{ route('scripts.edit', $sh) }}" wire:navigate @click.stop class="flex items-center gap-1 rounded-md bg-violet-100 px-1.5 py-0.5 text-[0.6875rem] font-medium text-violet-800 transition hover:bg-violet-200 dark:bg-violet-500/15 dark:text-violet-200" title="{{ __('Shoot: :title', ['title' => $sh->title]) }}" data-test="shoot-{{ $sh->id }}">
                                                         <flux:icon.video-camera variant="micro" class="size-3 shrink-0" /><span class="truncate">{{ __('Shoot: :title', ['title' => $sh->title]) }}</span>
                                                     </a>
                                                 @endforeach
 
                                                 @foreach ($cell['payments'] as $p)
                                                     @php $ps = $p->status(); @endphp
-                                                    <button type="button" wire:click="setTab('payments')" @class([
+                                                    <button type="button" wire:click.stop="setTab('payments')" @class([
                                                         'flex items-center gap-1 rounded-md px-1.5 py-0.5 text-start text-[0.6875rem] font-medium',
                                                         'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' => $ps === 'paid',
                                                         'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300' => $ps === 'overdue',
@@ -1240,7 +1254,7 @@ new #[Title('Client profile')] class extends Component {
 
                                                 @foreach ($cell['tasks']->take(3) as $t)
                                                     @php $tone = $toneOf($t->type); @endphp
-                                                    <button type="button" wire:key="cal-task-{{ $t->id }}" wire:click="toggleTask({{ $t->id }})" @class([
+                                                    <button type="button" wire:key="cal-task-{{ $t->id }}" wire:click.stop="toggleTask({{ $t->id }})" @class([
                                                         'flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-start text-[0.6875rem] leading-tight font-medium ring-1 ring-inset transition hover:shadow-sm',
                                                         $tone['chip'] => ! $t->completed_at,
                                                         'bg-zinc-50 text-zinc-400 ring-zinc-200/80 dark:bg-white/5 dark:ring-white/10' => $t->completed_at,
@@ -1254,10 +1268,10 @@ new #[Title('Client profile')] class extends Component {
                                                     </button>
                                                 @endforeach
                                                 @if ($cell['tasks']->count() > 3)
-                                                    <button type="button" wire:click="setTab('tasks')" class="px-1.5 text-start text-[0.6875rem] font-medium text-zinc-500 hover:text-brand-600">+{{ $cell['tasks']->count() - 3 }} {{ __('more') }}</button>
+                                                    <span class="px-1.5 text-start text-[0.6875rem] font-medium text-zinc-500 group-hover:text-brand-600">+{{ $cell['tasks']->count() - 3 }} {{ __('more') }}</span>
                                                 @endif
 
-                                                <button type="button" wire:click="addWorkOn('{{ $key }}')" @class([
+                                                <button type="button" wire:click.stop="addWorkOn('{{ $key }}')" @class([
                                                     'mt-auto flex items-center justify-center gap-1 rounded-md border border-dashed border-brand-300 py-0.5 text-[0.6875rem] font-medium text-brand-600 opacity-0 transition group-hover:opacity-100 focus:opacity-100 dark:border-brand-500/40 dark:text-brand-300',
                                                     'flex-1' => $items === 0,
                                                 ]) aria-label="{{ __('Add work on :date', ['date' => $cell['day'].' '.$cal['label']]) }}">
@@ -1330,34 +1344,62 @@ new #[Title('Client profile')] class extends Component {
                     @endif
                 </section>
 
-                {{-- Month agenda --}}
+                {{-- Month agenda, or the clicked day --}}
                 @php
-                    $agendaItems = collect($cal['weeks'])->flatten(1)->filter()->flatMap(fn ($d) => $d['payments']->map(fn ($p) => ['payment' => $p, 'task' => null, 'done' => (bool) $p->paid_at])
+                    $monthDays = collect($cal['weeks'])->flatten(1)->filter();
+                    $picked = $pickedDay ? $monthDays->first(fn ($d) => $d['ad']->toDateString() === $pickedDay) : null;
+                    $agendaItems = ($picked ? collect([$picked]) : $monthDays)->flatMap(fn ($d) => $d['payments']->map(fn ($p) => ['payment' => $p, 'task' => null, 'done' => (bool) $p->paid_at])
                         ->concat($d['tasks']->map(fn ($t) => ['payment' => null, 'task' => $t, 'done' => (bool) $t->completed_at])));
                     $agendaLists = [
                         'all' => $agendaItems,
                         'open' => $agendaItems->where('done', false),
                         'done' => $agendaItems->where('done', true),
                     ];
-                    $openItems = $monthTasks->whereNull('completed_at')->count();
+                    $scopeTasks = $picked ? $picked['tasks'] : $monthTasks;
+                    $scopeDone = $scopeTasks->whereNotNull('completed_at')->count();
+                    $scopePct = $scopeTasks->count() ? (int) round($scopeDone / $scopeTasks->count() * 100) : 0;
+                    $openItems = $scopeTasks->whereNull('completed_at')->count();
+                    $pickedShoots = $picked['shoots'] ?? collect();
+                    $agendaLimit = $picked ? 50 : 4;
                 @endphp
-                <section class="{{ $panel }} overflow-hidden" x-data="{ show: 'all' }">
+                <section class="{{ $panel }} overflow-hidden" x-data="{ show: 'all' }" wire:key="agenda-{{ $pickedDay ?? 'month' }}" data-test="scheduled-work">
                     <div class="px-5 pt-5 pb-4">
                         <div class="flex items-center justify-between gap-3">
-                            <div>
+                            <div class="min-w-0">
                                 <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Scheduled work') }}</h2>
-                                <p class="mt-0.5 text-xs text-zinc-500">{{ $cal['label'] }}</p>
+                                @if ($picked)
+                                    <p class="mt-0.5 truncate text-xs font-medium text-brand-600 dark:text-brand-300">{{ $picked['ad']->isToday() ? __('Today') : $picked['ad']->format('l') }} · {{ $picked['ad']->toNepali() }}</p>
+                                @else
+                                    <p class="mt-0.5 text-xs text-zinc-500">{{ $cal['label'] }} · {{ __('click a day to see it') }}</p>
+                                @endif
                             </div>
-                            <flux:button size="sm" icon="plus" wire:click="newTask">{{ __('Add') }}</flux:button>
+                            <div class="flex shrink-0 items-center gap-1.5">
+                                @if ($picked)
+                                    <flux:button size="sm" variant="ghost" icon="x-mark" wire:click="pickDay" :aria-label="__('Whole month')" data-test="agenda-whole-month">{{ __('Month') }}</flux:button>
+                                    <flux:button size="sm" icon="plus" wire:click="addWorkOn('{{ $pickedDay }}')">{{ __('Add') }}</flux:button>
+                                @else
+                                    <flux:button size="sm" icon="plus" wire:click="newTask">{{ __('Add') }}</flux:button>
+                                @endif
+                            </div>
                         </div>
 
                         <div class="mt-4 flex items-center gap-3">
-                            <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div class="h-full rounded-full bg-linear-to-r from-brand-400 to-brand-600 transition-[width] duration-700" style="width: {{ $monthPct }}%"></div></div>
-                            <span class="text-xs text-zinc-500 tabular-nums"><span class="font-semibold text-zinc-800 dark:text-zinc-100">{{ $monthDone }}</span> / {{ $monthTasks->count() }} {{ __('done') }}</span>
+                            <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-white/10"><div class="h-full rounded-full bg-linear-to-r from-brand-400 to-brand-600 transition-[width] duration-700" style="width: {{ $scopePct }}%"></div></div>
+                            <span class="text-xs text-zinc-500 tabular-nums"><span class="font-semibold text-zinc-800 dark:text-zinc-100">{{ $scopeDone }}</span> / {{ $scopeTasks->count() }} {{ __('done') }}</span>
                         </div>
 
+                        @if ($pickedShoots->isNotEmpty())
+                            <div class="mt-3 flex flex-col gap-1.5">
+                                @foreach ($pickedShoots as $sh)
+                                    <a href="{{ route('scripts.edit', $sh) }}" wire:navigate class="flex items-center gap-2 rounded-lg bg-violet-50 px-3 py-2 text-sm font-medium text-violet-800 transition hover:bg-violet-100 dark:bg-violet-500/10 dark:text-violet-200">
+                                        <flux:icon.video-camera variant="micro" class="size-4 shrink-0" /><span class="truncate">{{ __('Shoot: :title', ['title' => $sh->title]) }}</span>
+                                    </a>
+                                @endforeach
+                            </div>
+                        @endif
+
                         <div class="mt-4 grid grid-cols-3 gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-white/5">
-                            @foreach (['all' => [__('All'), $monthTasks->count()], 'open' => [__('To do'), $openItems], 'done' => [__('Done'), $monthDone]] as $key => [$label, $count])
+                            @foreach (['all' => [__('All'), $scopeTasks->count()], 'open' => [__('To do'), $openItems], 'done' => [__('Done'), $scopeDone]] as $key => [$label, $count])
                                 <button type="button" @click="show = '{{ $key }}'" class="flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition" :class="show === '{{ $key }}' ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-white' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-white'">
                                     {{ $label }}
                                     <span class="tabular-nums" :class="show === '{{ $key }}' ? 'text-brand-600 dark:text-brand-300' : 'text-zinc-400'">{{ $count }}</span>
@@ -1371,16 +1413,16 @@ new #[Title('Client profile')] class extends Component {
                             @if ($list->isEmpty())
                                 <div class="flex flex-col items-center gap-2 px-5 py-10 text-center">
                                     <span class="flex size-11 items-center justify-center rounded-xl bg-brand-50 text-brand-500 dark:bg-brand-500/15"><flux:icon.calendar-days variant="mini" class="size-5" /></span>
-                                    <p class="text-sm font-medium text-zinc-700 dark:text-zinc-200">{{ $key === 'done' ? __('Nothing done yet') : __('Nothing scheduled') }}</p>
-                                    <p class="text-xs text-zinc-500">{{ __('Click a day on the calendar to plan work.') }}</p>
+                                    <p class="text-sm font-medium text-zinc-700 dark:text-zinc-200">{{ $key === 'done' ? __('Nothing done yet') : ($picked ? __('Nothing on this day') : __('Nothing scheduled')) }}</p>
+                                    <p class="text-xs text-zinc-500">{{ $picked ? __('Press Add to plan work for this day.') : __('Click a day on the calendar to see or plan its work.') }}</p>
                                 </div>
                             @else
                                 <ul class="flex flex-col gap-1 p-2">
-                                    @foreach ($list->take(4) as $item)
+                                    @foreach ($list->take($agendaLimit) as $item)
                                         @include('partials.work-row', ['task' => $item['task'], 'payment' => $item['payment'], 'prefix' => 'ag-'.$key])
                                     @endforeach
                                 </ul>
-                                @if ($list->count() > 4)
+                                @if ($list->count() > $agendaLimit)
                                     <div class="px-4 pb-4">
                                         <button type="button" wire:click="setTab('tasks')" class="group flex w-full items-center justify-center gap-1.5 rounded-xl bg-zinc-50 py-2.5 text-sm font-medium text-zinc-700 ring-1 ring-zinc-200/70 transition hover:bg-brand-50 hover:text-brand-700 hover:ring-brand-200 dark:bg-white/[0.03] dark:text-zinc-200 dark:ring-white/10" data-test="agenda-view-all">
                                             {{ __('View all :count', ['count' => $list->count()]) }}
