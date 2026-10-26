@@ -22,7 +22,7 @@ class AdminOnly
             return $next($request);
         }
 
-        // Opening a page (a link, a bookmark, or the page they were on before signing in): go to their own version, else My day.
+        // Opening a page (a link, a bookmark, or the page they were on before signing in): go to their own version, else their Dashboard.
         if ($request->isMethod('GET') && ! $request->hasHeader('X-Livewire')) {
             $route = $request->route();
             $staffPage = self::STAFF_PAGES[$route?->getName()] ?? null;

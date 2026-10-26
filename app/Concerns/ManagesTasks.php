@@ -28,13 +28,13 @@ trait ManagesTasks
 
     protected function taskSaved(Task $task): void {}
 
-    /** A task this login may change: employee logins only reach their own. */
+    /** A task this login may change: admins and Content Creators reach every task, other employee logins only their own. */
     protected function findTask(int $id): Task
     {
         $user = auth()->user();
 
         return Task::with('assignees')
-            ->unless($user->isAdmin(), fn ($q) => $q->whereHas('assignees', fn ($a) => $a->whereKey($user->employee?->id ?? 0)))
+            ->unless($user->canPlanContent(), fn ($q) => $q->whereHas('assignees', fn ($a) => $a->whereKey($user->employee?->id ?? 0)))
             ->findOrFail($id);
     }
 
@@ -110,8 +110,8 @@ trait ManagesTasks
             'completed_at' => $data['status'] === 'done' ? ($t->completed_at ?? now()) : null,
         ])->save();
         $assignees = $data['assignees'] ?? [];
-        // An employee always stays on the tasks they add or change, so the task does not vanish from their view.
-        if (! auth()->user()->isAdmin() && $me = auth()->user()->employee?->id) {
+        // An employee who only sees their own work stays on the tasks they add or change, so the task does not vanish from their view.
+        if (! auth()->user()->canPlanContent() && $me = auth()->user()->employee?->id) {
             $assignees = array_values(array_unique([...array_map('intval', $assignees), $me]));
         }
         $t->assignees()->sync($assignees);
@@ -136,14 +136,14 @@ trait ManagesTasks
 
     public function confirmDelete(int $id): void
     {
-        abort_unless(auth()->user()->isAdmin(), 403);
+        abort_unless(auth()->user()->canPlanContent(), 403);
         $this->deletingId = $id;
         Flux::modal('task-delete')->show();
     }
 
     public function deleteTask(): void
     {
-        abort_unless(auth()->user()->isAdmin(), 403);
+        abort_unless(auth()->user()->canPlanContent(), 403);
         Task::whereKey($this->deletingId)->delete();
         $this->deletingId = null;
         Flux::modal('task-delete')->close();

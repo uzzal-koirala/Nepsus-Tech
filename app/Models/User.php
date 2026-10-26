@@ -56,10 +56,16 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         return $this->hasOne(Employee::class);
     }
 
-    /** Full access. Employee logins see only their own area (My day, tasks, calendar, clients, scripts, videos). */
+    /** Full access. Employee logins see only their own area (Dashboard, tasks, calendar, clients, attendance). */
     public function isAdmin(): bool
     {
         return (bool) $this->is_admin;
+    }
+
+    /** Admins and Content Creators: write scripts and plan every client's work on the calendar. Videos stay admin-only. */
+    public function canPlanContent(): bool
+    {
+        return $this->isAdmin() || $this->employee?->department === 'content-creator';
     }
 
     /**

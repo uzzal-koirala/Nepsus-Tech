@@ -85,12 +85,10 @@ new #[Title('Client profile')] class extends Component {
         abort_unless($this->isAdmin(), 403);
     }
 
-    /** A task of this client this login may change: employee logins only reach their own. */
+    /** A task of this client. Every login that can open the client may change its tasks; only admins delete them. */
     private function clientTask(int $id): Task
     {
-        return $this->client->tasks()
-            ->unless($this->isAdmin(), fn ($q) => $q->whereHas('assignees', fn ($a) => $a->whereKey(auth()->user()->employee?->id ?? 0)))
-            ->findOrFail($id);
+        return $this->client->tasks()->findOrFail($id);
     }
 
     // Work calendar
@@ -378,7 +376,8 @@ new #[Title('Client profile')] class extends Component {
             'taskPriority' => ['required', Rule::in(array_keys(Task::PRIORITIES))],
         ], attributes: ['taskDue' => __('due date'), 'taskStart' => __('start date')]);
 
-        $task = $this->taskId ? $this->clientTask($this->taskId) : $this->client->tasks()->make();
+        $isNew = ! $this->taskId;
+        $task = $isNew ? $this->client->tasks()->make() : $this->clientTask($this->taskId);
         $task->fill([
             'title' => $data['taskTitle'],
             'description' => $data['taskDescription'] ?: null,
@@ -390,8 +389,8 @@ new #[Title('Client profile')] class extends Component {
             'completed_at' => $data['taskStatus'] === 'done' ? ($task->completed_at ?? now()) : null,
         ])->save();
         $assignees = $data['taskAssignees'] ?? [];
-        // An employee stays on the work they add or change, so it does not vanish from their view.
-        if (! $this->isAdmin() && $me = auth()->user()->employee?->id) {
+        // An employee is put on the work they add, so it shows in My tasks.
+        if ($isNew && ! $this->isAdmin() && $me = auth()->user()->employee?->id) {
             $assignees = array_values(array_unique([...array_map('intval', $assignees), $me]));
         }
         $task->assignees()->sync($assignees);
@@ -938,16 +937,15 @@ new #[Title('Client profile')] class extends Component {
                 </p>
             </a>
 
-            {{-- Videos --}}
-            <a href="{{ route('videos.index', ['client' => $c->id]) }}" wire:navigate class="{{ $panel }} flex flex-col gap-4 p-5 transition hover:ring-zinc-300" data-test="card-videos">
+            {{-- Videos: the count only; the Videos page is for admins --}}
+            <div class="{{ $panel }} flex flex-col gap-4 p-5" data-test="card-videos">
                 <div class="flex items-center gap-3">
                     <span class="{{ $iconTile }} bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300"><flux:icon.film variant="mini" class="size-4.5" /></span>
                     <p class="flex-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">{{ __('Videos') }}</p>
                     @if ($toEdit)<span class="rounded-md bg-amber-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">{{ trans_choice(':count to edit|:count to edit', $toEdit) }}</span>@endif
                 </div>
                 <p class="text-[1.625rem] leading-none font-semibold tracking-tight text-zinc-900 tabular-nums dark:text-white">{{ $clientVideos->count() }}<span class="text-base font-normal text-zinc-400"> {{ __('saved') }}</span></p>
-                <p class="mt-auto inline-flex items-center gap-1.5 text-xs font-medium text-brand-600 dark:text-brand-300"><flux:icon.plus variant="micro" class="size-3.5" />{{ __('Add raw footage') }}</p>
-            </a>
+            </div>
         @else
         {{-- Package: name, price and billing together --}}
         <div class="{{ $theme['card'] ?? 'from-brand-50 ring-brand-200/80 dark:from-brand-500/[0.09] dark:ring-brand-500/25' }} relative flex flex-col gap-4 overflow-hidden rounded-xl bg-white bg-linear-to-br to-white to-70% p-5 ring-1 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:to-zinc-950">

@@ -248,11 +248,9 @@ class EmployeesTest extends TestCase
         $this->assertSame('video-production', Employee::firstWhere('name', 'Sujan Thapa')->department);
         $this->assertSame('Video Production', Employee::firstWhere('name', 'Sujan Thapa')->departmentMeta()['label']);
 
-        // A department with people in it is kept; an empty one is deleted.
-        $page->call('deleteDepartment', 'design');
-        $this->assertTrue(\App\Models\Department::where('slug', 'design')->exists());
-        $page->call('deleteDepartment', 'sales');
-        $this->assertFalse(\App\Models\Department::where('slug', 'sales')->exists());
+        // Departments are only added, never deleted; Content Creator is there from the start.
+        $this->assertSame('Content Creator', Employee::departments()['content-creator']['label'] ?? null);
+        $this->get(route('employees.index'))->assertDontSee('deleteDepartment');
     }
 
     public function test_profile_shows_this_months_salary_status(): void

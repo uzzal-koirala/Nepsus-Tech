@@ -1,4 +1,4 @@
-{{-- A task row inside a work-type box. Needs $t, $statusTones and $range from the profile page. --}}
+{{-- A task row inside a work-type box. Needs $t, $admin, $statusTones and $range from the profile page. --}}
 @php
     $stage = $t->stage();
     $done = $stage === 'done';
@@ -43,6 +43,9 @@
                 <span class="flex size-7 items-center justify-center rounded-full bg-zinc-100 text-[0.625rem] font-semibold text-zinc-600 ring-2 ring-white dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-950">+{{ $people->count() - 2 }}</span>
             @endif
         </div>
+    @endif
+    @if ($admin)
+        <button type="button" wire:click.stop="deleteTask({{ $t->id }})" wire:confirm="{{ __('Delete this task?') }}" class="-me-1 shrink-0 rounded-md p-1.5 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 focus:opacity-100 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete :task', ['task' => $t->title]) }}" title="{{ __('Delete') }}" data-test="delete-task-{{ $t->id }}"><flux:icon.trash variant="micro" class="size-4" /></button>
     @endif
     <flux:icon.chevron-right variant="micro" class="size-4 shrink-0 text-zinc-300 transition group-hover:translate-x-0.5 group-hover:text-zinc-500" />
 </li>

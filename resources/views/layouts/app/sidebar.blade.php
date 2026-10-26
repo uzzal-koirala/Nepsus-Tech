@@ -3,7 +3,7 @@
     <head>
         @include('partials.head')
     </head>
-    <body class="min-h-screen bg-canvas font-sans antialiased dark:bg-zinc-900">
+    <body class="min-h-screen overflow-x-clip bg-canvas font-sans antialiased dark:bg-zinc-900">
         <flux:sidebar sticky collapsible class="app-sidebar border-e border-zinc-200/80 bg-white dark:border-white/5 dark:bg-zinc-950">
             <flux:sidebar.header>
                 <x-app-logo :sidebar="true" href="{{ route(auth()->user()->isAdmin() ? 'dashboard' : 'my.dashboard') }}" wire:navigate />
@@ -13,17 +13,20 @@
             <flux:sidebar.nav>
                 @php
                     $isAdmin = auth()->user()->isAdmin();
-                    // Employee logins: their own day, work and the content pages. No money.
+                    // Employee logins: their own day and work, plus scripts for Content Creators. No money.
+                    $creator = auth()->user()->canPlanContent();
                     $staffSections = [
                         __('My work') => [
-                            ['icon' => 'sun', 'label' => __('My day'), 'route' => 'my.dashboard', 'current' => 'my.dashboard'],
+                            ['icon' => 'home', 'label' => __('Dashboard'), 'route' => 'my.dashboard', 'current' => 'my.dashboard'],
                             ['icon' => 'check-circle', 'label' => __('My tasks'), 'route' => 'my.tasks', 'current' => 'my.tasks'],
                             ['icon' => 'calendar-days', 'label' => __('Calendar'), 'route' => 'calendar.index'],
+                            ['icon' => 'finger-print', 'label' => __('My attendance'), 'route' => 'my.attendance', 'current' => 'my.attendance'],
                         ],
                         __('Content') => [
                             ['icon' => 'building-office-2', 'label' => __('Clients'), 'route' => 'my.clients', 'current' => ['my.clients', 'clients.show']],
-                            ['icon' => 'pencil-square', 'label' => __('Scripts'), 'route' => 'scripts.index'],
-                            ['icon' => 'video-camera', 'label' => __('Videos'), 'route' => 'videos.index'],
+                            ...($creator ? [
+                                ['icon' => 'pencil-square', 'label' => __('Scripts'), 'route' => 'scripts.index'],
+                            ] : []),
                         ],
                     ];
                     $sections = [
@@ -45,19 +48,19 @@
                             ['icon' => 'receipt-percent', 'label' => __('Invoices & Quotes'), 'route' => 'invoices.index'],
                         ],
                         __('Team') => [
-                            ['icon' => 'user-group', 'label' => __('Employees'), 'route' => 'employees.index'],
+                            ['icon' => 'user-group', 'label' => __('Employees'), 'route' => 'employees.index', 'badge' => $isAdmin ? (\App\Models\LeaveRequest::pendingCount() ?: null) : null],
                         ],
                     ];
                     $sections = $isAdmin ? $sections : $staffSections;
                 @endphp
 
                 @foreach ($sections as $heading => $items)
-                    <div class="flex flex-col">
+                    <div class="flex flex-col gap-1">
                         <p class="px-3 pt-4 pb-1.5 text-[0.6875rem] font-semibold tracking-[0.08em] text-zinc-400 uppercase in-data-flux-sidebar-collapsed-desktop:hidden dark:text-zinc-500">{{ $heading }}</p>
                         <hr class="mx-auto my-3 hidden w-6 border-zinc-200 in-data-flux-sidebar-collapsed-desktop:block dark:border-white/10">
 
                         @foreach ($items as $item)
-                            <flux:sidebar.item :icon="$item['icon']" :href="route($item['route'])" :current="request()->routeIs($item['current'] ?? str($item['route'])->before('.').'*')" wire:navigate.hover>
+                            <flux:sidebar.item :icon="$item['icon']" :href="route($item['route'])" :current="request()->routeIs($item['current'] ?? str($item['route'])->before('.').'*')" :badge="$item['badge'] ?? null" badge:color="red" wire:navigate.hover>
                                 {{ $item['label'] }}
                             </flux:sidebar.item>
                         @endforeach
@@ -122,6 +125,8 @@
                 <flux:toast />
             </flux:toast.group>
         @endpersist
+
+        @include('partials.confirm-dialog')
 
         @fluxScripts
     </body>

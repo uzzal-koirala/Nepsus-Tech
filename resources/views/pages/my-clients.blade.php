@@ -47,9 +47,9 @@ new #[Title('Clients')] class extends Component {
             <p class="font-semibold text-zinc-900 dark:text-white">{{ $q !== '' ? __('Nothing matches') : __('No clients yet') }}</p>
         </section>
     @else
-        <section class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+        <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 2xl:grid-cols-4">
             @foreach ($clients as $c)
-                <a href="{{ route('clients.show', $c) }}" wire:navigate wire:key="c-{{ $c->id }}" class="group flex flex-col rounded-xl bg-white p-5 shadow-[0_1px_2px_rgb(15_23_42/0.06)] ring-1 ring-zinc-200/70 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_32px_-12px_rgb(15_23_42/0.22)] dark:bg-zinc-950 dark:ring-white/10" data-test="client-{{ $c->id }}">
+                <a href="{{ route('clients.show', $c) }}" wire:navigate wire:key="c-{{ $c->id }}" class="group flex min-w-0 flex-col rounded-xl bg-white p-4 shadow-[0_1px_2px_rgb(15_23_42/0.06)] sm:p-5 ring-1 ring-zinc-200/70 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_32px_-12px_rgb(15_23_42/0.22)] dark:bg-zinc-950 dark:ring-white/10" data-test="client-{{ $c->id }}">
                     <div class="flex items-start gap-3">
                         @if ($c->avatarUrl())
                             <img src="{{ $c->avatarUrl() }}" alt="" class="size-12 shrink-0 rounded-xl object-cover">
@@ -69,9 +69,9 @@ new #[Title('Clients')] class extends Component {
                     </div>
                     <div class="mt-4 grid grid-cols-3 gap-2 text-center">
                         @foreach ([[__('Open tasks'), $c->open_tasks], [__('Scripts'), $c->scripts_count], [__('Videos'), $c->videos_count]] as [$label, $n])
-                            <div class="rounded-lg bg-zinc-50 py-2 dark:bg-white/[0.03]">
+                            <div class="min-w-0 rounded-lg bg-zinc-50 px-1 py-2 dark:bg-white/[0.03]">
                                 <p class="text-base font-bold text-zinc-900 tabular-nums dark:text-white">{{ $n }}</p>
-                                <p class="text-[0.6875rem] text-zinc-500">{{ $label }}</p>
+                                <p class="truncate text-[0.6875rem] text-zinc-500">{{ $label }}</p>
                             </div>
                         @endforeach
                     </div>

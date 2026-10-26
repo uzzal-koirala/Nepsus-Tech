@@ -126,7 +126,7 @@ select:focus[data-flux-control] {
 }
 
 .app-sidebar [data-flux-sidebar-item] {
-    height: 2.25rem;
+    height: 2.5rem;
     border-radius: 0.375rem;
     transition: background-color 150ms, color 150ms, box-shadow 150ms;
 }
@@ -200,3 +200,17 @@ select:focus[data-flux-control] {
 .dark .ai-answer strong, .dark .ai-answer h1, .dark .ai-answer h2, .dark .ai-answer h3 { color: white; }
 .dark .ai-answer code { background: rgb(255 255 255 / 0.08); }
 .dark .ai-answer th, .dark .ai-answer td { border-color: rgb(255 255 255 / 0.08); }
+
+/* The "Are you sure?" box (partials/confirm-dialog) */
+@keyframes confirm-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.97);
+    }
+}
+
+/* Phones: the page never pans sideways. Wide things scroll inside their own box. */
+html,
+body {
+    overflow-x: clip;
+}

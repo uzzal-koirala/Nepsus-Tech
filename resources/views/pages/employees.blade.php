@@ -263,27 +263,6 @@ new #[Title('Employees')] class extends Component {
         $this->reset('newDepartment');
     }
 
-    public function deleteDepartment(string $slug): void
-    {
-        $inUse = Employee::where('department', $slug)->count();
-        if ($inUse) {
-            Flux::toast(variant: 'warning', text: trans_choice(':count employee is in this department. Move them first.|:count employees are in this department. Move them first.', $inUse));
-
-            return;
-        }
-        if (Department::count() <= 1) {
-            Flux::toast(variant: 'warning', text: __('Keep at least one department.'));
-
-            return;
-        }
-
-        Department::where('slug', $slug)->delete();
-        Employee::forgetDepartments();
-        if ($this->dept === $slug) {
-            $this->dept = (string) array_key_first(Employee::departments());
-        }
-    }
-
     private function resetForm(): void
     {
         $this->reset('editingId', 'name', 'designation', 'email', 'phone', 'salary', 'joinedOn');
@@ -305,6 +284,7 @@ new #[Title('Employees')] class extends Component {
         'sales' => ['avatar' => 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200', 'chip' => 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300'],
         'management' => ['avatar' => 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200', 'chip' => 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300'],
         'hr' => ['avatar' => 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-200', 'chip' => 'bg-teal-50 text-teal-700 dark:bg-teal-500/10 dark:text-teal-300'],
+        'content-creator' => ['avatar' => 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/20 dark:text-fuchsia-200', 'chip' => 'bg-fuchsia-50 text-fuchsia-700 dark:bg-fuchsia-500/10 dark:text-fuchsia-300'],
     ];
     $statusDot = ['active' => 'bg-emerald-500', 'on_leave' => 'bg-amber-400', 'inactive' => 'bg-zinc-300'];
     $statusText = ['active' => 'text-emerald-700 dark:text-emerald-300', 'on_leave' => 'text-amber-700 dark:text-amber-300', 'inactive' => 'text-zinc-500'];
@@ -324,6 +304,9 @@ new #[Title('Employees')] class extends Component {
             {{ __('Add employee') }}
         </flux:button>
     </header>
+
+    {{-- Leave employees asked for (hidden when there is none) --}}
+    <livewire:pages::leave-requests />
 
     {{-- Summary --}}
     <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -640,11 +623,7 @@ new #[Title('Employees')] class extends Component {
                                             <span class="block text-[0.6875rem] text-zinc-400">{{ trans_choice(':count person|:count people', (int) ($deptCounts[$key] ?? 0)) }}</span>
                                         </span>
                                         <flux:icon.check variant="mini" class="size-4 text-brand-600" x-show="$wire.dept === @js($key)" />
-                                    </button>
-                                    <button type="button" wire:click="deleteDepartment('{{ $key }}')" wire:confirm="{{ __('Delete the department “:name”?', ['name' => __($d['label'])]) }}" class="me-1 rounded-md p-1.5 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 focus:opacity-100 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete :name', ['name' => __($d['label'])]) }}">
-                                        <flux:icon.trash variant="micro" class="size-3.5" />
-                                    </button>
-                                </div>
+                                    </button>                                </div>
                             @endforeach
                         </div>
                         <div class="flex items-center gap-1.5 border-t border-zinc-100 bg-zinc-50/70 p-2 dark:border-white/5 dark:bg-white/[0.02]">

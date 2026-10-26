@@ -186,44 +186,7 @@ new #[Title('Overview')] class extends Component {
                 $short = fn ($v) => $v >= 100000 ? rtrim(rtrim(number_format($v / 100000, 1), '0'), '.').'L' : ($v >= 1000 ? rtrim(rtrim(number_format($v / 1000, 1), '0'), '.').'k' : (string) (int) $v);
                 $xs = array_map(fn ($i) => $n > 1 ? 3 + $i * 94 / ($n - 1) : 50, range(0, $n - 1));
                 $y = fn ($v) => 100 - $v / $top * 100;
-                // Monotone cubic (Fritsch-Carlson): smooth, never overshoots the real values or dips below zero.
-                $curve = function (array $vals) use ($xs, $y, $n) {
-                    $pts = array_map(fn ($i) => [$xs[$i], $y($vals[$i])], range(0, $n - 1));
-                    if ($n < 2) {
-                        return 'M'.$pts[0][0].','.$pts[0][1];
-                    }
-                    $d = [];
-                    $m = [];
-                    for ($i = 0; $i < $n - 1; $i++) {
-                        $d[$i] = ($pts[$i + 1][1] - $pts[$i][1]) / ($pts[$i + 1][0] - $pts[$i][0]);
-                    }
-                    $m[0] = $d[0];
-                    $m[$n - 1] = $d[$n - 2];
-                    for ($i = 1; $i < $n - 1; $i++) {
-                        $m[$i] = $d[$i - 1] * $d[$i] <= 0 ? 0 : ($d[$i - 1] + $d[$i]) / 2;
-                    }
-                    for ($i = 0; $i < $n - 1; $i++) {
-                        if ($d[$i] == 0) {
-                            $m[$i] = $m[$i + 1] = 0;
-
-                            continue;
-                        }
-                        $a = $m[$i] / $d[$i];
-                        $b = $m[$i + 1] / $d[$i];
-                        if ($a * $a + $b * $b > 9) {
-                            $t = 3 / sqrt($a * $a + $b * $b);
-                            $m[$i] = $t * $a * $d[$i];
-                            $m[$i + 1] = $t * $b * $d[$i];
-                        }
-                    }
-                    $path = 'M'.round($pts[0][0], 2).','.round($pts[0][1], 2);
-                    for ($i = 0; $i < $n - 1; $i++) {
-                        $h = ($pts[$i + 1][0] - $pts[$i][0]) / 3;
-                        $path .= sprintf(' C%.2f,%.2f %.2f,%.2f %.2f,%.2f', $pts[$i][0] + $h, $pts[$i][1] + $m[$i] * $h, $pts[$i + 1][0] - $h, $pts[$i + 1][1] - $m[$i + 1] * $h, $pts[$i + 1][0], $pts[$i + 1][1]);
-                    }
-
-                    return $path;
-                };
+                $curve = fn (array $vals) => \App\Support\SmoothLine::path(array_map(fn ($i) => [$xs[$i], $y($vals[$i])], range(0, $n - 1)));
                 $in = array_column($flow, 'income');
                 $out = array_column($flow, 'spent');
                 $inLine = $curve($in);
@@ -312,18 +275,18 @@ new #[Title('Overview')] class extends Component {
                         {{-- Weeks (start day); the month name where a new month begins --}}
                         <div class="relative mt-2 h-4 text-[0.6875rem] text-zinc-500">
                             @foreach ($points as $k => $p)
-                                <span @class(['absolute -translate-x-1/2 whitespace-nowrap', 'font-semibold text-zinc-900 dark:text-white' => $loop->last, 'hidden sm:inline' => ! $loop->first && ! $loop->last && ! str_contains($p['tick'], ' ')]) style="left: {{ $p['x'] }}%">{{ $loop->last ? __('This week') : $p['tick'] }}</span>
+                                <span @class(['absolute whitespace-nowrap', '-translate-x-1/2' => ! $loop->first && ! $loop->last, '-translate-x-full font-semibold text-zinc-900 dark:text-white' => $loop->last, 'hidden' => ! $loop->first && ! $loop->last && (! str_contains($p['tick'], ' ') || $p['x'] > 80), 'max-sm:hidden' => ! $loop->first && ! $loop->last]) style="left: {{ $p['x'] }}%">{{ $loop->last ? __('This week') : $p['tick'] }}</span>
                             @endforeach
                         </div>
                     </div>
                 </div>
 
                 {{-- The same numbers for screen readers --}}
-                <table class="sr-only">
+                <div class="sr-only"><table>
                     <caption>{{ __('Cash flow, last 12 weeks') }}</caption>
                     <tr><th>{{ __('Week') }}</th><th>{{ __('Money in') }}</th><th>{{ __('Money out') }}</th></tr>
                     @foreach ($points as $p)<tr><td>{{ $p['month'] }}</td><td>{{ $p['in'] }}</td><td>{{ $p['out'] }}</td></tr>@endforeach
-                </table>
+                </table></div>
             </section>
 
         </div>

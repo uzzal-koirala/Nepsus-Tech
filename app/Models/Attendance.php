@@ -61,6 +61,18 @@ class Attendance extends Model
         return intdiv($minutes, 60).'h '.str_pad((string) ($minutes % 60), 2, '0', STR_PAD_LEFT).'m';
     }
 
+    /** Minutes late on a working day, by the employee's start time and grace; null when on time. */
+    public function minutesLate(): ?int
+    {
+        return in_array($this->status, ['present', 'half_day'], true) ? $this->employee?->minutesLate($this->check_in) : null;
+    }
+
+    /** "1h 05m" or "12m". */
+    public static function duration(int $minutes): string
+    {
+        return $minutes >= 60 ? intdiv($minutes, 60).'h '.str_pad((string) ($minutes % 60), 2, '0', STR_PAD_LEFT).'m' : $minutes.'m';
+    }
+
     public function employee(): BelongsTo
     {
         return $this->belongsTo(Employee::class);

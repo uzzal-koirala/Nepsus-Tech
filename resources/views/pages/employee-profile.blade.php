@@ -36,6 +36,11 @@ new #[Title('Employee')] class extends Component {
     /** @var array<string, string> */
     public array $info = [];
 
+    // Work hours: when they start and finish, and how many minutes of grace before a check-in is late.
+    public string $workStart = '';
+    public string $workEnd = '';
+    public string $lateAfter = '0';
+
     // Edit / delete one attendance day from the history
     public ?int $attId = null;
     public string $attStatus = 'present';
@@ -170,6 +175,39 @@ new #[Title('Employee')] class extends Component {
         $this->accPassword = '';
     }
 
+    // Work hours
+
+    public function editHours(): void
+    {
+        $this->workStart = (string) $this->employee->work_start;
+        $this->workEnd = (string) $this->employee->work_end;
+        $this->lateAfter = (string) (int) $this->employee->late_after;
+        $this->resetErrorBag();
+        Flux::modal('work-hours')->show();
+    }
+
+    public function saveHours(): void
+    {
+        $data = $this->validate([
+            'workStart' => ['required', 'date_format:H:i'],
+            'workEnd' => ['required', 'date_format:H:i', 'after:workStart'],
+            'lateAfter' => ['required', 'integer', 'min:0', 'max:240'],
+        ], attributes: ['workStart' => __('check-in time'), 'workEnd' => __('check-out time'), 'lateAfter' => __('grace minutes')]);
+
+        $this->employee->update(['work_start' => $data['workStart'], 'work_end' => $data['workEnd'], 'late_after' => (int) $data['lateAfter']]);
+        unset($this->calendar);
+        Flux::modal('work-hours')->close();
+        Flux::toast(variant: 'success', text: __('Work hours saved.'));
+    }
+
+    public function clearHours(): void
+    {
+        $this->employee->update(['work_start' => null, 'work_end' => null, 'late_after' => 0]);
+        unset($this->calendar);
+        Flux::modal('work-hours')->close();
+        Flux::toast(text: __('Work hours removed. Nobody is marked late.'));
+    }
+
     // Attendance calendar
 
     public function shiftMonth(int $by): void
@@ -211,7 +249,7 @@ new #[Title('Employee')] class extends Component {
         for ($day = 1; $day <= $length; $day++) {
             $ad = $first->copy()->addDays($day - 1);
             $key = $ad->toDateString();
-            $cells[] = ['day' => $day, 'ad' => $ad, 'status' => $marks[$key]->status ?? null, 'note' => $marks[$key]->note ?? null, 'in' => $marks[$key]->check_in ?? null, 'out' => $marks[$key]->check_out ?? null, 'device' => ($marks[$key]->source ?? '') === 'device', 'done' => $doneByDay[$key] ?? collect()];
+            $cells[] = ['day' => $day, 'ad' => $ad, 'status' => $marks[$key]->status ?? null, 'note' => $marks[$key]->note ?? null, 'in' => $marks[$key]->check_in ?? null, 'out' => $marks[$key]->check_out ?? null, 'device' => ($marks[$key]->source ?? '') === 'device', 'late' => isset($marks[$key]) ? $marks[$key]->setRelation('employee', $this->employee)->minutesLate() : null, 'done' => $doneByDay[$key] ?? collect()];
         }
         $cells = array_pad($cells, (int) ceil(count($cells) / 7) * 7, null);
 
@@ -226,6 +264,7 @@ new #[Title('Employee')] class extends Component {
             'counts' => $counts,
             'rate' => $marked ? (int) round($worked / $marked * 100) : null,
             'done' => $doneByDay->flatten()->count(),
+            'late' => collect($cells)->filter(fn ($c) => $c && $c['late'])->count(),
         ];
     }
 
@@ -1038,6 +1077,9 @@ new #[Title('Employee')] class extends Component {
                                                                 @endif
                                                             </span>
                                                         @endif
+                                                        @if ($cell['late'])
+                                                            <span class="inline-flex w-fit items-center gap-1 rounded-md bg-orange-100 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-orange-700 dark:bg-orange-500/15 dark:text-orange-300" title="{{ __('Checked in :time late', ['time' => Attendance::duration($cell['late'])]) }}" data-test="late-{{ $key }}"><flux:icon.clock variant="micro" class="size-3" />{{ __('Late :time', ['time' => Attendance::duration($cell['late'])]) }}</span>
+                                                        @endif
                                                         @if ($mark === 'leave' && $cell['note'])
                                                             <span class="line-clamp-2 text-[0.6875rem] leading-snug text-sky-800 dark:text-sky-200" title="{{ $cell['note'] }}">{{ $cell['note'] }}</span>
                                                         @endif
@@ -1110,6 +1152,36 @@ new #[Title('Employee')] class extends Component {
                     @endif
                 </section>
 
+
+                {{-- Work hours --}}
+                <section class="{{ $panel }} p-5" data-test="work-hours">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="flex items-center gap-3">
+                            <span class="{{ $iconTile }} bg-orange-500 text-white shadow-md shadow-orange-500/30"><flux:icon.clock variant="mini" class="size-4.5" /></span>
+                            <div>
+                                <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Work hours') }}</h2>
+                                <p class="text-xs text-zinc-500">{{ __('Check-ins after the grace time show as late') }}</p>
+                            </div>
+                        </div>
+                        <flux:button size="sm" variant="ghost" icon="pencil-square" wire:click="editHours" data-test="edit-hours">{{ $e->work_start ? __('Edit') : __('Set') }}</flux:button>
+                    </div>
+                    @if ($e->work_start)
+                        <div class="mt-4 grid grid-cols-3 gap-2">
+                            @foreach ([[__('Check in'), Attendance::clock($e->work_start), 'arrow-right-end-on-rectangle', 'text-emerald-500'], [__('Check out'), Attendance::clock($e->work_end), 'arrow-right-start-on-rectangle', 'text-rose-400'], [__('Grace'), $e->late_after ? __(':count min', ['count' => $e->late_after]) : __('None'), 'shield-check', 'text-sky-500']] as [$label, $value, $icon, $tone])
+                                <div class="min-w-0 rounded-xl bg-zinc-50 px-2.5 py-2.5 dark:bg-white/5">
+                                    <p class="flex items-center gap-1 text-[0.6875rem] text-zinc-500"><flux:icon :icon="$icon" variant="micro" class="size-3.5 shrink-0 {{ $tone }}" /><span class="truncate">{{ $label }}</span></p>
+                                    <p class="mt-1 truncate text-sm font-semibold text-zinc-900 tabular-nums dark:text-white">{{ $value }}</p>
+                                </div>
+                            @endforeach
+                        </div>
+                        <p class="mt-3 flex items-center justify-between rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-800 dark:bg-orange-500/10 dark:text-orange-200">
+                            <span>{{ __('Late from :time', ['time' => $e->lateFrom()]) }}</span>
+                            <span class="font-semibold">{{ trans_choice(':count late day in :month|:count late days in :month', $cal['late'], ['month' => $cal['label']]) }}</span>
+                        </p>
+                    @else
+                        <p class="mt-3 text-xs text-zinc-500">{{ __('No hours set, so nobody is marked late. Set when they should check in and out.') }}</p>
+                    @endif
+                </section>
 
                 {{-- All-time attendance --}}
                 @php
@@ -1234,6 +1306,9 @@ new #[Title('Employee')] class extends Component {
                                     <td class="px-3 py-2.5 whitespace-nowrap tabular-nums">
                                         @if ($a->check_in)
                                             <span class="inline-flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-100"><flux:icon.arrow-right-end-on-rectangle variant="micro" class="size-4 text-emerald-500" />{{ Attendance::clock($a->check_in) }}</span>
+                                            @if ($late = $a->setRelation('employee', $e)->minutesLate())
+                                                <span class="ms-1.5 inline-flex items-center rounded-md bg-orange-100 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-orange-700 dark:bg-orange-500/15 dark:text-orange-300">{{ __('Late :time', ['time' => Attendance::duration($late)]) }}</span>
+                                            @endif
                                         @else
                                             <span class="text-zinc-300 dark:text-zinc-600">—</span>
                                         @endif
@@ -1448,7 +1523,7 @@ new #[Title('Employee')] class extends Component {
                         <flux:switch wire:model.live="accAdmin" :disabled="$login?->id === auth()->id()" data-test="acc-admin" />
                         <span>
                             <span class="block text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Admin access') }}</span>
-                            <span class="block text-xs text-zinc-500">{{ $accAdmin ? __('Sees and changes everything: money, employees and settings.') : __('Employee view: My day, their tasks, calendar, clients without prices, scripts and videos.') }}</span>
+                            <span class="block text-xs text-zinc-500">{{ $accAdmin ? __('Sees and changes everything: money, employees and settings.') : __('Employee view: Dashboard, their tasks, calendar, clients without prices, scripts and videos.') }}</span>
                         </span>
                     </label>
 
@@ -1967,6 +2042,37 @@ new #[Title('Employee')] class extends Component {
             <div class="flex justify-end gap-2">
                 <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
                 <flux:button type="submit" variant="primary" icon="check" data-test="save-leave">{{ __('Mark leave') }}</flux:button>
+            </div>
+        </form>
+    </flux:modal>
+
+    {{-- Work hours --}}
+    <flux:modal name="work-hours" class="w-full max-w-md">
+        <form wire:submit="saveHours" class="flex flex-col gap-5">
+            <div class="flex items-start gap-3">
+                <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white shadow-md shadow-orange-500/30"><flux:icon.clock variant="mini" class="size-5" /></span>
+                <div>
+                    <flux:heading size="lg">{{ __('Work hours') }}</flux:heading>
+                    <flux:text>{{ __('For :name. A check-in later than the start time plus the grace minutes is marked late.', ['name' => $e->name]) }}</flux:text>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <flux:input type="time" wire:model.live="workStart" :label="__('Check in at')" required data-test="work-start" />
+                <flux:input type="time" wire:model="workEnd" :label="__('Check out at')" required data-test="work-end" />
+            </div>
+            <flux:input type="number" min="0" max="240" step="1" wire:model.live="lateAfter" :label="__('Late after (minutes)')" :description="__('How many minutes after the check-in time still count as on time.')" required data-test="late-after" />
+            @if (preg_match('/^\d{2}:\d{2}$/', $workStart) && is_numeric($lateAfter) && (int) $lateAfter >= 0 && (int) $lateAfter <= 240)
+                <p class="-mt-2 inline-flex w-fit items-center gap-1.5 rounded-lg bg-orange-50 px-2.5 py-1 text-xs font-medium text-orange-700 dark:bg-orange-500/10 dark:text-orange-300">
+                    <flux:icon.clock variant="micro" class="size-3.5" />{{ __('Checking in at :time or later counts as late', ['time' => (new \App\Models\Employee(['work_start' => $workStart, 'late_after' => (int) $lateAfter]))->lateFrom()]) }}
+                </p>
+            @endif
+            <div class="flex gap-2">
+                @if ($e->work_start)
+                    <flux:button variant="ghost" class="text-rose-600!" wire:click="clearHours" wire:confirm="{{ __('Remove work hours? Nobody will be marked late.') }}">{{ __('Remove') }}</flux:button>
+                @endif
+                <flux:spacer />
+                <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>
+                <flux:button type="submit" variant="primary" data-test="save-hours">{{ __('Save') }}</flux:button>
             </div>
         </form>
     </flux:modal>

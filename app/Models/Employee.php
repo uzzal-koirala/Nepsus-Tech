@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 #[Fillable([
-    'name', 'avatar_path', 'device_user_id', 'designation', 'department', 'email', 'phone', 'status', 'salary', 'salary_day', 'joined_on', 'contract_start', 'contract_end',
+    'name', 'avatar_path', 'device_user_id', 'designation', 'department', 'email', 'phone', 'status', 'salary', 'salary_day', 'work_start', 'work_end', 'late_after', 'joined_on', 'contract_start', 'contract_end',
     'date_of_birth', 'gender', 'blood_group', 'marital_status', 'father_name', 'mother_name', 'spouse_name',
     'permanent_address', 'current_address', 'district', 'province', 'emergency_name', 'emergency_relation', 'emergency_phone',
     'citizenship_no', 'pan_no', 'bank_name', 'bank_account_name', 'bank_account_no',
@@ -73,6 +73,34 @@ class Employee extends Model
     public function attendances(): HasMany
     {
         return $this->hasMany(Attendance::class);
+    }
+
+    /** "10:00 AM – 6:00 PM", or null when no hours are set. */
+    public function workHours(): ?string
+    {
+        return $this->work_start && $this->work_end ? Attendance::clock($this->work_start).' – '.Attendance::clock($this->work_end) : null;
+    }
+
+    /** The first check-in time that counts as late, e.g. "10:16 AM". */
+    public function lateFrom(): ?string
+    {
+        return $this->work_start ? Attendance::clock(\Illuminate\Support\Carbon::createFromFormat('H:i', $this->work_start)->addMinutes((int) $this->late_after + 1)->format('H:i')) : null;
+    }
+
+    /** Minutes late for a check-in ("09:20"), or null when on time (start + grace) or no start time is set. */
+    public function minutesLate(?string $checkIn): ?int
+    {
+        if (! $checkIn || ! $this->work_start) {
+            return null;
+        }
+        $late = \App\Support\AttendancePunches::minutesBetween($this->work_start, $checkIn);
+
+        return $late > (int) $this->late_after ? $late : null;
+    }
+
+    public function leaveRequests(): HasMany
+    {
+        return $this->hasMany(LeaveRequest::class);
     }
 
     public function documents(): HasMany

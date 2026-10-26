@@ -2,6 +2,8 @@
     'label' => null,
     'name' => null,
     'placeholder' => 'Pick a date',
+    // Which edge the calendar lines up with: start, or end for a field on the right.
+    'align' => 'start',
 ])
 
 @php
@@ -38,7 +40,7 @@
         x-transition
         x-cloak
         :class="up ? 'bottom-full mb-1.5 origin-bottom-left' : 'top-full mt-1.5 origin-top-left'"
-        class="absolute left-0 z-30 w-72 rounded-xl bg-white p-3 shadow-[0_20px_50px_-20px_rgb(15_23_42/0.35)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10"
+        class="absolute {{ $align === 'end' ? 'right-0' : 'left-0' }} z-30 w-72 rounded-xl bg-white p-3 shadow-[0_20px_50px_-20px_rgb(15_23_42/0.35)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10"
     >
         <div class="mb-2 flex items-center justify-between gap-1">
             <button type="button" @click="shift(-1)" class="flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 dark:hover:bg-white/5" aria-label="{{ __('Previous month') }}">

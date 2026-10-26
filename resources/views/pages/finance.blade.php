@@ -592,7 +592,7 @@ new #[Title('Finance')] class extends Component {
                         </dl>
                         <div class="flex flex-wrap items-center gap-2 border-t border-zinc-100 bg-zinc-50/70 px-6 py-4 dark:border-white/5 dark:bg-white/[0.02]">
                             <template x-if="rows[open].key">
-                                <button type="button" @click="if (confirm(@js(__('Delete this transaction?')) + (rows[open].warn ? '\n' + rows[open].warn : ''))) { $wire.deleteEntry(rows[open].key); open = null }" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"><flux:icon.trash variant="micro" class="size-4" />{{ __('Delete') }}</button>
+                                <button type="button" @click="const row = rows[open]; appConfirm(@js(__('Delete this transaction?')) + (row.warn ? '\n' + row.warn : '')).then((yes) => { if (yes) { $wire.deleteEntry(row.key); open = null } })" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"><flux:icon.trash variant="micro" class="size-4" />{{ __('Delete') }}</button>
                             </template>
                             <div class="ms-auto flex gap-2">
                                 <template x-if="rows[open].proof">

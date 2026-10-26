@@ -11,21 +11,26 @@ Route::redirect('/', '/dashboard')->name('home');
 
 // Open to every login: employee logins see these too.
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::livewire('my', 'pages::my-dashboard')->name('my.dashboard');
+    Route::livewire('dashboard', 'pages::my-dashboard')->name('my.dashboard');
     Route::livewire('my/tasks', 'pages::my-tasks')->name('my.tasks');
     Route::livewire('my/clients', 'pages::my-clients')->name('my.clients');
+    Route::livewire('my/attendance', 'pages::my-attendance')->name('my.attendance');
     // Same profile as admins see; money is left out for employee logins.
     Route::livewire('clients/{client}', 'pages::client-profile')->name('clients.show');
     Route::livewire('calendar', 'pages::calendar')->name('calendar.index');
+});
+
+// Admins and Content Creators: writing scripts.
+Route::middleware(['auth', 'verified', 'content'])->group(function () {
     Route::livewire('scripts', 'pages::scripts')->name('scripts.index');
     Route::livewire('scripts/{script}', 'pages::script-editor')->name('scripts.edit');
-    Route::livewire('videos', 'pages::videos')->name('videos.index');
 });
 
 // Admins only. Employee logins are sent to their own page (see AdminOnly) or refused.
 Route::middleware(['auth', 'verified', 'admin'])->group(function () {
-    Route::livewire('dashboard', 'pages::dashboard')->name('dashboard');
+    Route::livewire('overview', 'pages::dashboard')->name('dashboard');
     Route::livewire('clients', 'pages::clients')->name('clients.index');
+    Route::livewire('videos', 'pages::videos')->name('videos.index');
     Route::livewire('packages', 'pages::packages')->name('packages.index');
     Route::livewire('employees', 'pages::employees')->name('employees.index');
     Route::livewire('finance', 'pages::finance')->name('finance.index');
