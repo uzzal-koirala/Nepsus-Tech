@@ -281,7 +281,7 @@ new #[Title('My attendance')] class extends Component {
                                         <span class="text-[0.625rem] text-zinc-300 tabular-nums dark:text-zinc-600">{{ $cell['ad']->format('j') }}</span>
                                     </span>
                                     @if ($holiday)
-                                        <span class="inline-flex w-fit items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"><flux:icon.sparkles variant="micro" class="size-3" />{{ __('Holiday') }}</span>
+                                        <span class="inline-flex w-fit items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"><flux:icon.sparkles variant="micro" class="size-3 shrink-0" /><span class="truncate">{{ \App\Models\Holiday::nameOn($cell['ad']) ?? __('Holiday') }}</span></span>
                                     @elseif ($mark)
                                         <span class="{{ $markTone[$mark->status]['pill'] }} inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-semibold" @if ($mark->note) title="{{ $mark->note }}" @endif>
                                             <flux:icon :icon="Attendance::STATUSES[$mark->status]['icon']" variant="micro" class="size-3" />{{ __(Attendance::STATUSES[$mark->status]['label']) }}

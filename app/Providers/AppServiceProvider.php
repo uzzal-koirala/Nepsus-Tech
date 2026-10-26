@@ -43,7 +43,8 @@ class AppServiceProvider extends ServiceProvider
         \Illuminate\Foundation\DevCommands::artisan('schedule:work', 'scheduler');
 
         foreach ([Carbon::class, CarbonImmutable::class] as $class) {
-            $class::macro('isHoliday', fn (): bool => $this->dayOfWeek === \App\Models\Setting::weeklyHoliday());
+            // The weekly holiday, or a day an admin marked on the Calendar.
+            $class::macro('isHoliday', fn (): bool => $this->dayOfWeek === \App\Models\Setting::weeklyHoliday() || \App\Models\Holiday::nameOn($this) !== null);
             $class::macro('toNepali', fn (bool $withYear = true): string => NepaliDate::format($this, $withYear));
             $class::macro('toNepaliMonth', fn (): string => NepaliDate::monthYear($this));
         }

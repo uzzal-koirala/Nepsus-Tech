@@ -13,6 +13,7 @@ abstract class TestCase extends BaseTestCase
         parent::setUp();
 
         Setting::forget(); // settings are cached in memory; each test starts from its own fresh database
+        \App\Models\Holiday::forget();
     }
 
     protected function skipUnlessFortifyHas(string $feature, ?string $message = null): void

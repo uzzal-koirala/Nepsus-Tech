@@ -265,20 +265,20 @@ new #[Title('My tasks')] class extends Component {
     ];
 @endphp
 
-<div class="stagger flex w-full flex-col gap-6">
+<div class="stagger flex w-full flex-col gap-4 sm:gap-6">
     {{-- Hero --}}
-    <section class="grain relative isolate overflow-hidden rounded-2xl bg-brand-500 p-6 text-white sm:p-8">
+    <section class="grain relative isolate overflow-hidden rounded-2xl bg-brand-500 p-5 text-white sm:p-8">
         <div class="absolute inset-0 -z-10 opacity-20 [background-image:radial-gradient(white_1px,transparent_1px)] [background-size:22px_22px] [mask-image:linear-gradient(to_right,black,transparent_70%)]"></div>
         <div class="absolute -top-24 -right-20 -z-10 size-72 rounded-full bg-white/10"></div>
         <div class="absolute right-40 -bottom-32 -z-10 hidden size-64 rounded-full bg-sun/40 blur-2xl sm:block"></div>
 
-        <div class="flex flex-wrap items-center justify-between gap-6">
-            <div class="min-w-0">
+        <div class="flex items-start justify-between gap-4 sm:flex-wrap sm:items-center sm:gap-6">
+            <div class="min-w-0 flex-1 sm:flex-none">
                 <p class="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium ring-1 ring-white/20 backdrop-blur">
                     <flux:icon.calendar variant="micro" class="size-3.5" />{{ today()->toNepali() }} · {{ now()->translatedFormat('l') }}
                 </p>
-                <h1 class="mt-4 text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">{{ __('My tasks') }}</h1>
-                <p class="mt-2 max-w-lg text-sm leading-relaxed text-brand-100">
+                <h1 class="mt-3 text-xl font-semibold tracking-[-0.02em] sm:mt-4 sm:text-3xl">{{ __('My tasks') }}</h1>
+                <p class="mt-1.5 max-w-lg text-[0.8125rem] leading-relaxed text-brand-100 sm:mt-2 sm:text-sm">
                     @if ($late->count())
                         {{ trans_choice(':count task is late. Start there.|:count tasks are late. Start there.', $late->count()) }}
                     @elseif ($dueToday->count())
@@ -287,10 +287,10 @@ new #[Title('My tasks')] class extends Component {
                         {{ __('Nothing due today. Plan ahead or pick something up.') }}
                     @endif
                 </p>
-                <div class="mt-6 flex flex-wrap gap-2">
-                    <button type="button" wire:click="newTask" class="inline-flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:bg-brand-50" data-test="new-task"><flux:icon.plus variant="micro" class="size-4" />{{ __('New task') }}</button>
+                <div class="mt-4 flex flex-wrap gap-2 sm:mt-6">
+                    <button type="button" wire:click="newTask" class="inline-flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2.5 sm:py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:bg-brand-50" data-test="new-task"><flux:icon.plus variant="micro" class="size-4" />{{ __('New task') }}</button>
                     @foreach ([['today', __('Today'), $dueToday->count()], ['late', __('Overdue'), $late->count()], ['upcoming', __('Upcoming'), $upcoming->count()]] as [$key, $label, $n])
-                        <button type="button" wire:click="$set('tab', '{{ $key }}')" class="inline-flex items-center gap-2 rounded-lg bg-white/15 px-3.5 py-2 text-sm font-semibold ring-1 ring-white/25 backdrop-blur transition hover:bg-white/25">
+                        <button type="button" wire:click="$set('tab', '{{ $key }}')" class="hidden items-center gap-2 rounded-lg bg-white/15 sm:inline-flex px-3.5 py-2 text-sm font-semibold ring-1 ring-white/25 backdrop-blur transition hover:bg-white/25">
                             {{ $label }}<span @class(['rounded-md px-1.5 text-xs tabular-nums', 'bg-rose-500 text-white' => $key === 'late' && $n, 'bg-white/20' => ! ($key === 'late' && $n)])>{{ $n }}</span>
                         </button>
                     @endforeach
@@ -298,15 +298,15 @@ new #[Title('My tasks')] class extends Component {
             </div>
 
             {{-- This week --}}
-            <div class="flex items-center gap-4 rounded-2xl bg-white/10 p-4 ring-1 ring-white/20 backdrop-blur">
-                <div class="relative size-24 shrink-0">
-                    <svg viewBox="0 0 100 100" class="size-24 -rotate-90" aria-hidden="true">
+            <div class="flex shrink-0 items-center gap-4 rounded-2xl bg-white/10 p-2 ring-1 ring-white/20 backdrop-blur sm:p-4">
+                <div class="relative size-[4.5rem] shrink-0 sm:size-24">
+                    <svg viewBox="0 0 100 100" class="size-full -rotate-90" aria-hidden="true">
                         <circle cx="50" cy="50" r="42" fill="none" stroke-width="10" class="stroke-white/20" />
                         <circle cx="50" cy="50" r="42" fill="none" stroke-width="10" stroke-linecap="round" class="stroke-sun transition-all duration-700" stroke-dasharray="{{ $ring }}" stroke-dashoffset="{{ $ring * (1 - $weekPct / 100) }}" />
                     </svg>
-                    <span class="absolute inset-0 flex flex-col items-center justify-center"><span class="text-xl font-bold tabular-nums">{{ $weekPct }}%</span></span>
+                    <span class="absolute inset-0 flex flex-col items-center justify-center"><span class="text-base font-bold tabular-nums sm:text-xl">{{ $weekPct }}%</span><span class="text-[0.5625rem] font-medium text-white/75 sm:hidden">{{ $week['done'] }}/{{ $week['total'] }} {{ __('week') }}</span></span>
                 </div>
-                <div>
+                <div class="hidden sm:block">
                     <p class="text-xs font-semibold tracking-wider text-white/70 uppercase">{{ __('This week') }}</p>
                     <p class="mt-1 text-lg font-semibold tabular-nums">{{ $week['done'] }} <span class="text-sm font-normal text-white/70">/ {{ $week['total'] }} {{ __('done') }}</span></p>
                 </div>
@@ -320,10 +320,10 @@ new #[Title('My tasks')] class extends Component {
 
     {{-- Tabs and filters --}}
     <section class="flex flex-col gap-3">
-        <div class="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+        <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:px-0">
             @foreach ($tabs as $key => [$label, $items, $icon])
                 <button type="button" wire:click="$set('tab', '{{ $key }}')" @class([
-                    'inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ring-1 transition',
+                    'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[0.8125rem] font-medium ring-1 transition sm:gap-2 sm:px-4 sm:py-2 sm:text-sm',
                     'bg-zinc-900 text-white ring-zinc-900 shadow-md dark:bg-white dark:text-zinc-900 dark:ring-white' => $tab === $key,
                     'bg-white text-zinc-600 ring-zinc-200 hover:text-zinc-900 hover:ring-zinc-300 dark:bg-zinc-950 dark:text-zinc-300 dark:ring-white/10 dark:hover:text-white' => $tab !== $key,
                 ]) data-test="tab-{{ $key }}">
@@ -351,7 +351,7 @@ new #[Title('My tasks')] class extends Component {
     </section>
 
     {{-- Four boxes in one row, by priority --}}
-    <div class="grid auto-cols-[minmax(17rem,1fr)] grid-flow-col items-start gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]" data-test="priority-boxes">
+    <div class="grid grid-cols-1 items-start gap-3 sm:auto-cols-[minmax(17rem,1fr)] sm:grid-flow-col sm:grid-cols-none sm:gap-4 sm:overflow-x-auto sm:pb-2 sm:[scrollbar-width:thin]" data-test="priority-boxes">
         @foreach ($boxes as $pk => $box)
             @php $cards = $list->where('priority', $pk); @endphp
             <section wire:key="box-{{ $pk }}" class="{{ $box['soft'] }} flex min-w-0 flex-col overflow-hidden rounded-2xl ring-1" data-test="box-{{ $pk }}">
@@ -429,7 +429,7 @@ new #[Title('My tasks')] class extends Component {
                             </div>
                         </article>
                     @empty
-                        <div class="flex flex-col items-center gap-1.5 rounded-xl border border-dashed border-zinc-300 px-3 py-8 text-center dark:border-white/10">
+                        <div class="hidden flex-col items-center gap-1.5 rounded-xl border border-dashed sm:flex border-zinc-300 px-3 py-8 text-center dark:border-white/10">
                             <flux:icon.check-circle variant="mini" class="size-5 text-zinc-300 dark:text-zinc-600" />
                             <p class="text-xs text-zinc-400">{{ $tab === 'done' ? __('Nothing done here') : __('Nothing here') }}</p>
                         </div>

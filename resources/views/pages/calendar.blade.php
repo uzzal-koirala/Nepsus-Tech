@@ -1,6 +1,7 @@
 <?php
 
 use App\Concerns\ManagesTasks;
+use App\Models\Holiday;
 use App\Models\Script;
 use App\Models\Task;
 use App\Models\WorkType;
@@ -8,6 +9,7 @@ use App\Support\NepaliDate;
 use Illuminate\Support\Carbon;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
+use Flux\Flux;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -24,6 +26,9 @@ new #[Title('Calendar')] class extends Component {
     /** @var list<string> Work types switched off. */
     #[Url(except: [])]
     public array $off = [];
+
+    /** Name for a holiday on the selected day (admins). */
+    public string $holidayName = '';
 
     public function mount(): void
     {
@@ -67,6 +72,36 @@ new #[Title('Calendar')] class extends Component {
         $d = Carbon::parse($date);
         $this->day = $d->toDateString();
         $this->month = NepaliDate::period($d);
+    }
+
+    /** Holidays on the visible grid: date => name. */
+    #[Computed]
+    public function holidays(): array
+    {
+        $weeks = $this->weeks;
+
+        return Holiday::whereBetween('date', [$weeks[0][0]->toDateString(), end($weeks)[6]->toDateString()])->get()
+            ->mapWithKeys(fn ($h) => [$h->date->toDateString() => $h->name])->all();
+    }
+
+    /** Admins: makes the selected day a holiday for everyone. */
+    public function markHoliday(): void
+    {
+        abort_unless(auth()->user()->isAdmin(), 403);
+        $data = $this->validate(['holidayName' => ['required', 'string', 'min:2', 'max:80']], attributes: ['holidayName' => __('holiday name')]);
+
+        Holiday::updateOrCreate(['date' => Carbon::parse($this->day)->toDateString()], ['name' => trim($data['holidayName'])]);
+        $this->reset('holidayName');
+        unset($this->holidays);
+        Flux::toast(variant: 'success', text: __(':date is now a holiday.', ['date' => NepaliDate::format(Carbon::parse($this->day))]));
+    }
+
+    public function removeHoliday(): void
+    {
+        abort_unless(auth()->user()->isAdmin(), 403);
+        Holiday::whereDate('date', Carbon::parse($this->day)->toDateString())->get()->each->delete();
+        unset($this->holidays);
+        Flux::toast(text: __('Holiday removed.'));
     }
 
     public function toggleType(string $type): void
@@ -162,6 +197,9 @@ new #[Title('Calendar')] class extends Component {
     $weeks = $this->weeks;
     $weekdays = [__('Sun'), __('Mon'), __('Tue'), __('Wed'), __('Thu'), __('Fri'), __('Sat')];
     $bsDay = fn ($d) => NepaliDate::fromAd($d)[2] ?? $d->day;
+    $holidays = $this->holidays;
+    $dayHoliday = $holidays[$day] ?? null;
+    $isAdmin = auth()->user()->isAdmin();
 @endphp
 
 <div class="stagger flex w-full flex-col gap-6">
@@ -238,10 +276,12 @@ new #[Title('Calendar')] class extends Component {
                                     $items = collect($byDay[$key] ?? []);
                                     $inMonth = NepaliDate::period($d) === $month;
                                     $isSel = $key === $day;
+                                    $holiday = $holidays[$key] ?? null;
                                 @endphp
                                 <div wire:key="d-{{ $key }}" wire:click="pick('{{ $key }}')" @class([
                                     'group relative flex min-h-28 cursor-pointer flex-col gap-1 border-e border-b border-zinc-100 p-1.5 transition dark:border-white/5',
-                                    'bg-zinc-50/60 dark:bg-white/[0.015]' => ! $inMonth,
+                                    'bg-zinc-50/60 dark:bg-white/[0.015]' => ! $inMonth && ! $holiday,
+                                    'bg-rose-50/70 dark:bg-rose-500/[0.06]' => $holiday && ! $isSel,
                                     'hover:bg-brand-50/40 dark:hover:bg-brand-500/5' => ! $isSel,
                                     'bg-brand-50/70 ring-2 ring-brand-500 ring-inset dark:bg-brand-500/10' => $isSel,
                                 ])>
@@ -249,11 +289,15 @@ new #[Title('Calendar')] class extends Component {
                                         <span @class([
                                             'flex size-7 items-center justify-center rounded-full text-sm font-semibold tabular-nums',
                                             'bg-brand-500 text-white shadow-md shadow-brand-500/30' => $d->isToday(),
-                                            'text-zinc-900 dark:text-white' => ! $d->isToday() && $inMonth,
-                                            'text-zinc-400' => ! $d->isToday() && ! $inMonth,
+                                            'text-rose-600 dark:text-rose-400' => ! $d->isToday() && $holiday,
+                                            'text-zinc-900 dark:text-white' => ! $d->isToday() && ! $holiday && $inMonth,
+                                            'text-zinc-400' => ! $d->isToday() && ! $holiday && ! $inMonth,
                                         ])>{{ $bsDay($d) }}</span>
                                         <span class="text-[0.625rem] text-zinc-400 tabular-nums">{{ $d->day === 1 ? $d->format('j M') : $d->day }}</span>
                                     </div>
+                                    @if ($holiday)
+                                        <span class="flex items-center gap-1 truncate rounded-md bg-rose-500 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-white shadow-sm shadow-rose-500/30" title="{{ $holiday }}" data-test="holiday-{{ $key }}"><flux:icon.sparkles variant="micro" class="size-3 shrink-0" /><span class="truncate">{{ $holiday }}</span></span>
+                                    @endif
                                     @foreach ($shootsByDay[$key] ?? [] as $s)
                                         <a href="{{ route('scripts.edit', $s) }}" wire:navigate @click.stop class="flex items-center gap-1 truncate rounded-md bg-violet-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-violet-700 ring-1 ring-violet-200 hover:bg-violet-100 dark:bg-violet-500/10 dark:text-violet-300 dark:ring-violet-500/20" title="{{ $s->client?->displayName() }}" data-test="shoot-{{ $s->id }}">
                                             <flux:icon.video-camera variant="micro" class="size-3 shrink-0" /><span class="truncate">{{ __('Shoot: :title', ['title' => $s->title]) }}</span>
@@ -284,12 +328,39 @@ new #[Title('Calendar')] class extends Component {
         <aside class="flex flex-col gap-6">
             {{-- Selected day --}}
             <section class="{{ $panel }} overflow-hidden">
-                <div class="relative overflow-hidden bg-linear-to-br from-brand-500 to-violet-600 px-5 py-4 text-white">
+                <div @class(['relative overflow-hidden bg-linear-to-br px-5 py-4 text-white', 'from-brand-500 to-violet-600' => ! $dayHoliday, 'from-rose-500 to-orange-500' => $dayHoliday])>
                     <div class="pointer-events-none absolute -top-8 -right-8 size-28 rounded-full bg-white/10"></div>
                     <p class="text-xs font-medium text-white/75">{{ $selected->isToday() ? __('Today') : $selected->format('l') }}</p>
                     <p class="text-2xl font-bold tracking-tight" data-test="day-title">{{ NepaliDate::format($selected) }}</p>
                     <p class="text-xs text-white/75">{{ $selected->format('l, j F Y') }} · {{ trans_choice(':count task|:count tasks', $dayTasks->count()) }}</p>
+                    @if ($dayHoliday)
+                        <p class="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-white/20 px-2.5 py-1 text-xs font-semibold ring-1 ring-white/25"><flux:icon.sparkles variant="micro" class="size-3.5" />{{ __('Holiday: :name', ['name' => $dayHoliday]) }}</p>
+                    @endif
                 </div>
+                @if ($isAdmin)
+                    <div class="border-b border-zinc-100 p-3 dark:border-white/5" data-test="holiday-box">
+                        @if ($dayHoliday)
+                            <div class="flex items-center gap-2 rounded-lg bg-rose-50 px-3 py-2 dark:bg-rose-500/10">
+                                <flux:icon.sparkles variant="micro" class="size-4 shrink-0 text-rose-500" />
+                                <p class="min-w-0 flex-1 text-xs text-rose-800 dark:text-rose-200">{{ __('Off for everyone. Attendance and leave skip this day.') }}</p>
+                                <flux:button size="xs" variant="ghost" class="text-rose-600!" wire:click="removeHoliday" wire:confirm="{{ __('Remove the holiday :name?', ['name' => $dayHoliday]) }}" data-test="remove-holiday">{{ __('Remove') }}</flux:button>
+                            </div>
+                        @elseif ($selected->isHoliday())
+                            <p class="flex items-center gap-2 px-1 text-xs text-zinc-500"><flux:icon.sun variant="micro" class="size-4 text-rose-400" />{{ __('Weekly holiday') }}</p>
+                        @else
+                            <form wire:submit="markHoliday" class="flex items-start gap-2" x-data="{ open: false }">
+                                <button type="button" x-show="! open" @click="open = true; $nextTick(() => $refs.name.focus())" class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50 dark:text-rose-300 dark:ring-rose-500/30 dark:hover:bg-rose-500/10" data-test="mark-holiday"><flux:icon.sparkles variant="micro" class="size-3.5" />{{ __('Mark as holiday') }}</button>
+                                <div x-show="open" x-cloak class="flex w-full flex-col gap-2">
+                                    <div class="flex gap-2">
+                                        <input x-ref="name" wire:model="holidayName" type="text" maxlength="80" placeholder="{{ __('e.g. Dashain, Tihar, Holi') }}" @keydown.escape="open = false" class="h-8 min-w-0 flex-1 rounded-lg border-0 bg-white px-2.5 text-sm ring-1 ring-zinc-200 placeholder:text-zinc-400 focus:ring-2 focus:ring-rose-500 focus:outline-none dark:bg-white/5 dark:text-white dark:ring-white/10" data-test="holiday-name" />
+                                        <button type="submit" class="inline-flex h-8 items-center gap-1 rounded-lg bg-rose-500 px-2.5 text-xs font-semibold text-white transition hover:bg-rose-600" data-test="save-holiday"><flux:icon.check variant="micro" class="size-3.5" />{{ __('Save') }}</button>
+                                    </div>
+                                    <flux:error name="holidayName" />
+                                </div>
+                            </form>
+                        @endif
+                    </div>
+                @endif
                 <div class="flex flex-col gap-1 p-3">
                     @foreach ($dayShoots as $s)
                         <a href="{{ route('scripts.edit', $s) }}" wire:navigate wire:key="sh-{{ $s->id }}" class="group flex items-center gap-3 rounded-lg bg-violet-50/70 p-2 transition hover:bg-violet-50 dark:bg-violet-500/10">
