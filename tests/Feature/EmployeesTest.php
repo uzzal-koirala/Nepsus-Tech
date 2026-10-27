@@ -32,10 +32,10 @@ class EmployeesTest extends TestCase
 
         $page = Livewire::test('pages::employees')
             ->set('name', 'Sita Gurung')
-            ->set('dept', 'finance')
+            ->set('dept', 'marketing')
             ->call('save')
             ->assertHasErrors(['dept'])
-            ->set('dept', 'marketing')
+            ->set('dept', 'video-editor')
             ->set('designation', 'Social Media Manager')
             ->set('phone', '9812345678')
             ->set('joinedOn', '2026-04-14')
@@ -45,12 +45,12 @@ class EmployeesTest extends TestCase
             ->assertSee('1 Baisakh 2083');
 
         $sita = Employee::where('name', 'Sita Gurung')->sole();
-        $this->assertSame('marketing', $sita->department);
+        $this->assertSame('video-editor', $sita->department);
         $this->assertSame('9779812345678', $sita->whatsappNumber());
 
         $page->call('setStatus', 'on_leave')->assertSee('Bina Rai')->assertDontSee('Sita Gurung');
 
-        $page->call('edit', $sita->id)->assertSet('dept', 'marketing')->set('employeeStatus', 'inactive')->call('save');
+        $page->call('edit', $sita->id)->assertSet('dept', 'video-editor')->set('employeeStatus', 'inactive')->call('save');
         $this->assertSame('inactive', $sita->fresh()->status);
 
         $page->call('confirmDelete', $sita->id)->call('delete');
@@ -231,26 +231,25 @@ class EmployeesTest extends TestCase
         $this->assertSame(0, $employee->attendances()->count());
     }
 
-    public function test_departments_can_be_added_and_deleted_from_the_form(): void
+    public function test_only_content_creator_and_video_editor_can_be_picked(): void
     {
         $this->actingAs(User::factory()->create());
-        Employee::factory()->create(['department' => 'design']);
+        $old = Employee::factory()->create(['name' => 'Bina Rai', 'department' => 'design']);
 
-        $page = Livewire::test('pages::employees')
-            ->call('create')
-            ->set('newDepartment', 'Video Production')
-            ->call('addDepartment')
-            ->assertSet('dept', 'video-production')
-            ->set('name', 'Sujan Thapa')
-            ->call('save')
-            ->assertHasNoErrors();
+        $this->assertSame(['content-creator' => 'Content Creator', 'video-editor' => 'Video Editor'], array_map(fn ($d) => $d['label'], Employee::choosableDepartments()));
+        $this->get(route('employees.index'))->assertOk()->assertDontSee(['New department', 'addDepartment', 'deleteDepartment']);
 
-        $this->assertSame('video-production', Employee::firstWhere('name', 'Sujan Thapa')->department);
-        $this->assertSame('Video Production', Employee::firstWhere('name', 'Sujan Thapa')->departmentMeta()['label']);
+        // New people start as Content Creators; older departments cannot be picked any more.
+        Livewire::test('pages::employees')->call('create')->assertSet('dept', 'content-creator')
+            ->set('name', 'Sujan Thapa')->set('dept', 'design')->call('save')->assertHasErrors('dept')
+            ->set('dept', 'video-editor')->call('save')->assertHasNoErrors();
+        $this->assertSame('video-editor', Employee::firstWhere('name', 'Sujan Thapa')->department);
 
-        // Departments are only added, never deleted; Content Creator is there from the start.
-        $this->assertSame('Content Creator', Employee::departments()['content-creator']['label'] ?? null);
-        $this->get(route('employees.index'))->assertDontSee('deleteDepartment');
+        // Someone still in an older department keeps it (and its label) until edited, then picks one of the two.
+        $this->assertSame('Design', $old->departmentMeta()['label']);
+        Livewire::test('pages::employees')->call('edit', $old->id)->assertSet('dept', '')->call('save')->assertHasErrors('dept')
+            ->set('dept', 'content-creator')->call('save')->assertHasNoErrors();
+        $this->assertSame('content-creator', $old->fresh()->department);
     }
 
     public function test_profile_shows_this_months_salary_status(): void

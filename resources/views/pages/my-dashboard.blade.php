@@ -100,6 +100,12 @@ new #[Title('Dashboard')] class extends Component {
     }
 }; ?>
 
+{{-- Video Editors get a dashboard of their own: footage to edit instead of the general one. --}}
+@if (auth()->user()->isVideoEditor())
+<div>
+    <livewire:pages::editor-dashboard />
+</div>
+@else
 @php
     $panel = 'rounded-xl bg-white ring-1 ring-zinc-200/70 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:ring-white/10';
     $link = 'rounded-lg px-2 py-1 text-xs font-medium text-brand-600 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-500/10';
@@ -410,3 +416,4 @@ new #[Title('Dashboard')] class extends Component {
         @endif
     </section>
 </div>
+@endif

@@ -479,7 +479,7 @@ new #[Title('Employee')] class extends Component {
 
         $this->name = $e->name;
         $this->designation = (string) $e->designation;
-        $this->dept = $e->department;
+        $this->dept = in_array($e->department, Employee::CHOOSABLE_DEPARTMENTS, true) ? $e->department : '';
         $this->email = (string) $e->email;
         $this->phone = (string) $e->phone;
         $this->employeeStatus = $e->status;
@@ -498,7 +498,7 @@ new #[Title('Employee')] class extends Component {
         $data = $this->validate([
             'name' => ['required', 'string', 'max:255'],
             'designation' => ['nullable', 'string', 'max:255'],
-            'dept' => ['required', Rule::exists('departments', 'slug')],
+            'dept' => ['required', Rule::in(Employee::CHOOSABLE_DEPARTMENTS)],
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'employeeStatus' => ['required', Rule::in(array_keys(Employee::STATUSES))],
@@ -1978,7 +1978,7 @@ new #[Title('Employee')] class extends Component {
             <div class="grid gap-4 sm:grid-cols-2">
                 <flux:input wire:model="name" :label="__('Full name')" required class="sm:col-span-2" />
                 <flux:input wire:model="designation" :label="__('Role')" :placeholder="__('e.g. Graphic Designer')" />
-                <x-rich-select model="dept" searchable :label="__('Department')" :options="collect(Employee::departments())->map(fn ($d, $key) => ['value' => $key, 'label' => __($d['label']), 'icon' => $d['icon'], 'tile' => 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300'])->values()" />
+                <x-rich-select model="dept" :label="__('Department')" :options="collect(Employee::choosableDepartments())->map(fn ($d, $key) => ['value' => $key, 'label' => __($d['label']), 'icon' => $d['icon'], 'tile' => 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300'])->values()" />
                 <flux:input wire:model="salary" type="number" min="0" step="1" :label="__('Monthly salary (:currency)', ['currency' => config('app.currency')])" />
                 <x-rich-select model="employeeStatus" :label="__('Status')" :options="[
                     ['value' => 'active', 'label' => __('Active'), 'hint' => __('Working now'), 'icon' => 'check-circle', 'tile' => 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300'],

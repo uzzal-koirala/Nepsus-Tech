@@ -40,6 +40,15 @@ class Employee extends Model
             ->all();
     }
 
+    /** The departments a person can be put in for now; each has its own dashboard and pages. Older ones still show on people who have them. */
+    public const CHOOSABLE_DEPARTMENTS = ['content-creator', 'video-editor'];
+
+    /** @return array<string, array{label: string, icon: string}> */
+    public static function choosableDepartments(): array
+    {
+        return array_intersect_key(self::departments(), array_flip(self::CHOOSABLE_DEPARTMENTS));
+    }
+
     public static function forgetDepartments(): void
     {
         self::$departmentCache = null;

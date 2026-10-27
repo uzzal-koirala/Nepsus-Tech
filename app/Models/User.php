@@ -62,10 +62,22 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         return (bool) $this->is_admin;
     }
 
-    /** Admins and Content Creators: write scripts and plan every client's work on the calendar. Videos stay admin-only. */
+    /** Admins and Content Creators: write scripts and plan every client's work on the calendar. Videos are for Video Editors (canEditVideos). */
     public function canPlanContent(): bool
     {
         return $this->isAdmin() || $this->employee?->department === 'content-creator';
+    }
+
+    /** Employees in the Video Editor department: an editing dashboard and the Videos page. */
+    public function isVideoEditor(): bool
+    {
+        return ! $this->isAdmin() && $this->employee?->department === 'video-editor';
+    }
+
+    /** Admins and Video Editors: the Videos page. */
+    public function canEditVideos(): bool
+    {
+        return $this->isAdmin() || $this->isVideoEditor();
     }
 
     /**

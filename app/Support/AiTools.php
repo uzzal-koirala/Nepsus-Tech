@@ -264,7 +264,7 @@ class AiTools
                 'inputSchema' => ['type' => 'object', 'required' => ['name'], 'properties' => [
                     'name' => ['type' => 'string'],
                     'designation' => ['type' => 'string', 'description' => 'Job title, e.g. Graphic Designer'],
-                    'department' => ['type' => 'string', 'description' => 'Department name, e.g. Management, Design, Development, Marketing, Content, Sales'],
+                    'department' => ['type' => 'string', 'description' => 'Department: Content Creator or Video Editor'],
                     'phone' => ['type' => 'string'],
                     'email' => ['type' => 'string'],
                     'salary' => ['type' => 'number', 'description' => 'Monthly salary in NPR'],
@@ -279,7 +279,7 @@ class AiTools
                     'employee_id' => ['type' => 'integer'],
                     'name' => ['type' => 'string'],
                     'designation' => ['type' => 'string', 'description' => 'Job title, e.g. Graphic Designer'],
-                    'department' => ['type' => 'string', 'description' => 'Department name, e.g. Management, Design, Development, Marketing, Content, Sales'],
+                    'department' => ['type' => 'string', 'description' => 'Department: Content Creator or Video Editor'],
                     'phone' => ['type' => 'string'],
                     'email' => ['type' => 'string'],
                     'salary' => ['type' => 'number', 'description' => 'Monthly salary in NPR'],
@@ -988,7 +988,7 @@ class AiTools
     /** A department by slug or name; new people default to the first one. */
     private function department(?string $wanted): ?string
     {
-        $departments = Employee::departments();
+        $departments = Employee::choosableDepartments();
         foreach ($departments as $slug => $d) {
             if ($wanted && (strcasecmp($slug, $wanted) === 0 || strcasecmp($d['label'], $wanted) === 0)) {
                 return $slug;
@@ -1022,7 +1022,7 @@ class AiTools
             $e = Employee::findOrFail($d['employee_id']);
             $e->update($fields);
         } else {
-            $e = Employee::create($fields + ['status' => 'active', 'department' => array_key_first(Employee::departments()) ?? 'management']);
+            $e = Employee::create($fields + ['status' => 'active', 'department' => Employee::CHOOSABLE_DEPARTMENTS[0]]);
         }
         $this->actions[] = ['icon' => $update ? 'pencil-square' : 'user-plus', 'text' => ($update ? __('Updated :name', ['name' => $e->name]) : __('Added :name to the team', ['name' => $e->name])), 'url' => route('employees.show', $e)];
 

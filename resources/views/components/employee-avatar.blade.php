@@ -10,6 +10,7 @@
         'management' => 'bg-violet-100 text-violet-700 dark:bg-violet-500/25 dark:text-violet-100',
         'hr' => 'bg-teal-100 text-teal-700 dark:bg-teal-500/25 dark:text-teal-100',
         'content-creator' => 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/25 dark:text-fuchsia-100',
+        'video-editor' => 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/25 dark:text-indigo-100',
     ];
 @endphp
 

@@ -44,7 +44,7 @@ class StaffAccessTest extends TestCase
         foreach (['finance.index', 'packages.index', 'employees.index', 'invoices.index', 'sales.index', 'library.index', 'settings.business', 'settings.ai-connections'] as $page) {
             $this->get(route($page))->assertRedirect(route('my.dashboard'));
         }
-        $this->get('/settings')->assertRedirect(route('profile.edit'));
+        $this->get('/settings')->assertRedirect(route('my.settings'));
 
         // Dashboard: their task, shoots and footage; never someone else's task.
         $this->get(route('my.dashboard'))->assertOk()

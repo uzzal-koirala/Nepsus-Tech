@@ -10,14 +10,10 @@ use Illuminate\Database\Eloquent\Factories\Factory;
  */
 class EmployeeFactory extends Factory
 {
+    /** The two departments people can be in for now (Employee::CHOOSABLE_DEPARTMENTS). */
     private const ROLES = [
-        'design' => ['Graphic Designer', 'UI/UX Designer', 'Motion Designer'],
-        'development' => ['Laravel Developer', 'Frontend Developer', 'WordPress Developer'],
-        'marketing' => ['Social Media Manager', 'SEO Specialist', 'Ads Specialist'],
-        'content' => ['Content Writer', 'Video Editor', 'Photographer'],
-        'sales' => ['Account Manager', 'Sales Executive'],
-        'management' => ['Project Manager', 'Operations Lead'],
-        'hr' => ['HR Officer', 'Office Administrator'],
+        'content-creator' => ['Content Writer', 'Camera Person', 'Social Media Manager'],
+        'video-editor' => ['Video Editor', 'Motion Designer'],
     ];
 
     /**
@@ -36,7 +32,7 @@ class EmployeeFactory extends Factory
             'email' => fake()->unique()->safeEmail(),
             'phone' => '98'.fake()->numerify('########'),
             'status' => fake()->randomElement(['active', 'active', 'active', 'active', 'on_leave', 'inactive']),
-            'salary' => $department === 'management' ? fake()->randomElement([90000, 110000, 125000]) : fake()->randomElement([25000, 32000, 40000, 48000, 55000, 65000]),
+            'salary' => fake()->randomElement([25000, 32000, 40000, 48000, 55000, 65000]),
             'joined_on' => fake()->dateTimeBetween('-4 years', '-1 week'),
         ];
     }

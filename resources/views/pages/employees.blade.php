@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Department;
 use App\Models\Employee;
 use App\Models\SalaryPayment;
 use App\Support\NepaliDate;
@@ -35,7 +34,6 @@ new #[Title('Employees')] class extends Component {
     public string $employeeStatus = 'active';
     public string $salary = '';
     public string $joinedOn = '';
-    public string $newDepartment = '';
 
     public ?int $payEmployeeId = null;
     public string $payPeriod = '';
@@ -127,7 +125,8 @@ new #[Title('Employees')] class extends Component {
         $this->editingId = $employee->id;
         $this->name = $employee->name;
         $this->designation = (string) $employee->designation;
-        $this->dept = $employee->department;
+        // Someone still in an older department picks one of the current two when edited.
+        $this->dept = in_array($employee->department, Employee::CHOOSABLE_DEPARTMENTS, true) ? $employee->department : '';
         $this->email = (string) $employee->email;
         $this->phone = (string) $employee->phone;
         $this->employeeStatus = $employee->status;
@@ -142,7 +141,7 @@ new #[Title('Employees')] class extends Component {
         $data = $this->validate([
             'name' => ['required', 'string', 'max:255'],
             'designation' => ['nullable', 'string', 'max:255'],
-            'dept' => ['required', Rule::exists('departments', 'slug')],
+            'dept' => ['required', Rule::in(Employee::CHOOSABLE_DEPARTMENTS)],
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'employeeStatus' => ['required', Rule::in(array_keys(Employee::STATUSES))],
@@ -251,22 +250,10 @@ new #[Title('Employees')] class extends Component {
         Flux::toast(text: __('Salary payment deleted.'));
     }
 
-    public function addDepartment(): void
-    {
-        $this->validate(['newDepartment' => ['required', 'string', 'max:40']], attributes: ['newDepartment' => __('department name')]);
-
-        $name = trim($this->newDepartment);
-        $department = Department::whereRaw('lower(name) = ?', [mb_strtolower($name)])->first() ?? Department::add($name);
-        Employee::forgetDepartments();
-
-        $this->dept = $department->slug;
-        $this->reset('newDepartment');
-    }
-
     private function resetForm(): void
     {
         $this->reset('editingId', 'name', 'designation', 'email', 'phone', 'salary', 'joinedOn');
-        $this->dept = 'development';
+        $this->dept = Employee::CHOOSABLE_DEPARTMENTS[0];
         $this->employeeStatus = 'active';
         $this->resetErrorBag();
     }
@@ -285,6 +272,7 @@ new #[Title('Employees')] class extends Component {
         'management' => ['avatar' => 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200', 'chip' => 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300'],
         'hr' => ['avatar' => 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-200', 'chip' => 'bg-teal-50 text-teal-700 dark:bg-teal-500/10 dark:text-teal-300'],
         'content-creator' => ['avatar' => 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/20 dark:text-fuchsia-200', 'chip' => 'bg-fuchsia-50 text-fuchsia-700 dark:bg-fuchsia-500/10 dark:text-fuchsia-300'],
+        'video-editor' => ['avatar' => 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200', 'chip' => 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300'],
     ];
     $statusDot = ['active' => 'bg-emerald-500', 'on_leave' => 'bg-amber-400', 'inactive' => 'bg-zinc-300'];
     $statusText = ['active' => 'text-emerald-700 dark:text-emerald-300', 'on_leave' => 'text-amber-700 dark:text-amber-300', 'inactive' => 'text-zinc-500'];
@@ -587,7 +575,7 @@ new #[Title('Employees')] class extends Component {
                 <flux:text class="mt-1">{{ __('Role, team, salary and contact details.') }}</flux:text>
             </div>
             @php
-                $deptOptions = Employee::departments();
+                $deptOptions = Employee::choosableDepartments();
                 $deptCounts = Employee::selectRaw('department, count(*) as total')->groupBy('department')->pluck('total', 'department');
             @endphp
             <div class="grid gap-4 sm:grid-cols-2">
@@ -604,6 +592,7 @@ new #[Title('Employees')] class extends Component {
                 <div class="relative" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.stop="open = false">
                     <span class="mb-2 block text-sm font-medium text-zinc-800 dark:text-white">{{ __('Department') }}</span>
                     <button type="button" @click="open = ! open" class="flex h-10 w-full items-center gap-2.5 rounded-lg bg-white px-3 text-start shadow-xs ring-1 ring-zinc-200 transition hover:ring-zinc-300 focus:ring-2 focus:ring-brand-500 focus:outline-none dark:bg-white/5 dark:ring-white/10" :aria-expanded="open" aria-haspopup="listbox" data-test="department-button">
+                        <span x-show="! $wire.dept" class="text-sm text-zinc-400" x-cloak>{{ __('Pick a department') }}</span>
                         @foreach ($deptOptions as $key => $d)
                             <span x-show="$wire.dept === @js($key)" class="flex min-w-0 items-center gap-2.5" x-cloak>
                                 <span class="{{ $depts[$key]['avatar'] ?? $depts['development']['avatar'] }} flex size-6 shrink-0 items-center justify-center rounded-md"><flux:icon :icon="$d['icon']" variant="micro" class="size-3.5" /></span>
@@ -626,11 +615,7 @@ new #[Title('Employees')] class extends Component {
                                     </button>                                </div>
                             @endforeach
                         </div>
-                        <div class="flex items-center gap-1.5 border-t border-zinc-100 bg-zinc-50/70 p-2 dark:border-white/5 dark:bg-white/[0.02]">
-                            <input wire:model="newDepartment" type="text" maxlength="40" placeholder="{{ __('New department…') }}" @keydown.enter.prevent="$wire.addDepartment()" class="h-8 min-w-0 flex-1 rounded-lg border-0 bg-white px-2.5 text-sm ring-1 ring-zinc-200 placeholder:text-zinc-400 focus:ring-2 focus:ring-brand-500 focus:outline-none dark:bg-white/5 dark:text-white dark:ring-white/10" data-test="new-department-input" />
-                            <button type="button" wire:click="addDepartment" class="inline-flex h-8 items-center gap-1 rounded-lg bg-brand-500 px-2.5 text-xs font-semibold text-white transition hover:bg-brand-600"><flux:icon.plus variant="micro" class="size-3.5" />{{ __('Add') }}</button>
-                        </div>
-                        <flux:error name="newDepartment" class="px-3 pb-2" />
+                        <p class="border-t border-zinc-100 bg-zinc-50/70 px-3 py-2 text-[0.6875rem] text-zinc-500 dark:border-white/5 dark:bg-white/[0.02]">{{ __('Each department has its own dashboard: Content Creators plan and write, Video Editors edit footage.') }}</p>
                     </div>
                     <flux:error name="dept" />
                 </div>

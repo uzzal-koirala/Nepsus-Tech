@@ -6,12 +6,13 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-/** Script pages: admins and Content Creators. Other employee logins go to their Dashboard. */
+/** Content pages: scripts for admins and Content Creators ("content"), videos for admins and Video Editors ("content:videos"). Anyone else goes to their Dashboard. */
 class ContentOnly
 {
-    public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next, string $page = 'scripts'): Response
     {
-        if ($request->user()?->canPlanContent()) {
+        $user = $request->user();
+        if ($page === 'videos' ? $user?->canEditVideos() : $user?->canPlanContent()) {
             return $next($request);
         }
 
@@ -19,6 +20,6 @@ class ContentOnly
             return redirect()->route('my.dashboard');
         }
 
-        abort(403, __('Only Content Creators can do this.'));
+        abort(403, $page === 'videos' ? __('Only Video Editors can do this.') : __('Only Content Creators can do this.'));
     }
 }

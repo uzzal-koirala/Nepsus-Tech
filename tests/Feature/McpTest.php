@@ -101,9 +101,9 @@ class McpTest extends TestCase
         $this->assertCount(1, $run('list_leads'));
 
         // The record ChatGPT tried to save.
-        $made = $run('create_employee', ['name' => 'Uzzal Koirala', 'designation' => 'Founder & CEO', 'department' => 'management', 'salary' => 25000, 'phone' => '9829399342', 'joined_on' => today()->toDateString()])['created_employee'];
+        $made = $run('create_employee', ['name' => 'Uzzal Koirala', 'designation' => 'Founder & CEO', 'department' => 'Video Editor', 'salary' => 25000, 'phone' => '9829399342', 'joined_on' => today()->toDateString()])['created_employee'];
         $boss = Employee::findOrFail($made['id']);
-        $this->assertSame(['Founder & CEO', 'management', 'active', '9829399342'], [$boss->designation, $boss->department, $boss->status, $boss->phone]);
+        $this->assertSame(['Founder & CEO', 'video-editor', 'active', '9829399342'], [$boss->designation, $boss->department, $boss->status, $boss->phone]);
         $this->assertSame(25000.0, (float) $boss->salary);
         $run('update_employee', ['employee_id' => $boss->id, 'salary' => 30000, 'status' => 'on_leave']);
         $this->assertSame([30000.0, 'on_leave'], [(float) $boss->fresh()->salary, $boss->fresh()->status]);

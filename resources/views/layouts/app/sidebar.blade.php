@@ -27,6 +27,9 @@
                             ...($creator ? [
                                 ['icon' => 'pencil-square', 'label' => __('Scripts'), 'route' => 'scripts.index'],
                             ] : []),
+                            ...(auth()->user()->isVideoEditor() ? [
+                                ['icon' => 'film', 'label' => __('Videos'), 'route' => 'videos.index'],
+                            ] : []),
                         ],
                     ];
                     $sections = [
@@ -71,7 +74,7 @@
             <flux:spacer />
 
             <flux:sidebar.nav>
-                <flux:sidebar.item icon="cog-6-tooth" :href="route($isAdmin ? 'settings.business' : 'profile.edit')" :current="request()->routeIs('profile.edit', 'security.edit', 'appearance.edit', 'settings.*')" wire:navigate.hover>
+                <flux:sidebar.item icon="cog-6-tooth" :href="route($isAdmin ? 'settings.business' : 'my.settings')" :current="request()->routeIs('profile.edit', 'security.edit', 'appearance.edit', 'settings.*', 'my.settings')" wire:navigate.hover>
                     {{ __('Settings') }}
                 </flux:sidebar.item>
             </flux:sidebar.nav>
@@ -90,7 +93,7 @@
                     </button>
 
                     <flux:menu>
-                        <flux:menu.item :href="route('profile.edit')" icon="cog-6-tooth" wire:navigate>
+                        <flux:menu.item :href="route(auth()->user()->isAdmin() ? 'profile.edit' : 'my.settings')" icon="cog-6-tooth" wire:navigate>
                             {{ __('Settings') }}
                         </flux:menu.item>
                         <flux:menu.separator />

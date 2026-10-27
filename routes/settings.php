@@ -4,7 +4,7 @@ use App\Models\Setting;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth'])->group(function () {
-    Route::get('settings', fn () => redirect()->route(auth()->user()->isAdmin() ? 'settings.business' : 'profile.edit'));
+    Route::get('settings', fn () => redirect()->route(auth()->user()->isAdmin() ? 'settings.business' : 'my.settings'));
 
     Route::livewire('settings/profile', 'pages::settings.profile')->name('profile.edit');
 });

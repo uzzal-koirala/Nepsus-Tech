@@ -16,6 +16,7 @@
     ];
     if (! auth()->user()->isAdmin()) {
         unset($groups[__('Workspace')]);
+        $groups[__('Your account')][0] = ['route' => 'my.settings', 'icon' => 'user-circle', 'label' => __('My settings'), 'hint' => __('Photo, details and theme')];
     }
 @endphp
 
