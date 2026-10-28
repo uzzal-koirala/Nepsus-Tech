@@ -31,6 +31,11 @@ new #[Title('Videos')] class extends Component {
 
     public string $clientId = '';
 
+    public string $scriptId = '';
+
+    /** The script shown in the read-only popup. */
+    public ?int $viewingScriptId = null;
+
     public string $videoKind = 'raw';
 
     public string $shotOn = '';
@@ -44,7 +49,7 @@ new #[Title('Videos')] class extends Component {
     #[Computed]
     public function all()
     {
-        return Video::with('client')->latest()->get();
+        return Video::with(['client', 'script'])->latest()->get();
     }
 
     #[Computed]
@@ -60,6 +65,26 @@ new #[Title('Videos')] class extends Component {
             ->values();
     }
 
+    /** Scripts to link footage to: newest first. */
+    #[Computed]
+    public function scripts()
+    {
+        return \App\Models\Script::with('client')->latest('updated_at')->limit(200)->get();
+    }
+
+    #[Computed]
+    public function viewingScript()
+    {
+        return $this->viewingScriptId ? \App\Models\Script::with('client')->find($this->viewingScriptId) : null;
+    }
+
+    /** Opens the script of a video in a read-only popup (editors cannot open the Scripts pages). */
+    public function viewScript(int $videoId): void
+    {
+        $this->viewingScriptId = Video::whereNotNull('script_id')->findOrFail($videoId)->script_id;
+        Flux::modal('video-script')->show();
+    }
+
     #[Computed]
     public function clients()
     {
@@ -68,7 +93,7 @@ new #[Title('Videos')] class extends Component {
 
     public function openNew(): void
     {
-        $this->reset('editingId', 'url', 'title', 'notes', 'shotOn', 'editBy');
+        $this->reset('editingId', 'url', 'title', 'notes', 'shotOn', 'editBy', 'scriptId');
         $this->clientId = $this->clientFilter !== '' && $this->clientFilter !== 'none' ? $this->clientFilter : '';
         $this->videoKind = 'raw';
         $this->resetErrorBag();
@@ -82,6 +107,7 @@ new #[Title('Videos')] class extends Component {
         $this->url = $video->url;
         $this->title = $video->title;
         $this->clientId = (string) $video->client_id;
+        $this->scriptId = (string) $video->script_id;
         $this->videoKind = $video->kind;
         $this->shotOn = (string) $video->shot_on?->toDateString();
         $this->editBy = (string) $video->edit_by?->toDateString();
@@ -97,16 +123,19 @@ new #[Title('Videos')] class extends Component {
             'url' => ['required', 'url:http,https', 'max:2048'],
             'title' => ['nullable', 'string', 'max:200'],
             'clientId' => ['nullable', Rule::exists('clients', 'id')],
+            'scriptId' => ['nullable', Rule::exists('scripts', 'id')],
             'videoKind' => ['required', Rule::in(array_keys(Video::KINDS))],
             'shotOn' => ['nullable', 'date'],
             'editBy' => ['nullable', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ], ['url.url' => __('Paste the full link, starting with https://')], ['url' => __('link')]);
 
+        $script = $data['scriptId'] ? \App\Models\Script::find($data['scriptId']) : null;
         $values = [
             'url' => $data['url'],
-            'title' => trim((string) $data['title']) ?: __('Footage :date', ['date' => ($data['shotOn'] ? \Illuminate\Support\Carbon::parse($data['shotOn']) : today())->toNepali()]),
-            'client_id' => $data['clientId'] ?: null,
+            'title' => trim((string) $data['title']) ?: $script?->title ?: __('Footage :date', ['date' => ($data['shotOn'] ? \Illuminate\Support\Carbon::parse($data['shotOn']) : today())->toNepali()]),
+            'client_id' => $data['clientId'] ?: $script?->client_id,
+            'script_id' => $script?->id,
             'kind' => $data['videoKind'],
             'shot_on' => $data['videoKind'] === 'broll' ? null : ($data['shotOn'] ?: null),
             'edit_by' => $data['videoKind'] === 'broll' ? null : ($data['editBy'] ?: null),
@@ -159,6 +188,8 @@ new #[Title('Videos')] class extends Component {
     $filtered = $search !== '' || $status !== '' || $kind !== '' || $clientFilter !== '';
     $clientOptions = $this->clients->map(fn ($c) => ['value' => $c->id, 'label' => $c->displayName(), 'hint' => $c->company ? $c->name : $c->phone, 'initials' => $c->initials(), 'tile' => 'bg-linear-to-br from-brand-500 to-violet-600 text-white']);
     $filterOptions = collect([['value' => '', 'label' => __('All clients'), 'icon' => 'squares-2x2'], ['value' => 'none', 'label' => __('No client'), 'hint' => __('Our own content'), 'icon' => 'sparkles']])->concat($clientOptions);
+    $scriptOptions = collect([['value' => '', 'label' => __('No script'), 'hint' => __('Footage without a script'), 'icon' => 'minus-circle']])
+        ->concat($this->scripts->map(fn ($sc) => ['value' => $sc->id, 'label' => $sc->title, 'hint' => ($sc->client?->displayName() ?? __('Other scripts')).' · '.__(\App\Models\Script::STATUSES[$sc->status]['label'] ?? $sc->status), 'icon' => (\App\Models\Script::TYPES[$sc->type] ?? \App\Models\Script::TYPES['other'])['icon'], 'tile' => 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300']));
     $kindOptions = collect(Video::KINDS)->map(fn ($k, $key) => ['value' => $key, 'label' => __($k['label']), 'hint' => __($k['hint']), 'icon' => $k['icon'], 'tile' => $k['tile']])->values();
 @endphp
 
@@ -268,6 +299,11 @@ new #[Title('Videos')] class extends Component {
                                 <span>{{ __('No client') }}</span>
                             @endif
                         </p>
+                        @if ($v->script)
+                            <button type="button" wire:click="viewScript({{ $v->id }})" class="mt-1.5 inline-flex w-fit max-w-full items-center gap-1.5 rounded-lg bg-violet-50 px-2 py-1 text-xs font-medium text-violet-700 ring-1 ring-violet-200 transition hover:bg-violet-100 dark:bg-violet-500/10 dark:text-violet-200 dark:ring-violet-500/25" data-test="script-chip-{{ $v->id }}">
+                                <flux:icon.document-text variant="micro" class="size-3.5 shrink-0" /><span class="truncate">{{ __('Script: :title', ['title' => $v->script->title]) }}</span>
+                            </button>
+                        @endif
                         @if ($v->notes)<p class="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-500">{{ $v->notes }}</p>@endif
                     </div>
 
@@ -306,6 +342,7 @@ new #[Title('Videos')] class extends Component {
                 <x-rich-select model="clientId" searchable :label="__('Client')" :placeholder="__('No client')" :options="collect([['value' => '', 'label' => __('No client'), 'hint' => __('Our own content'), 'icon' => 'sparkles']])->concat($clientOptions)" />
                 <x-rich-select model="videoKind" :label="__('Type')" :options="$kindOptions" data-test="video-kind" />
             </div>
+            <x-rich-select model="scriptId" searchable :label="__('Script')" :placeholder="__('Link a script')" :options="$scriptOptions" data-test="video-script" />
             {{-- B-roll is not edited, so it has no shoot or edit-by date --}}
             <div x-show="$wire.videoKind !== 'broll'" class="grid grid-cols-2 gap-3 sm:gap-4">
                 <x-nepali-date wire:model="shotOn" :label="__('Shot on')" :placeholder="__('Shoot day')" />
@@ -318,6 +355,30 @@ new #[Title('Videos')] class extends Component {
                 <flux:button type="submit" variant="primary" icon="check" data-test="save-video">{{ $editingId ? __('Save changes') : __('Add video') }}</flux:button>
             </div>
         </form>
+    </flux:modal>
+
+    <flux:modal name="video-script" class="w-full max-w-2xl">
+        @if ($sc = $this->viewingScript)
+            <div class="flex flex-col gap-4">
+                <div class="flex items-start gap-3 pe-8">
+                    <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-violet-500 text-white shadow-md shadow-violet-500/30"><flux:icon.document-text variant="mini" class="size-5" /></span>
+                    <div class="min-w-0">
+                        <flux:heading size="lg">{{ $sc->title }}</flux:heading>
+                        <flux:text>{{ $sc->client?->displayName() ?? __('Other scripts') }} · {{ __((\App\Models\Script::TYPES[$sc->type] ?? \App\Models\Script::TYPES['other'])['label']) }} · {{ \App\Models\Script::speakingTime((string) $sc->body) }}</flux:text>
+                    </div>
+                </div>
+                <div class="max-h-[60vh] overflow-y-auto rounded-xl bg-zinc-50 px-5 py-4 text-[0.9375rem] leading-7 whitespace-pre-line text-zinc-800 dark:bg-white/5 dark:text-zinc-100" data-test="script-text">{{ $sc->body ?: __('This script is still empty.') }}</div>
+                @if ($sc->notes)
+                    <p class="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-100"><span class="font-semibold">{{ __('Shooting notes:') }}</span> {{ $sc->notes }}</p>
+                @endif
+                <div class="flex justify-end gap-2">
+                    @if (auth()->user()->canPlanContent())
+                        <flux:button icon="pencil-square" :href="route('scripts.edit', $sc)" wire:navigate>{{ __('Open script') }}</flux:button>
+                    @endif
+                    <flux:modal.close><flux:button variant="primary">{{ __('Done') }}</flux:button></flux:modal.close>
+                </div>
+            </div>
+        @endif
     </flux:modal>
 
     <flux:modal name="delete-video" class="w-full max-w-sm">

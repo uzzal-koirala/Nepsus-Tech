@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** A link to raw footage (usually a Google Drive file or folder) for the editors. */
-#[Fillable(['title', 'url', 'kind', 'client_id', 'status', 'shot_on', 'edit_by', 'notes', 'user_id'])]
+#[Fillable(['title', 'url', 'kind', 'client_id', 'script_id', 'status', 'shot_on', 'edit_by', 'notes', 'user_id'])]
 class Video extends Model
 {
     /** What the link is: raw footage goes to the editors; B-roll is kept for later and never edited. */
@@ -64,6 +64,12 @@ class Video extends Model
             'editing' => ['done', __('Mark edited'), 'check'],
             default => null,
         };
+    }
+
+    /** The script the footage was shot from. */
+    public function script(): BelongsTo
+    {
+        return $this->belongsTo(Script::class);
     }
 
     public function client(): BelongsTo
