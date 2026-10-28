@@ -38,7 +38,14 @@ class VideoKindsTest extends TestCase
         $this->assertNull($broll->nextStep());
         Livewire::test('pages::videos')->set('videoKind', 'clip')->call('save')->assertHasErrors('videoKind');
 
-        $this->get(route('videos.index'))->assertOk()->assertSee(['To edit', 'B-roll', 'Start editing', 'Type']);
+        // No All filter: the list opens on To edit, then Editing, Edited, B-roll, Completed.
+        $this->get(route('videos.index'))->assertOk()->assertSeeInOrder(['To edit', 'Editing', 'Edited', 'B-roll', 'Completed'])->assertSee(['Start editing', 'Type']);
+        Livewire::test('pages::videos')->assertSet('status', 'raw')->call('filter', '')->assertSet('status', 'raw');
+
+        // B-roll never keeps a script.
+        $script = \App\Models\Script::create(['title' => 'Momo reel', 'type' => 'reel', 'status' => 'approved']);
+        Livewire::test('pages::videos')->call('edit', $broll->id)->set('scriptId', (string) $script->id)->call('save')->assertHasNoErrors();
+        $this->assertNull($broll->fresh()->script_id);
         Livewire::test('pages::videos')->call('filter', 'broll')->assertSee('Thamel street shots')->assertDontSee('Kitchen clips')
             ->call('filter', 'raw')->assertSee('Kitchen clips')->assertDontSee('Thamel street shots');
 
@@ -47,10 +54,14 @@ class VideoKindsTest extends TestCase
         $e = Employee::factory()->create(['department' => 'video-editor', 'status' => 'active']);
         Employee::whereKey($e->id)->update(['user_id' => $user->id]);
         $this->actingAs($user);
-        Livewire::test('pages::videos')->call('setStatus', $raw->id, 'editing')->assertSee('Mark edited');
+        Livewire::test('pages::videos')->call('setStatus', $raw->id, 'editing')->call('filter', 'editing')->assertSee('Mark edited');
         $this->assertSame('editing', $raw->fresh()->status);
-        Livewire::test('pages::videos')->call('setStatus', $raw->id, 'done');
+        Livewire::test('pages::videos')->call('setStatus', $raw->id, 'done')->call('filter', 'done')->assertSee('Mark completed');
         $this->assertSame('done', $raw->fresh()->status);
+        Livewire::test('pages::videos')->call('setStatus', $raw->id, 'completed')->call('filter', 'completed')->assertSee('Kitchen clips');
+        $this->assertSame('completed', $raw->fresh()->status);
+        $this->assertNull($raw->fresh()->nextStep());
+        Livewire::test('pages::videos')->call('setStatus', $raw->id, 'done');
         Livewire::test('pages::videos')->call('setStatus', $broll->id, 'editing')->assertStatus(422);
 
         // The editor's queue never shows B-roll.

@@ -16,22 +16,22 @@ new #[Title('Scripts')] class extends Component {
     #[Url(except: '')]
     public string $status = '';
 
-    /** Content Creators pick one of their three filters; they start on Approved. */
-    private const WRITER_FILTERS = ['approved', 'review', 'shot'];
+    /** The three filters (admins and writers alike); the list starts on Approved. */
+    private const FILTERS = ['approved', 'review', 'shot'];
 
     public function mount(): void
     {
-        $this->keepWriterFilter();
+        $this->keepFilter();
     }
 
     public function updatedStatus(): void
     {
-        $this->keepWriterFilter();
+        $this->keepFilter();
     }
 
-    private function keepWriterFilter(): void
+    private function keepFilter(): void
     {
-        if (! auth()->user()->isAdmin() && ! in_array($this->status, self::WRITER_FILTERS, true)) {
+        if (! in_array($this->status, self::FILTERS, true)) {
             $this->status = 'approved';
         }
     }
@@ -137,9 +137,10 @@ new #[Title('Scripts')] class extends Component {
     $all = $this->all;
     $boxes = $this->boxes;
     $counts = $all->countBy('status');
-    $filtered = $search !== '' || $status !== '';
-    // Content Creators filter by where a script stands: approved, waiting for the admin, or shot (completed).
-    $chips = auth()->user()->isAdmin() ? Script::STATUSES : [
+    // A filter is always picked, so "nothing matches" only when there is something to filter.
+    $filtered = $all->isNotEmpty();
+    // Filter by where a script stands: approved, waiting for the admin, or shot (completed).
+    $chips = [
         'approved' => Script::STATUSES['approved'],
         'review' => Script::STATUSES['review'],
         'shot' => ['label' => 'Completed'] + Script::STATUSES['shot'],
@@ -158,7 +159,7 @@ new #[Title('Scripts')] class extends Component {
 
     <div class="flex flex-wrap items-center gap-2">
         <nav class="flex flex-wrap gap-2">
-            @foreach ((auth()->user()->isAdmin() ? ['' => ['label' => __('All'), 'dot' => 'bg-brand-500']] : []) + $chips as $key => $st)
+            @foreach ($chips as $key => $st)
                 @php $on = $status === $key; @endphp
                 <button type="button" wire:click="$set('status', '{{ $key }}')" @class([
                     'inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium ring-1 transition',
@@ -174,7 +175,7 @@ new #[Title('Scripts')] class extends Component {
     </div>
 
     {{-- Admins: submitted scripts stand out until they are approved or sent back (hidden while filtering) --}}
-    @if (! $filtered && $this->waiting->isNotEmpty())
+    @if ($search === '' && $this->waiting->isNotEmpty())
         <section class="overflow-hidden rounded-2xl bg-linear-to-br from-amber-50 to-white ring-1 ring-amber-200/80 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:from-amber-500/[0.07] dark:to-zinc-950 dark:ring-amber-500/25" data-test="waiting-scripts">
             <div class="flex items-center gap-3 px-5 py-4">
                 <span class="relative flex size-10 items-center justify-center rounded-xl bg-amber-500 text-white shadow-md shadow-amber-500/30">

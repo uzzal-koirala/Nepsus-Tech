@@ -199,6 +199,24 @@ class Employee extends Model
         if ($day > min($this->salary_day, NepaliDate::monthLength($year, $month))) {
             [$year, $month] = $month === 12 ? [$year + 1, 1] : [$year, $month + 1];
         }
+        $next = NepaliDate::toAd($year, $month, min($this->salary_day, NepaliDate::monthLength($year, $month)));
+        $first = $this->firstSalaryDate();
+
+        // Never before the first salary: someone who joins on 1 Mangsir is first paid in Poush.
+        return $first && $first->gt($next) ? $first : $next;
+    }
+
+    /**
+     * The first salary: the salary day of the month after they start (joined, else the agreement start).
+     * Joined 1 Mangsir with salary day 3 -> 3 Poush. Null without a salary day or a start date.
+     */
+    public function firstSalaryDate(): ?\Illuminate\Support\Carbon
+    {
+        $start = $this->joined_on ?? $this->contract_start;
+        if (! $this->salary_day || ! $start || ! $bs = NepaliDate::fromAd($start)) {
+            return null;
+        }
+        [$year, $month] = $bs[1] === 12 ? [$bs[0] + 1, 1] : [$bs[0], $bs[1] + 1];
 
         return NepaliDate::toAd($year, $month, min($this->salary_day, NepaliDate::monthLength($year, $month)));
     }

@@ -26,6 +26,30 @@ class SalaryPayment extends Model
     }
 
     /**
+     * Salaries count as an expense in the BS month they are for, not the day they were paid:
+     * Kartik's salary paid on 27 Ashoj is a Kartik expense. Keeps the salaries for the months in [$from, $to].
+     */
+    public function scopeForMonthsIn($query, \Carbon\CarbonInterface $from, \Carbon\CarbonInterface $to)
+    {
+        $periods = [];
+        for ($p = NepaliDate::period($from), $last = NepaliDate::period($to); $p <= $last;) {
+            $periods[] = $p;
+            [$y, $m] = array_map('intval', explode('-', $p));
+            $p = $m === 12 ? sprintf('%d-01', $y + 1) : sprintf('%d-%02d', $y, $m + 1);
+        }
+
+        return $query->whereIn('period', $periods);
+    }
+
+    /** "Kartik 2083" for the salary's month. */
+    public function periodLabel(): string
+    {
+        [$y, $m] = array_map('intval', explode('-', (string) $this->period));
+
+        return (NepaliDate::MONTHS[$m - 1] ?? '').' '.$y;
+    }
+
+    /**
      * BS months a salary can be recorded for: this one and the next 2, oldest first.
      *
      * @return list<string>

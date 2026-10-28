@@ -21,11 +21,12 @@ class Video extends Model
         'raw' => ['label' => 'To edit', 'short' => 'To edit', 'icon' => 'inbox-arrow-down', 'tone' => 'bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-500/20', 'dot' => 'bg-sky-500'],
         'editing' => ['label' => 'Editing', 'short' => 'Editing', 'icon' => 'scissors', 'tone' => 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20', 'dot' => 'bg-amber-500'],
         'done' => ['label' => 'Edited', 'short' => 'Edited', 'icon' => 'check-badge', 'tone' => 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20', 'dot' => 'bg-emerald-500'],
+        'completed' => ['label' => 'Completed', 'short' => 'Completed', 'icon' => 'trophy', 'tone' => 'bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-500/10 dark:text-violet-300 dark:ring-violet-500/20', 'dot' => 'bg-violet-500'],
     ];
 
     protected function casts(): array
     {
-        return ['shot_on' => 'date', 'edit_by' => 'date'];
+        return ['shot_on' => 'date', 'edit_by' => 'date', 'edited_at' => 'datetime'];
     }
 
     /**
@@ -38,7 +39,7 @@ class Video extends Model
         if (! $this->edit_by || $this->isBroll()) {
             return null;
         }
-        if ($this->status === 'done') {
+        if (in_array($this->status, ['done', 'completed'], true)) {
             return ['label' => __('Was due :date', ['date' => $this->edit_by->toNepali(false)]), 'tone' => 'bg-zinc-100 text-zinc-500 ring-zinc-200 dark:bg-white/5 dark:text-zinc-400 dark:ring-white/10', 'icon' => 'calendar', 'late' => false];
         }
         $days = (int) today()->diffInDays($this->edit_by, false);
@@ -49,6 +50,16 @@ class Video extends Model
             $days === 1 => ['label' => __('Edit by tomorrow'), 'tone' => 'bg-amber-100 text-amber-800 ring-amber-300 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-500/30', 'icon' => 'clock', 'late' => false],
             default => ['label' => __('Edit by :date', ['date' => $this->edit_by->toNepali(false)]), 'tone' => 'bg-indigo-50 text-indigo-700 ring-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-200 dark:ring-indigo-500/25', 'icon' => 'calendar-days', 'late' => false],
         };
+    }
+
+    /** Remember when the edit was finished; going back to editing forgets it. */
+    protected static function booted(): void
+    {
+        static::saving(function (Video $v) {
+            if ($v->isDirty('status')) {
+                $v->edited_at = in_array($v->status, ['done', 'completed'], true) ? ($v->edited_at ?? now()) : null;
+            }
+        });
     }
 
     public function isBroll(): bool
@@ -62,6 +73,7 @@ class Video extends Model
         return $this->isBroll() ? null : match ($this->status) {
             'raw' => ['editing', __('Start editing'), 'scissors'],
             'editing' => ['done', __('Mark edited'), 'check'],
+            'done' => ['completed', __('Mark completed'), 'trophy'],
             default => null,
         };
     }

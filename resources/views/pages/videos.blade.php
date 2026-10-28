@@ -130,7 +130,7 @@ new #[Title('Videos')] class extends Component {
             'notes' => ['nullable', 'string', 'max:2000'],
         ], ['url.url' => __('Paste the full link, starting with https://')], ['url' => __('link')]);
 
-        $script = $data['scriptId'] ? \App\Models\Script::find($data['scriptId']) : null;
+        $script = $data['scriptId'] && $data['videoKind'] !== 'broll' ? \App\Models\Script::find($data['scriptId']) : null;
         $values = [
             'url' => $data['url'],
             'title' => trim((string) $data['title']) ?: $script?->title ?: __('Footage :date', ['date' => ($data['shotOn'] ? \Illuminate\Support\Carbon::parse($data['shotOn']) : today())->toNepali()]),
@@ -150,10 +150,17 @@ new #[Title('Videos')] class extends Component {
         unset($this->all);
     }
 
-    /** A filter chip: a status of the raw footage, or 'broll'. */
+    public function mount(): void
+    {
+        if ($this->kind !== 'broll' && ! array_key_exists($this->status, Video::STATUSES)) {
+            $this->status = 'raw';
+        }
+    }
+
+    /** A filter chip: a status of the raw footage, or 'broll'. The list starts on To edit. */
     public function filter(string $key): void
     {
-        [$this->kind, $this->status] = $key === 'broll' ? ['broll', ''] : ['', array_key_exists($key, Video::STATUSES) ? $key : ''];
+        [$this->kind, $this->status] = $key === 'broll' ? ['broll', ''] : ['', array_key_exists($key, Video::STATUSES) ? $key : 'raw'];
     }
 
     public function setStatus(int $id, string $status): void
@@ -185,7 +192,8 @@ new #[Title('Videos')] class extends Component {
     $all = $this->all;
     $videos = $this->visible;
     $counts = $all->where('kind', 'raw')->countBy('status');
-    $filtered = $search !== '' || $status !== '' || $kind !== '' || $clientFilter !== '';
+    // A filter is always picked, so "nothing matches" only when there is something to filter.
+    $filtered = $all->isNotEmpty();
     $clientOptions = $this->clients->map(fn ($c) => ['value' => $c->id, 'label' => $c->displayName(), 'hint' => $c->company ? $c->name : $c->phone, 'initials' => $c->initials(), 'tile' => 'bg-linear-to-br from-brand-500 to-violet-600 text-white']);
     $filterOptions = collect([['value' => '', 'label' => __('All clients'), 'icon' => 'squares-2x2'], ['value' => 'none', 'label' => __('No client'), 'hint' => __('Our own content'), 'icon' => 'sparkles']])->concat($clientOptions);
     $scriptOptions = collect([['value' => '', 'label' => __('No script'), 'hint' => __('Footage without a script'), 'icon' => 'minus-circle']])
@@ -204,7 +212,7 @@ new #[Title('Videos')] class extends Component {
 
     <div class="flex flex-wrap items-center gap-2">
         <nav class="flex flex-wrap gap-2">
-            @foreach (['' => ['short' => __('All'), 'dot' => 'bg-brand-500']] + Video::STATUSES + ['broll' => ['short' => __('B-roll'), 'dot' => 'bg-teal-500']] as $key => $st)
+            @foreach (array_intersect_key(Video::STATUSES, array_flip(['raw', 'editing', 'done'])) + ['broll' => ['short' => __('B-roll'), 'dot' => 'bg-teal-500'], 'completed' => Video::STATUSES['completed']] as $key => $st)
                 @php $on = $key === 'broll' ? $kind === 'broll' : ($kind === '' && $status === $key); @endphp
                 <button type="button" wire:click="filter('{{ $key }}')" @class([
                     'inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium ring-1 transition',
@@ -313,11 +321,11 @@ new #[Title('Videos')] class extends Component {
                             <flux:icon.arrow-top-right-on-square variant="micro" class="size-3.5" />{{ __('Open') }}
                         </a>
                         @if ($step = $v->nextStep())
-                            <button type="button" wire:click="setStatus({{ $v->id }}, '{{ $step[0] }}')" @class(['inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition', 'bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-500/15 dark:text-amber-200' => $step[0] === 'editing', 'bg-emerald-500 text-white hover:bg-emerald-600' => $step[0] === 'done']) data-test="step-{{ $v->id }}">
+                            <button type="button" wire:click="setStatus({{ $v->id }}, '{{ $step[0] }}')" @class(['inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition', 'bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-500/15 dark:text-amber-200' => $step[0] === 'editing', 'bg-emerald-500 text-white hover:bg-emerald-600' => $step[0] === 'done', 'bg-violet-500 text-white hover:bg-violet-600' => $step[0] === 'completed']) data-test="step-{{ $v->id }}">
                                 <flux:icon :icon="$step[2]" variant="micro" class="size-3.5" />{{ $step[1] }}
                             </button>
                         @elseif (! $v->isBroll())
-                            <span class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.check-badge variant="micro" class="size-3.5" />{{ __('Edited') }}</span>
+                            <span class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 dark:bg-violet-500/10 dark:text-violet-300"><flux:icon.trophy variant="micro" class="size-3.5" />{{ __('Completed') }}</span>
                         @endif
                     </div>
                 </article>
@@ -342,7 +350,9 @@ new #[Title('Videos')] class extends Component {
                 <x-rich-select model="clientId" searchable :label="__('Client')" :placeholder="__('No client')" :options="collect([['value' => '', 'label' => __('No client'), 'hint' => __('Our own content'), 'icon' => 'sparkles']])->concat($clientOptions)" />
                 <x-rich-select model="videoKind" :label="__('Type')" :options="$kindOptions" data-test="video-kind" />
             </div>
-            <x-rich-select model="scriptId" searchable :label="__('Script')" :placeholder="__('Link a script')" :options="$scriptOptions" data-test="video-script" />
+            <div x-show="$wire.videoKind !== 'broll'">
+                <x-rich-select model="scriptId" searchable :label="__('Script')" :placeholder="__('Link a script')" :options="$scriptOptions" data-test="video-script" />
+            </div>
             {{-- B-roll is not edited, so it has no shoot or edit-by date --}}
             <div x-show="$wire.videoKind !== 'broll'" class="grid grid-cols-2 gap-3 sm:gap-4">
                 <x-nepali-date wire:model="shotOn" :label="__('Shot on')" :placeholder="__('Shoot day')" />

@@ -266,7 +266,7 @@ new #[Title('Dashboard')] class extends Component {
                         </div>
                         <div class="relative mt-2 h-4 text-[0.6875rem] text-zinc-500">
                             @foreach ($points as $p)
-                                <span @class(['absolute whitespace-nowrap', '-translate-x-1/2' => ! $loop->first && ! $loop->last, '-translate-x-full font-semibold text-zinc-900 dark:text-white' => $loop->last, 'hidden' => ! $loop->first && ! $loop->last && (! str_contains($p['tick'], ' ') || $p['x'] > 80), 'max-sm:hidden' => ! $loop->first && ! $loop->last]) style="left: {{ $p['x'] }}%">{{ $loop->last ? __('This week') : $p['tick'] }}</span>
+                                <span @class(['absolute whitespace-nowrap', '-translate-x-1/2' => ! $loop->first && ! $loop->last, '-translate-x-full font-semibold text-zinc-900 dark:text-white' => $loop->last, 'hidden' => ! $loop->first && ! $loop->last && (! str_contains($p['tick'], ' ') || $p['x'] > 80 || $p['x'] < 20), 'max-sm:hidden' => ! $loop->first && ! $loop->last]) style="left: {{ $p['x'] }}%">{{ $loop->last ? __('This week') : $p['tick'] }}</span>
                             @endforeach
                         </div>
                     </div>

@@ -49,6 +49,14 @@ class EditorDashboardTest extends TestCase
         $this->assertSame(['editing', 'done'], [$raw->fresh()->status, $editing->fresh()->status]);
         Livewire::test('pages::editor-dashboard')->call('moveVideo', $raw->id, 'published')->assertForbidden();
 
+        // The edit time is kept for the chart and the weekly count; going back to editing forgets it.
+        $this->assertNotNull($editing->fresh()->edited_at);
+        $this->get(route('my.dashboard'))->assertSee(['My edits', 'Came in', 'Edited']);
+        $this->assertSame(2, Livewire::test('pages::editor-dashboard')->instance()->editedThisWeek);
+        $editing->fresh()->update(['status' => 'editing']);
+        $this->assertNull($editing->fresh()->edited_at);
+        $this->assertSame(1, collect(Livewire::test('pages::editor-dashboard')->instance()->weekly)->sum('edited'));
+
         Livewire::test('pages::editor-dashboard')->call('toggleDone', $task->id);
         $this->assertNotNull($task->fresh()->completed_at);
     }

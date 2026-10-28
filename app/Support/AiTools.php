@@ -873,7 +873,7 @@ class AiTools
         $rows = collect()
             ->concat(Payment::with('client')->whereNotNull('paid_at')->whereBetween('paid_at', [$from, $to])->get()
                 ->map(fn ($p) => ['key' => 'p'.$p->id, 'kind' => 'income', 'date' => $p->paid_at, 'title' => $p->client?->displayName(), 'category' => 'Client payment', 'amount' => (float) $p->amount, 'method' => $p->method]))
-            ->concat(SalaryPayment::with('employee')->whereBetween('paid_on', [$from, $to])->get()
+            ->concat(SalaryPayment::with('employee')->forMonthsIn($from, $to)->get()
                 ->map(fn ($s) => ['key' => 's'.$s->id, 'kind' => 'expense', 'date' => $s->paid_on, 'title' => $s->employee?->name, 'category' => 'Salary', 'amount' => (float) $s->amount, 'method' => null]))
             ->concat(Transaction::whereBetween('date', [$from->toDateString(), $to->toDateString()])->get()
                 ->map(fn ($t) => ['key' => 't'.$t->id, 'kind' => $t->kind, 'date' => $t->date, 'title' => $t->title, 'category' => $t->categoryLabel(), 'amount' => (float) $t->amount, 'method' => $t->method]))
@@ -1325,7 +1325,7 @@ class AiTools
         $money = fn ($v) => Client::money(round((float) $v));
         $tx = Transaction::whereBetween('date', [$start->toDateString(), $end->toDateString()])->get();
         $received = Payment::whereBetween('paid_at', [$start, $end])->sum('amount');
-        $salaries = SalaryPayment::whereDate('paid_on', '>=', $start)->whereDate('paid_on', '<=', $end)->sum('amount');
+        $salaries = SalaryPayment::forMonthsIn($start, $end)->sum('amount');
         $openTasks = Task::whereNull('completed_at');
 
         return [

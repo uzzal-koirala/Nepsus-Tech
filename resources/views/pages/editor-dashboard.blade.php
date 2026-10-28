@@ -38,13 +38,38 @@ new class extends Component {
     #[Computed]
     public function editedThisWeek(): int
     {
-        return Video::where('kind', 'raw')->where('status', 'done')->where('updated_at', '>=', today()->startOfWeek(\Carbon\CarbonInterface::SUNDAY))->count();
+        return Video::where('kind', 'raw')->where('edited_at', '>=', today()->startOfWeek(\Carbon\CarbonInterface::SUNDAY))->count();
     }
 
     #[Computed]
     public function recentlyEdited()
     {
-        return Video::with('client')->where('kind', 'raw')->where('status', 'done')->latest('updated_at')->limit(5)->get();
+        return Video::with('client')->where('kind', 'raw')->whereNotNull('edited_at')->latest('edited_at')->limit(5)->get();
+    }
+
+    /** Raw footage that came in and footage edited, for the last 12 weeks (Sunday to Saturday), oldest first. */
+    #[Computed]
+    public function weekly(): array
+    {
+        $weeks = 12;
+        $start = today()->subDays(today()->dayOfWeek)->subWeeks($weeks - 1);
+        $end = $start->copy()->addWeeks($weeks)->subDay()->endOfDay();
+        $week = fn ($date) => intdiv((int) $start->diffInDays($date->copy()->startOfDay()), 7);
+        $in = array_fill(0, $weeks, 0);
+        $edited = array_fill(0, $weeks, 0);
+
+        foreach (Video::where('kind', 'raw')->whereBetween('created_at', [$start, $end])->pluck('created_at') as $at) {
+            $in[$week($at)]++;
+        }
+        foreach (Video::where('kind', 'raw')->whereBetween('edited_at', [$start, $end])->pluck('edited_at') as $at) {
+            $edited[$week($at)]++;
+        }
+
+        return array_map(function ($i) use ($start, $in, $edited) {
+            $from = $start->copy()->addWeeks($i);
+
+            return ['from' => $from, 'to' => $from->copy()->addDays(6), 'in' => $in[$i], 'edited' => $edited[$i]];
+        }, range(0, $weeks - 1));
     }
 
     /** My open tasks up to a week ahead, and undated ones. */
@@ -155,8 +180,143 @@ new class extends Component {
     </section>
 
     <div class="grid gap-4 sm:gap-6 lg:grid-cols-3">
-        {{-- Footage queue --}}
-        <section class="{{ $panel }} min-w-0 overflow-hidden lg:col-span-2" data-test="footage-queue">
+        {{-- My edits: footage that came in vs footage edited, week by week --}}
+        @php
+            $flow = $this->weekly;
+            $n = count($flow);
+            $inV = array_column($flow, 'in');
+            $edV = array_column($flow, 'edited');
+            $top = max(4, (int) ceil(max(array_merge($inV, $edV)) * 1.1 / 4) * 4);
+            $xs = array_map(fn ($i) => $n > 1 ? 3 + $i * 94 / ($n - 1) : 50, range(0, $n - 1));
+            $y = fn ($v) => 100 - $v / $top * 100;
+            $curve = fn (array $vals) => \App\Support\SmoothLine::path(array_map(fn ($i) => [$xs[$i], $y($vals[$i])], range(0, $n - 1)));
+            $edLine = $curve($edV);
+            $inLine = $curve($inV);
+            $close = ' L'.end($xs).',100 L'.$xs[0].',100 Z';
+            $points = array_map(fn ($i) => [
+                'x' => $xs[$i],
+                'week' => __('Week of :from – :to', ['from' => NepaliDate::format($flow[$i]['from'], false), 'to' => NepaliDate::format($flow[$i]['to'], false)]),
+                'tick' => $i === 0 || NepaliDate::fromAd($flow[$i]['from'])[1] !== NepaliDate::fromAd($flow[$i - 1]['from'])[1] ? NepaliDate::format($flow[$i]['from'], false) : (string) NepaliDate::fromAd($flow[$i]['from'])[2],
+                'in' => $inV[$i], 'edited' => $edV[$i], 'ye' => $y($edV[$i]), 'yi' => $y($inV[$i]),
+            ], range(0, $n - 1));
+        @endphp
+        <section class="{{ $panel }} flex h-full min-w-0 flex-col p-4 sm:p-6 lg:col-span-2 [--c-ed:#0e9f6e] [--c-in:#6366f1] dark:[--c-ed:#1fa576] dark:[--c-in:#818cf8]" data-test="my-edits">
+            <div class="flex flex-wrap items-start gap-x-6 gap-y-3">
+                <div class="flex-1">
+                    <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('My edits') }}</h2>
+                    <p class="text-xs text-zinc-500 sm:text-sm">{{ __('Footage that came in and footage edited, week by week (last 12 weeks)') }}</p>
+                </div>
+                <div class="flex items-center gap-5">
+                    @foreach ([[__('Edited'), array_sum($edV), 'var(--c-ed)', false], [__('Came in'), array_sum($inV), 'var(--c-in)', true]] as [$label, $total, $color, $dashed])
+                        <div>
+                            <p class="flex items-center gap-1.5 text-xs font-medium text-zinc-500">
+                                <svg class="h-2 w-4" viewBox="0 0 16 8" aria-hidden="true"><line x1="1" y1="4" x2="15" y2="4" stroke="{{ $color }}" stroke-width="2.5" stroke-linecap="round" @if ($dashed) stroke-dasharray="4 3" @endif /></svg>
+                                {{ $label }}
+                            </p>
+                            <p class="mt-0.5 text-base font-bold text-zinc-900 tabular-nums dark:text-white">{{ $total }}</p>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+
+            <div class="mt-5 flex min-h-52 flex-1 gap-2 sm:mt-6 sm:min-h-64 sm:gap-3" x-data="{ i: null, pts: @js($points), pick(x) { const r = this.$refs.plot.getBoundingClientRect(); const at = (x - r.left) / r.width * 100; this.i = this.pts.reduce((best, p, k) => Math.abs(p.x - at) < Math.abs(this.pts[best].x - at) ? k : best, 0) } }">
+                <div class="flex w-6 shrink-0 flex-col text-end text-[0.6875rem] text-zinc-400 tabular-nums" aria-hidden="true">
+                    <div class="relative flex-1">
+                        @foreach ([1, 0.75, 0.5, 0.25, 0] as $f)
+                            <span class="absolute right-0 -translate-y-1/2" style="top: {{ (1 - $f) * 100 }}%">{{ $top * $f }}</span>
+                        @endforeach
+                    </div>
+                    <div class="h-6 shrink-0"></div>
+                </div>
+                <div class="flex min-w-0 flex-1 flex-col">
+                    <div class="relative min-h-40 flex-1 touch-pan-y sm:min-h-48" x-ref="plot" @mouseleave="i = null" @mousemove="pick($event.clientX)"
+                        @touchstart.passive="pick($event.touches[0].clientX)" @touchmove.passive="pick($event.touches[0].clientX)" @touchend="setTimeout(() => i = null, 1800)">
+                        @foreach ([0, 0.25, 0.5, 0.75, 1] as $f)
+                            <div @class(['pointer-events-none absolute inset-x-0 border-t', 'border-zinc-200 dark:border-white/10' => $f === 1, 'border-dashed border-zinc-100 dark:border-white/5' => $f !== 1]) style="top: {{ $f * 100 }}%"></div>
+                        @endforeach
+                        <svg class="absolute inset-0 size-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                            <defs>
+                                <linearGradient id="ed-done" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--c-ed)" stop-opacity=".22" /><stop offset="100%" stop-color="var(--c-ed)" stop-opacity="0" /></linearGradient>
+                                <linearGradient id="ed-in" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--c-in)" stop-opacity=".14" /><stop offset="100%" stop-color="var(--c-in)" stop-opacity="0" /></linearGradient>
+                            </defs>
+                            <path d="{{ $inLine.$close }}" fill="url(#ed-in)" />
+                            <path d="{{ $edLine.$close }}" fill="url(#ed-done)" />
+                            <path d="{{ $inLine }}" fill="none" stroke="var(--c-in)" stroke-width="2" stroke-dasharray="6 4" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+                            <path d="{{ $edLine }}" fill="none" stroke="var(--c-ed)" stroke-width="2.5" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+                        </svg>
+                        @php $last = end($points); @endphp
+                        <span x-show="i === null" class="pointer-events-none absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-zinc-950" style="left: {{ $last['x'] }}%; top: {{ $last['ye'] }}%; background: var(--c-ed)"></span>
+                        <span x-show="i === null" class="pointer-events-none absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-zinc-950" style="left: {{ $last['x'] }}%; top: {{ $last['yi'] }}%; background: var(--c-in)"></span>
+                        <template x-if="i !== null">
+                            <div class="pointer-events-none absolute inset-0">
+                                <div class="absolute inset-y-0 border-l border-zinc-300 dark:border-white/20" :style="`left: ${pts[i].x}%`"></div>
+                                <span class="absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-zinc-950" :style="`left: ${pts[i].x}%; top: ${pts[i].ye}%; background: var(--c-ed)`"></span>
+                                <span class="absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-zinc-950" :style="`left: ${pts[i].x}%; top: ${pts[i].yi}%; background: var(--c-in)`"></span>
+                                <div class="absolute top-1 w-40 rounded-xl bg-white p-2.5 text-xs shadow-[0_12px_32px_-10px_rgb(15_23_42/0.35)] ring-1 ring-zinc-200 sm:w-48 sm:p-3 dark:bg-zinc-900 dark:ring-white/10" :style="pts[i].x > 60 ? `right: ${100 - pts[i].x + 2}%` : `left: ${pts[i].x + 2}%`">
+                                    <p class="font-semibold text-zinc-900 dark:text-white" x-text="pts[i].week"></p>
+                                    <p class="mt-1.5 flex items-center justify-between gap-2 text-zinc-500"><span class="flex items-center gap-1.5"><span class="h-0.5 w-3 rounded" style="background: var(--c-ed)"></span>{{ __('Edited') }}</span><span class="font-semibold text-zinc-900 tabular-nums dark:text-white" x-text="pts[i].edited"></span></p>
+                                    <p class="mt-1 flex items-center justify-between gap-2 text-zinc-500"><span class="flex items-center gap-1.5"><span class="h-0.5 w-3 rounded" style="background: var(--c-in)"></span>{{ __('Came in') }}</span><span class="font-semibold text-zinc-900 tabular-nums dark:text-white" x-text="pts[i].in"></span></p>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="relative mt-2 h-4 text-[0.6875rem] text-zinc-500">
+                        @foreach ($points as $p)
+                            <span @class(['absolute whitespace-nowrap', '-translate-x-1/2' => ! $loop->first && ! $loop->last, '-translate-x-full font-semibold text-zinc-900 dark:text-white' => $loop->last, 'hidden' => ! $loop->first && ! $loop->last && (! str_contains($p['tick'], ' ') || $p['x'] > 80 || $p['x'] < 20), 'max-sm:hidden' => ! $loop->first && ! $loop->last]) style="left: {{ $p['x'] }}%">{{ $loop->last ? __('This week') : $p['tick'] }}</span>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+            <div class="sr-only"><table>
+                <caption>{{ __('My edits, last 12 weeks') }}</caption>
+                <tr><th>{{ __('Week') }}</th><th>{{ __('Edited') }}</th><th>{{ __('Came in') }}</th></tr>
+                @foreach ($points as $p)<tr><td>{{ $p['week'] }}</td><td>{{ $p['edited'] }}</td><td>{{ $p['in'] }}</td></tr>@endforeach
+            </table></div>
+        </section>
+
+        {{-- My tasks --}}
+        <aside class="order-first flex min-w-0 flex-col gap-4 sm:gap-6 lg:order-none">
+            <section class="{{ $panel }} overflow-hidden" data-test="editor-tasks">
+                <div class="flex items-start gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
+                    <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white shadow-md shadow-brand-500/25"><flux:icon.clipboard-document-check variant="mini" class="size-5" /></span>
+                    <div class="min-w-0 flex-1">
+                        <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('My tasks') }}</h2>
+                        <p class="text-xs text-zinc-500">{{ $tasks->count() ? trans_choice(':count open this week|:count open this week', $tasks->count()) : __('Nothing open') }}</p>
+                    </div>
+                    <a href="{{ route('my.tasks') }}" wire:navigate class="{{ $link }}">{{ __('All') }}</a>
+                </div>
+                <div class="flex flex-col p-2 pt-3">
+                    @forelse ($tasks->take(6) as $t)
+                        @php
+                            $days = $t->due_date ? (int) today()->diffInDays($t->due_date, false) : null;
+                            $late = $days !== null && $days < 0;
+                            $when = $days === null ? __('No date') : ($late ? trans_choice(':count day late|:count days late', -$days) : ($days === 0 ? __('Due today') : ($days === 1 ? __('Tomorrow') : trans_choice('In :count day|In :count days', $days))));
+                        @endphp
+                        <div wire:key="t-{{ $t->id }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
+                            <button type="button" wire:click="toggleDone({{ $t->id }})" class="-m-2 flex size-10 shrink-0 items-center justify-center sm:m-0 sm:size-5" aria-label="{{ __('Mark as done') }}" data-test="done-{{ $t->id }}">
+                                <span class="flex size-6 items-center justify-center rounded-full ring-[1.5px] ring-zinc-300 transition group-hover:ring-emerald-500 sm:size-5 dark:ring-white/20"><flux:icon.check variant="micro" class="size-3.5 text-emerald-600 opacity-0 transition group-hover:opacity-60" /></span>
+                            </button>
+                            <div class="min-w-0 flex-1">
+                                <p class="truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $t->title }}</p>
+                                <p class="mt-1 flex items-center gap-1.5">
+                                    <span @class(['inline-flex items-center rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium ring-1 ring-inset', 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20' => $late, 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20' => ! $late && $days !== null && $days <= 1, 'bg-zinc-50 text-zinc-600 ring-zinc-200 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10' => $days === null || $days > 1])>{{ $when }}</span>
+                                    <span class="truncate text-xs text-zinc-500">{{ $t->client?->displayName() ?? __('Team task') }}</span>
+                                </p>
+                            </div>
+                        </div>
+                    @empty
+                        <div class="flex flex-col items-center gap-2 px-5 py-8 text-center">
+                            <span class="flex size-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.check-badge class="size-5" /></span>
+                            <p class="text-xs text-zinc-500">{{ __('No open tasks for this week.') }}</p>
+                        </div>
+                    @endforelse
+                </div>
+            </section>
+        </aside>
+    </div>
+
+    {{-- Footage queue, full width --}}
+        <section class="{{ $panel }} min-w-0 overflow-hidden" data-test="footage-queue">
             <div class="flex items-center gap-3 px-4 py-4 sm:px-5">
                 <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/25"><flux:icon.film variant="mini" class="size-5" /></span>
                 <div class="min-w-0 flex-1">
@@ -204,46 +364,6 @@ new class extends Component {
             @endforelse
         </section>
 
-        {{-- My tasks --}}
-        <aside class="order-first flex min-w-0 flex-col gap-4 sm:gap-6 lg:order-none">
-            <section class="{{ $panel }} overflow-hidden" data-test="editor-tasks">
-                <div class="flex items-start gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
-                    <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white shadow-md shadow-brand-500/25"><flux:icon.clipboard-document-check variant="mini" class="size-5" /></span>
-                    <div class="min-w-0 flex-1">
-                        <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('My tasks') }}</h2>
-                        <p class="text-xs text-zinc-500">{{ $tasks->count() ? trans_choice(':count open this week|:count open this week', $tasks->count()) : __('Nothing open') }}</p>
-                    </div>
-                    <a href="{{ route('my.tasks') }}" wire:navigate class="{{ $link }}">{{ __('All') }}</a>
-                </div>
-                <div class="flex flex-col p-2 pt-3">
-                    @forelse ($tasks->take(6) as $t)
-                        @php
-                            $days = $t->due_date ? (int) today()->diffInDays($t->due_date, false) : null;
-                            $late = $days !== null && $days < 0;
-                            $when = $days === null ? __('No date') : ($late ? trans_choice(':count day late|:count days late', -$days) : ($days === 0 ? __('Due today') : ($days === 1 ? __('Tomorrow') : trans_choice('In :count day|In :count days', $days))));
-                        @endphp
-                        <div wire:key="t-{{ $t->id }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
-                            <button type="button" wire:click="toggleDone({{ $t->id }})" class="-m-2 flex size-10 shrink-0 items-center justify-center sm:m-0 sm:size-5" aria-label="{{ __('Mark as done') }}" data-test="done-{{ $t->id }}">
-                                <span class="flex size-6 items-center justify-center rounded-full ring-[1.5px] ring-zinc-300 transition group-hover:ring-emerald-500 sm:size-5 dark:ring-white/20"><flux:icon.check variant="micro" class="size-3.5 text-emerald-600 opacity-0 transition group-hover:opacity-60" /></span>
-                            </button>
-                            <div class="min-w-0 flex-1">
-                                <p class="truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $t->title }}</p>
-                                <p class="mt-1 flex items-center gap-1.5">
-                                    <span @class(['inline-flex items-center rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium ring-1 ring-inset', 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20' => $late, 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20' => ! $late && $days !== null && $days <= 1, 'bg-zinc-50 text-zinc-600 ring-zinc-200 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10' => $days === null || $days > 1])>{{ $when }}</span>
-                                    <span class="truncate text-xs text-zinc-500">{{ $t->client?->displayName() ?? __('Team task') }}</span>
-                                </p>
-                            </div>
-                        </div>
-                    @empty
-                        <div class="flex flex-col items-center gap-2 px-5 py-8 text-center">
-                            <span class="flex size-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.check-badge class="size-5" /></span>
-                            <p class="text-xs text-zinc-500">{{ __('No open tasks for this week.') }}</p>
-                        </div>
-                    @endforelse
-                </div>
-            </section>
-        </aside>
-    </div>
 
     <div class="grid items-start gap-4 sm:gap-6 md:grid-cols-2">
         {{-- Footage on its way --}}

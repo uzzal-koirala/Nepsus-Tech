@@ -689,6 +689,10 @@ new #[Title('Employee')] class extends Component {
                 @php
                     [$cy, $cm] = NepaliDate::fromAd(today());
                     $salaryDate = $e->salary_day ? NepaliDate::toAd($cy, $cm, min($e->salary_day, NepaliDate::monthLength($cy, $cm))) : null;
+                    // Someone who has not reached their first salary yet is due on that day, not this month's.
+                    if ($salaryDate && ($firstPay = $e->firstSalaryDate()) && $firstPay->gt($salaryDate)) {
+                        $salaryDate = $firstPay;
+                    }
                     $salaryState = match (true) {
                         $full => 'paid',
                         $pay['paid'] > 0 => 'part',
@@ -932,6 +936,10 @@ new #[Title('Employee')] class extends Component {
             // Salary on this calendar: the salary day of the shown month and the days payments were made.
             $calPeriod = sprintf('%d-%02d', $this->calYear, $this->calMonth);
             $salaryDayNum = $e->salary_day ? min($e->salary_day, NepaliDate::monthLength($this->calYear, $this->calMonth)) : null;
+            // Months before the first salary (joined 1 Mangsir -> first paid 3 Poush) have no salary day.
+            if ($salaryDayNum && ($firstPay = $e->firstSalaryDate()) && NepaliDate::toAd($this->calYear, $this->calMonth, $salaryDayNum)->lt($firstPay)) {
+                $salaryDayNum = null;
+            }
             $periodPaid = (float) $payments->where('period', $calPeriod)->sum('amount');
             $salaryOf = (float) $e->salary;
             $paidOn = $payments->groupBy(fn ($sp) => $sp->paid_on->toDateString());

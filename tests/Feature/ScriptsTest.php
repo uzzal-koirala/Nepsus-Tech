@@ -47,24 +47,26 @@ class ScriptsTest extends TestCase
         $this->assertSame('6 sec', Script::speakingTime($body));
 
         // Boxes: one per client with its scripts; "+ Add script" in a box adds straight to that client.
+        // The list starts on Approved; the submitted script waits in the approval panel and under In review.
         Livewire::test('pages::scripts')
-            ->assertSee(['Momo reel', 'Momo House', 'In review', '1 script'])
-            ->assertDontSee('Other scripts')
-            ->set('status', 'approved')->assertDontSee('Momo reel')
-            ->set('status', '')->set('search', 'thamel')->assertSee('Momo reel')
+            ->assertSet('status', 'approved')->assertSee(['Waiting for your approval', 'Momo reel'])
+            ->set('status', 'review')->assertSee(['Momo reel', 'Momo House', '1 script'])->assertDontSee('Other scripts')
+            ->set('status', '')->assertSet('status', 'approved')
+            ->set('status', 'review')->set('search', 'thamel')->assertSee('Momo reel')->assertDontSee('Waiting for your approval')
             ->set('search', '')->call('addTo', $client->id);
         $this->assertSame(2, Script::where('client_id', $client->id)->count());
         Livewire::test('pages::scripts')->call('addTo', 0);
-        Livewire::test('pages::scripts')->assertSee(['Other scripts', '2 scripts']);
+        $this->assertSame(1, Script::whereNull('client_id')->where('title', 'Untitled script')->count());
         Script::where('title', 'Untitled script')->delete();
 
         // Shoot date: saved from the editor, shown on the client's calendar, upcoming shoots first.
         Livewire::test('pages::script-editor', ['script' => $script])->set('shootDate', today()->addDays(2)->toDateString())->assertHasNoErrors();
         $this->assertTrue($script->fresh()->shoot_date->isSameDay(today()->addDays(2)));
         $this->assertSame('Shoot in 2 days', $script->fresh()->shootLabel());
-        $later = Script::create(['title' => 'Later idea', 'client_id' => $client->id, 'status' => 'idea', 'type' => 'reel']);
-        $past = Script::create(['title' => 'Old shoot', 'client_id' => $client->id, 'status' => 'shot', 'type' => 'reel', 'shoot_date' => today()->subDays(5)]);
-        $order = Livewire::test('pages::scripts')->instance()->boxes->first()['scripts']->pluck('title')->all();
+        // Within a filter: upcoming shoots first, then no date, then past shoots.
+        $later = Script::create(['title' => 'Later idea', 'client_id' => $client->id, 'status' => 'review', 'type' => 'reel']);
+        $past = Script::create(['title' => 'Old shoot', 'client_id' => $client->id, 'status' => 'review', 'type' => 'reel', 'shoot_date' => today()->subDays(5)]);
+        $order = Livewire::test('pages::scripts')->set('status', 'review')->instance()->boxes->first()['scripts']->pluck('title')->all();
         $this->assertSame(['Momo reel', 'Later idea', 'Old shoot'], $order);
         Livewire::test('pages::client-profile', ['client' => $client])->assertSee('Shoot: Momo reel');
         Livewire::test('pages::calendar')->call('pick', today()->addDays(2)->toDateString())->assertSee('Shoot: Momo reel');

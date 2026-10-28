@@ -41,6 +41,8 @@
         get shown() { const q = this.q.trim().toLowerCase(); return q ? this.options.filter(o => (o.label + ' ' + (o.hint || '')).toLowerCase().includes(q)) : this.options },
         pick(v) { this.value = v; this.open = false; this.q = ''; },
     }"
+    {{-- While open, lift the whole field above what comes after it (cards use transforms, which stack on top otherwise). --}}
+    :class="open && 'z-50'"
     @click.outside="open = false" @keydown.escape.stop="open = false">
     @if ($label)
         <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ $label }}</span>

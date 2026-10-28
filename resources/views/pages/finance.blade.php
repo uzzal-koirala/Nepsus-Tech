@@ -130,7 +130,7 @@ new #[Title('Finance')] class extends Component {
         $clientIncome = (float) Payment::whereNotNull('paid_at')->whereBetween('paid_at', [$from, $to])->sum('amount');
         $otherIncome = (float) Transaction::where('kind', 'income')->whereBetween('date', [$from->toDateString(), $to->toDateString()])->sum('amount');
         $expenses = (float) Transaction::where('kind', 'expense')->whereBetween('date', [$from->toDateString(), $to->toDateString()])->sum('amount');
-        $salaries = (float) SalaryPayment::whereBetween('paid_on', [$from, $to])->sum('amount');
+        $salaries = (float) SalaryPayment::forMonthsIn($from, $to)->sum('amount');
 
         return [
             'clientIncome' => $clientIncome,
@@ -178,10 +178,11 @@ new #[Title('Finance')] class extends Component {
                 'proof' => $p->proof_path ? route('payments.proof', $p) : null, 'id' => null,
             ]);
 
-        $salaries = SalaryPayment::with('employee')->whereBetween('paid_on', [$from, $to])->get()
+        // Salaries show in the month they are for; the row keeps the day they were paid.
+        $salaries = SalaryPayment::with('employee')->forMonthsIn($from, $to)->get()
             ->map(fn ($s) => [
                 'key' => 's'.$s->id, 'kind' => 'expense', 'source' => 'salary', 'date' => $s->paid_on,
-                'title' => $s->employee?->name ?? __('Salary'), 'category' => __('Salary'), 'icon' => 'user-group',
+                'title' => $s->employee?->name ?? __('Salary'), 'category' => __('Salary · :month', ['month' => $s->periodLabel()]), 'icon' => 'user-group',
                 'amount' => (float) $s->amount, 'method' => null, 'reference' => null, 'note' => $s->note, 'recorded' => $s->created_at->toNepali(), 'link' => $s->employee ? route('employees.show', ['employee' => $s->employee_id, 'tab' => 'salary']) : null,
                 'proof' => null, 'id' => null,
             ]);

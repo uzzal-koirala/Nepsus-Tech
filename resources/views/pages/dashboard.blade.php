@@ -22,7 +22,7 @@ new #[Title('Overview')] class extends Component {
         $income = (float) Payment::whereNotNull('paid_at')->whereBetween('paid_at', [$from, $to])->sum('amount')
             + (float) Transaction::where('kind', 'income')->whereBetween('date', $days)->sum('amount');
         $spent = (float) Transaction::where('kind', 'expense')->whereBetween('date', $days)->sum('amount')
-            + (float) SalaryPayment::whereBetween('paid_on', [$from, $to])->sum('amount');
+            + (float) SalaryPayment::forMonthsIn($from, $to)->sum('amount');
 
         return ['period' => $period, 'income' => $income, 'spent' => $spent];
     }
@@ -275,7 +275,7 @@ new #[Title('Overview')] class extends Component {
                         {{-- Weeks (start day); the month name where a new month begins --}}
                         <div class="relative mt-2 h-4 text-[0.6875rem] text-zinc-500">
                             @foreach ($points as $k => $p)
-                                <span @class(['absolute whitespace-nowrap', '-translate-x-1/2' => ! $loop->first && ! $loop->last, '-translate-x-full font-semibold text-zinc-900 dark:text-white' => $loop->last, 'hidden' => ! $loop->first && ! $loop->last && (! str_contains($p['tick'], ' ') || $p['x'] > 80), 'max-sm:hidden' => ! $loop->first && ! $loop->last]) style="left: {{ $p['x'] }}%">{{ $loop->last ? __('This week') : $p['tick'] }}</span>
+                                <span @class(['absolute whitespace-nowrap', '-translate-x-1/2' => ! $loop->first && ! $loop->last, '-translate-x-full font-semibold text-zinc-900 dark:text-white' => $loop->last, 'hidden' => ! $loop->first && ! $loop->last && (! str_contains($p['tick'], ' ') || $p['x'] > 80 || $p['x'] < 20), 'max-sm:hidden' => ! $loop->first && ! $loop->last]) style="left: {{ $p['x'] }}%">{{ $loop->last ? __('This week') : $p['tick'] }}</span>
                             @endforeach
                         </div>
                     </div>
