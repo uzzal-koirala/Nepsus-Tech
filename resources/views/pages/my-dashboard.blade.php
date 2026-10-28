@@ -82,7 +82,7 @@ new #[Title('Dashboard')] class extends Component {
     #[Computed]
     public function shootsSoon(): int
     {
-        return Script::whereDate('shoot_date', '>=', today())->whereDate('shoot_date', '<=', today()->addDays(14))->count();
+        return Script::scheduled()->whereDate('shoot_date', '>=', today())->whereDate('shoot_date', '<=', today()->addDays(14))->count();
     }
 
     public function toggleDone(int $id): void

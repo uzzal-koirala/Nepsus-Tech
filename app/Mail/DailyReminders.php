@@ -27,7 +27,7 @@ class DailyReminders extends Mailable
         $sections = [
             [
                 'title' => __('Shoots'), 'color' => '#7c3aed',
-                'items' => Script::with('client')->whereDate('shoot_date', '>=', $today)->whereDate('shoot_date', '<=', $tomorrow)->orderBy('shoot_date')->get()
+                'items' => Script::with('client')->scheduled()->whereDate('shoot_date', '>=', $today)->whereDate('shoot_date', '<=', $tomorrow)->orderBy('shoot_date')->get()
                     ->map(fn ($s) => ['title' => $s->title, 'meta' => $s->client?->displayName() ?? __('Other scripts'), 'when' => $when($s->shoot_date), 'url' => route('scripts.edit', $s)])->all(),
             ],
             [

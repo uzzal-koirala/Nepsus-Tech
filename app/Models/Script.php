@@ -3,8 +3,10 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /** A script for a reel, video, ad or podcast. */
 #[Fillable(['title', 'client_id', 'type', 'status', 'shoot_date', 'body', 'notes', 'review_note', 'user_id'])]
@@ -35,6 +37,59 @@ class Script extends Model
     protected function casts(): array
     {
         return ['shoot_date' => 'date'];
+    }
+
+    /** Only approved scripts get a shoot date, a calendar entry and a shoot task. */
+    public const SCHEDULABLE = ['approved', 'shot'];
+
+    protected static function booted(): void
+    {
+        static::saved(function (Script $script) {
+            if ($script->wasRecentlyCreated || $script->wasChanged(['status', 'shoot_date', 'title', 'client_id', 'user_id'])) {
+                $script->syncShootTask();
+            }
+        });
+    }
+
+    public function canSchedule(): bool
+    {
+        return in_array($this->status, self::SCHEDULABLE, true);
+    }
+
+    /** Shoots that count: approved or shot scripts. */
+    public function scopeScheduled(Builder $query): void
+    {
+        $query->whereIn('status', self::SCHEDULABLE);
+    }
+
+    public function shootTask(): HasOne
+    {
+        return $this->hasOne(Task::class);
+    }
+
+    /** The writer's "Shoot: …" task follows the script: made on approval with a date, moved with the date, done once shot, gone otherwise. */
+    public function syncShootTask(): void
+    {
+        $task = $this->shootTask()->first();
+        $writer = $this->writer?->employee;
+        if (! $this->canSchedule() || ! $this->shoot_date || ! $writer) {
+            $task?->delete();
+
+            return;
+        }
+
+        $task ??= new Task(['priority' => 'high']);
+        $task->script_id = $this->id;
+        $task->client_id = $this->client_id;
+        $shot = $this->status === 'shot';
+        $task->fill([
+            'title' => __('Shoot: :title', ['title' => $this->title]),
+            'type' => array_key_exists('video', Task::types()) ? 'video' : (string) array_key_first(Task::types()),
+            'due_date' => $this->shoot_date,
+            'status' => $shot ? 'done' : ($task->status === 'done' ? 'todo' : ($task->status ?? 'todo')),
+            'completed_at' => $shot ? ($task->completed_at ?? now()) : null,
+        ])->save();
+        $task->assignees()->syncWithoutDetaching([$writer->id]);
     }
 
     /** Who wrote it (the login that created it). */

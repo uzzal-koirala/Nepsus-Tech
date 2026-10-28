@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Client;
+use App\Models\Employee;
 use App\Models\Script;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -59,14 +60,15 @@ class ScriptsTest extends TestCase
         $this->assertSame(1, Script::whereNull('client_id')->where('title', 'Untitled script')->count());
         Script::where('title', 'Untitled script')->delete();
 
-        // Shoot date: saved from the editor, shown on the client's calendar, upcoming shoots first.
+        // Shoot date: picked once approved, saved from the editor, shown on the client's calendar, upcoming shoots first.
+        $script->update(['status' => 'approved']);
         Livewire::test('pages::script-editor', ['script' => $script])->set('shootDate', today()->addDays(2)->toDateString())->assertHasNoErrors();
         $this->assertTrue($script->fresh()->shoot_date->isSameDay(today()->addDays(2)));
         $this->assertSame('Shoot in 2 days', $script->fresh()->shootLabel());
         // Within a filter: upcoming shoots first, then no date, then past shoots.
-        $later = Script::create(['title' => 'Later idea', 'client_id' => $client->id, 'status' => 'review', 'type' => 'reel']);
-        $past = Script::create(['title' => 'Old shoot', 'client_id' => $client->id, 'status' => 'review', 'type' => 'reel', 'shoot_date' => today()->subDays(5)]);
-        $order = Livewire::test('pages::scripts')->set('status', 'review')->instance()->boxes->first()['scripts']->pluck('title')->all();
+        $later = Script::create(['title' => 'Later idea', 'client_id' => $client->id, 'status' => 'approved', 'type' => 'reel']);
+        $past = Script::create(['title' => 'Old shoot', 'client_id' => $client->id, 'status' => 'approved', 'type' => 'reel', 'shoot_date' => today()->subDays(5)]);
+        $order = Livewire::test('pages::scripts')->set('status', 'approved')->instance()->boxes->first()['scripts']->pluck('title')->all();
         $this->assertSame(['Momo reel', 'Later idea', 'Old shoot'], $order);
         Livewire::test('pages::client-profile', ['client' => $client])->assertSee('Shoot: Momo reel');
         Livewire::test('pages::calendar')->call('pick', today()->addDays(2)->toDateString())->assertSee('Shoot: Momo reel');
@@ -83,8 +85,8 @@ class ScriptsTest extends TestCase
     public function test_content_creators_submit_scripts_and_admins_approve_or_send_them_back(): void
     {
         $user = User::factory()->staff()->create();
-        $e = \App\Models\Employee::factory()->create(['department' => 'content-creator', 'status' => 'active']);
-        \App\Models\Employee::whereKey($e->id)->update(['user_id' => $user->id]);
+        $e = Employee::factory()->create(['department' => 'content-creator', 'status' => 'active']);
+        Employee::whereKey($e->id)->update(['user_id' => $user->id]);
         $script = Script::create(['title' => 'Momo reel', 'type' => 'reel', 'status' => 'draft']);
         $this->actingAs($user);
 
@@ -168,8 +170,8 @@ class ScriptsTest extends TestCase
         Livewire::test('pages::scripts')->call('approve', $waiting->id)->assertNotFound();
 
         // Writers see neither the count nor the panel, and cannot approve.
-        $e = \App\Models\Employee::factory()->create(['department' => 'content-creator', 'status' => 'active']);
-        \App\Models\Employee::whereKey($e->id)->update(['user_id' => $writer->id]);
+        $e = Employee::factory()->create(['department' => 'content-creator', 'status' => 'active']);
+        Employee::whereKey($e->id)->update(['user_id' => $writer->id]);
         $this->actingAs($writer);
         $this->get(route('scripts.index'))->assertOk()->assertDontSee('Waiting for your approval');
         Livewire::test('pages::scripts')->call('approve', $waiting->id)->assertForbidden();

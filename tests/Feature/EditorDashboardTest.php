@@ -32,7 +32,7 @@ class EditorDashboardTest extends TestCase
         $raw = Video::create(['title' => 'Kitchen clips', 'url' => 'https://drive.google.com/file/d/x/view', 'client_id' => $client->id, 'status' => 'raw']);
         $editing = Video::create(['title' => 'Chef interview', 'url' => 'https://drive.google.com/file/d/y/view', 'client_id' => $client->id, 'status' => 'editing']);
         Video::create(['title' => 'Old promo', 'url' => 'https://drive.google.com/file/d/z/view', 'status' => 'done']);
-        Script::create(['title' => 'Momo reel', 'client_id' => $client->id, 'type' => 'reel', 'status' => 'draft', 'shoot_date' => today()->addDays(2)]);
+        Script::create(['title' => 'Momo reel', 'client_id' => $client->id, 'type' => 'reel', 'status' => 'approved', 'shoot_date' => today()->addDays(2)]);
         [$user, $bikash] = $this->login('video-editor');
         $task = Task::create(['title' => 'Cut the Tihar reel', 'type' => WorkType::first()?->slug ?? 'task', 'priority' => 'high', 'status' => 'todo', 'due_date' => today()]);
         $task->assignees()->sync([$bikash->id]);
@@ -40,8 +40,9 @@ class EditorDashboardTest extends TestCase
 
         $this->assertTrue($user->isVideoEditor());
         $this->get(route('my.dashboard'))->assertOk()
-            ->assertSee(['Footage queue', 'Kitchen clips', 'Chef interview', 'Start editing', 'Mark edited', 'Cut the Tihar reel', 'Shoots coming up', 'Momo reel', 'Recently edited', 'Old promo', 'Waiting to edit'])
-            ->assertDontSee(['Tasks finished and tasks due', 'Recently finished']);
+            // The Content Creator's layout, with editing work: hero, stats, My edits chart + My tasks, Recently edited.
+            ->assertSee(['All videos', 'Calendar', 'Waiting to edit', 'Editing now', 'My edits', 'Cut the Tihar reel', 'Recently edited', 'Old promo'])
+            ->assertDontSee(['Tasks finished and tasks due', 'Recently finished', 'Footage queue', 'Shoots coming up']);
         $this->get(route('videos.index'))->assertOk();
 
         // raw -> editing -> done, from the dashboard.
@@ -67,7 +68,7 @@ class EditorDashboardTest extends TestCase
         $this->actingAs($user);
 
         $this->assertFalse($user->isVideoEditor());
-        $this->get(route('my.dashboard'))->assertOk()->assertSee('Tasks finished and tasks due')->assertDontSee('Footage queue');
+        $this->get(route('my.dashboard'))->assertOk()->assertSee('Tasks finished and tasks due')->assertDontSee('My edits');
         $this->get(route('videos.index'))->assertRedirect(route('my.dashboard'));
         Livewire::test('pages::editor-dashboard')->assertForbidden();
     }

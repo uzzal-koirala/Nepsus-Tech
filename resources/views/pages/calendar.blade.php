@@ -126,7 +126,8 @@ new #[Title('Calendar')] class extends Component {
     /** Client tasks due between two days: open first, then by priority. */
     private function tasksBetween($from, $to, bool $filtered = true)
     {
-        return Task::with(['client', 'assignees'])->whereNotNull('client_id')
+        // A script's shoot task shows as its shoot entry instead.
+        return Task::with(['client', 'assignees'])->whereNotNull('client_id')->whereNull('script_id')
             ->whereDate('due_date', '>=', $from)->whereDate('due_date', '<=', $to)
             // Admins and Content Creators plan every client; other employee logins see their own work only.
             ->unless(auth()->user()->canPlanContent(), fn ($q) => $q->whereHas('assignees', fn ($a) => $a->whereKey(auth()->user()->employee?->id ?? 0)))
@@ -152,7 +153,7 @@ new #[Title('Calendar')] class extends Component {
     {
         $weeks = $this->weeks;
 
-        return Script::with('client')->whereDate('shoot_date', '>=', $weeks[0][0])->whereDate('shoot_date', '<=', end($weeks)[6])
+        return Script::with('client')->scheduled()->whereDate('shoot_date', '>=', $weeks[0][0])->whereDate('shoot_date', '<=', end($weeks)[6])
             ->orderBy('title')->get()->groupBy(fn ($s) => $s->shoot_date->toDateString())->all();
     }
 
@@ -168,7 +169,7 @@ new #[Title('Calendar')] class extends Component {
             'done' => $tasks->whereNotNull('completed_at')->count(),
             'overdue' => $tasks->filter->isOverdue()->count(),
             'byType' => $tasks->countBy('type')->all(),
-            'shoots' => Script::whereDate('shoot_date', '>=', $first)->whereDate('shoot_date', '<=', $last)->count(),
+            'shoots' => Script::scheduled()->whereDate('shoot_date', '>=', $first)->whereDate('shoot_date', '<=', $last)->count(),
         ];
     }
 

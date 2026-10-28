@@ -130,7 +130,7 @@ new #[Title('Client profile')] class extends Component {
         $payments = $this->payments->filter(fn ($p) => $inMonth($p->due_date));
         $tasksByDay = $tasks->groupBy(fn ($t) => $t->due_date->toDateString());
         $paymentsByDay = $payments->groupBy(fn ($p) => $p->due_date->toDateString());
-        $shootsByDay = $this->client->scripts()->whereNotNull('shoot_date')
+        $shootsByDay = $this->client->scripts()->scheduled()->whereNotNull('shoot_date')
             ->whereDate('shoot_date', '>=', $first)->whereDate('shoot_date', '<=', $last)->get()
             ->groupBy(fn ($s) => $s->shoot_date->toDateString());
 

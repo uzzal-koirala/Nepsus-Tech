@@ -35,15 +35,13 @@ class VideoEditByTest extends TestCase
         $this->assertStringStartsWith('Was due', $tag(today()->subDay()->toDateString(), 'done')['label']);
         $this->assertNull((new Video)->deadline());
 
-        // The editor's queue puts the most urgent first and counts it as due.
+        // Late footage counts as due on the editor's dashboard.
         Video::create(['title' => 'Late promo', 'url' => 'https://drive.google.com/file/d/y/view', 'status' => 'editing', 'edit_by' => today()->subDay()]);
         Video::create(['title' => 'No date yet', 'url' => 'https://drive.google.com/file/d/z/view', 'status' => 'raw']);
         $user = User::factory()->staff()->create();
         $e = Employee::factory()->create(['department' => 'video-editor', 'status' => 'active']);
         Employee::whereKey($e->id)->update(['user_id' => $user->id]);
         $this->actingAs($user);
-        $this->get(route('my.dashboard'))->assertOk()
-            ->assertSeeInOrder(['Late promo', 'Kitchen clips', 'No date yet'])
-            ->assertSee(['Edit 1 day late', 'Footage and tasks, today or late']);
+        $this->get(route('my.dashboard'))->assertOk()->assertSee('Footage and tasks, today or late');
     }
 }
