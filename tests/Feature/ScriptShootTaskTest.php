@@ -45,6 +45,16 @@ class ScriptShootTaskTest extends TestCase
         $this->assertSame($later, Task::sole()->due_date->toDateString());
         $script->fresh()->update(['status' => 'shot']);
         $this->assertNotNull(Task::sole()->completed_at);
+        // Ticking the task off in My tasks completes the script; unticking takes it back to Approved.
+        $script->fresh()->update(['status' => 'approved']);
+        $id = Task::sole()->id;
+        Livewire::test('pages::my-tasks')->call('setStatus', $id, 'done');
+        $this->assertSame('shot', $script->fresh()->status);
+        Livewire::test('pages::my-tasks')->call('setStatus', $id, 'todo');
+        $this->assertSame('approved', $script->fresh()->status);
+        Livewire::test('pages::calendar')->call('toggleDone', $id);
+        $this->assertSame('shot', $script->fresh()->status);
+
         $script->fresh()->update(['status' => 'approved', 'shoot_date' => null]);
         $this->assertSame(0, Task::count());
     }

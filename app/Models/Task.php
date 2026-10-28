@@ -65,6 +65,22 @@ class Task extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        // Ticking off a script's shoot task completes the script; unticking takes it back to Approved.
+        static::saved(function (Task $task) {
+            if ($task->script_id && $task->wasChanged('completed_at')) {
+                Script::whereKey($task->script_id)->whereIn('status', Script::SCHEDULABLE)
+                    ->update(['status' => $task->completed_at ? 'shot' : 'approved']);
+            }
+        });
+    }
+
+    public function script(): BelongsTo
+    {
+        return $this->belongsTo(Script::class);
+    }
+
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
