@@ -231,8 +231,8 @@ new #[Title('My settings')] class extends Component {
                         <p class="text-xs text-zinc-500">{{ __('How the app looks on this device') }}</p>
                     </div>
                 </div>
-                <div x-data class="grid grid-cols-3 gap-2 p-5 sm:gap-3 sm:p-6">
-                    @foreach (['light' => ['Light', 'sun', 'bg-white', 'bg-zinc-100'], 'dark' => ['Dark', 'moon', 'bg-zinc-900', 'bg-zinc-700'], 'system' => ['System', 'computer-desktop', 'bg-linear-to-r from-white from-50% to-zinc-900 to-50%', 'bg-zinc-300']] as $mode => [$label, $icon, $screen, $bar])
+                <div x-data class="grid grid-cols-2 gap-2 p-5 sm:gap-3 sm:p-6">
+                    @foreach (['light' => ['Light', 'sun', 'bg-white', 'bg-zinc-100'], 'dark' => ['Dark', 'moon', 'bg-zinc-900', 'bg-zinc-700']] as $mode => [$label, $icon, $screen, $bar])
                         <button type="button" @click="$flux.appearance = '{{ $mode }}'" class="overflow-hidden rounded-xl text-start ring-1 transition" :class="$flux.appearance === '{{ $mode }}' ? 'ring-2 ring-brand-500 shadow-lg shadow-brand-500/15' : 'ring-zinc-200 hover:ring-zinc-300 dark:ring-white/10'">
                             <div class="{{ $screen }} flex h-14 gap-1.5 border-b border-zinc-200/70 p-2 sm:h-20 dark:border-white/10">
                                 <div class="{{ $bar }} w-1/4 rounded opacity-80"></div>

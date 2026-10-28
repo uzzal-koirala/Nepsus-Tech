@@ -240,56 +240,59 @@ new #[Title('My attendance')] class extends Component {
 
     {{-- Calendar --}}
     <section class="{{ $panel }} min-w-0 overflow-hidden" data-test="attendance-calendar">
-        <div class="flex items-center gap-3 px-5 py-4">
+        <div class="flex items-center gap-3 px-4 py-3.5 sm:px-5 sm:py-4">
             <span class="flex size-9 items-center justify-center rounded-lg bg-brand-500 text-white shadow-md shadow-brand-500/30"><flux:icon.calendar-days variant="mini" class="size-4.5" /></span>
             <div>
                 <h2 class="font-semibold text-zinc-900 dark:text-white">{{ $cal['label'] }}</h2>
                 <p class="text-xs text-zinc-500">{{ $cal['range'] }}</p>
             </div>
         </div>
-        <div class="overflow-x-auto border-t border-zinc-100 dark:border-white/5">
-            <div class="min-w-[42rem]">
+        <div class="border-t border-zinc-100 sm:overflow-x-auto dark:border-white/5">
+            <div class="sm:min-w-[42rem]">
                 <div class="grid grid-cols-7 border-b border-zinc-100 dark:border-white/5">
                     @foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $i => $wd)
-                        <div @class(['px-2 py-2 text-center text-[0.6875rem] font-semibold tracking-wider uppercase', 'text-rose-500' => $i === 6, 'text-zinc-400' => $i !== 6])>{{ __($wd) }}</div>
+                        <div @class(['py-2 text-center text-[0.6875rem] font-semibold tracking-wider uppercase sm:px-2', 'text-rose-500' => $i === 6, 'text-zinc-400' => $i !== 6])><span class="sm:hidden">{{ mb_substr(__($wd), 0, 1) }}</span><span class="max-sm:hidden">{{ __($wd) }}</span></div>
                     @endforeach
                 </div>
                 @foreach ($cal['weeks'] as $week)
                     <div class="grid grid-cols-7 border-b border-zinc-100 last:border-0 dark:border-white/5">
                         @foreach ($week as $cell)
                             @if ($cell === null)
-                                <div class="min-h-24 border-e border-zinc-100 bg-zinc-50/50 last:border-e-0 dark:border-white/5 dark:bg-white/[0.01]"></div>
+                                <div class="min-h-12 border-e border-zinc-100 bg-zinc-50/50 last:border-e-0 sm:min-h-24 dark:border-white/5 dark:bg-white/[0.01]"></div>
                             @else
                                 @php
                                     $mark = $cell['mark'];
                                     $holiday = $cell['ad']->isHoliday();
                                     $isToday = $cell['ad']->isToday();
+                                    $late = $mark?->minutesLate();
                                 @endphp
                                 <div wire:key="att-{{ $cell['ad']->toDateString() }}" @class([
-                                    'flex min-h-24 flex-col gap-1.5 border-e border-zinc-100 p-2 last:border-e-0 dark:border-white/5',
+                                    'relative flex min-h-12 flex-col items-center justify-center gap-1.5 border-e border-zinc-100 p-1 last:border-e-0 sm:min-h-24 sm:items-stretch sm:justify-start sm:p-2 dark:border-white/5',
                                     'bg-rose-50/40 dark:bg-rose-500/[0.04]' => $holiday,
                                     $markTone[$mark?->status]['cell'] ?? '' => $mark,
                                 ])>
-                                    <span class="flex items-center justify-between">
+                                    <span class="flex items-center justify-center sm:justify-between">
                                         <span @class([
-                                            'flex size-6 items-center justify-center rounded-full text-xs font-semibold tabular-nums',
+                                            'flex size-7 items-center justify-center rounded-full text-xs font-semibold tabular-nums sm:size-6',
                                             'bg-brand-500 text-white shadow-sm shadow-brand-500/40' => $isToday,
+                                            ($markTone[$mark?->status]['pill'] ?? '').' sm:bg-transparent sm:text-zinc-800 dark:sm:text-zinc-100' => ! $isToday && $mark && ! $holiday,
                                             'text-rose-500' => ! $isToday && $holiday,
-                                            'text-zinc-400' => ! $isToday && ! $holiday && $cell['ad']->isFuture(),
-                                            'text-zinc-800 dark:text-zinc-100' => ! $isToday && ! $holiday && ! $cell['ad']->isFuture(),
+                                            'text-zinc-400' => ! $isToday && ! $holiday && ! $mark && $cell['ad']->isFuture(),
+                                            'text-zinc-800 dark:text-zinc-100' => ! $isToday && ! $holiday && ! $mark && ! $cell['ad']->isFuture(),
                                         ])>{{ $cell['day'] }}</span>
-                                        <span class="text-[0.625rem] text-zinc-300 tabular-nums dark:text-zinc-600">{{ $cell['ad']->format('j') }}</span>
+                                        <span class="text-[0.625rem] text-zinc-300 tabular-nums max-sm:hidden dark:text-zinc-600">{{ $cell['ad']->format('j') }}</span>
                                     </span>
+                                    @if ($late)<span class="absolute top-1 right-1 size-2 rounded-full bg-orange-500 ring-2 ring-white sm:hidden dark:ring-zinc-950" title="{{ __('Late :time', ['time' => Attendance::duration($late)]) }}"></span>@endif
                                     @if ($holiday)
-                                        <span class="inline-flex w-fit items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"><flux:icon.sparkles variant="micro" class="size-3 shrink-0" /><span class="truncate">{{ \App\Models\Holiday::nameOn($cell['ad']) ?? __('Holiday') }}</span></span>
+                                        <span class="inline-flex w-fit items-center gap-1 rounded-md bg-rose-100 max-sm:hidden px-1.5 py-0.5 text-[0.6875rem] font-semibold text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"><flux:icon.sparkles variant="micro" class="size-3 shrink-0" /><span class="truncate">{{ \App\Models\Holiday::nameOn($cell['ad']) ?? __('Holiday') }}</span></span>
                                     @elseif ($mark)
-                                        <span class="{{ $markTone[$mark->status]['pill'] }} inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-semibold" @if ($mark->note) title="{{ $mark->note }}" @endif>
+                                        <span class="{{ $markTone[$mark->status]['pill'] }} inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-semibold max-sm:hidden" @if ($mark->note) title="{{ $mark->note }}" @endif>
                                             <flux:icon :icon="Attendance::STATUSES[$mark->status]['icon']" variant="micro" class="size-3" />{{ __(Attendance::STATUSES[$mark->status]['label']) }}
                                         </span>
                                         @if ($mark->check_in)
-                                            <span class="text-[0.6875rem] leading-tight font-medium text-zinc-600 tabular-nums dark:text-zinc-300">{{ Attendance::clock($mark->check_in) }}@if ($mark->check_out) – {{ Attendance::clock($mark->check_out) }}@endif</span>
-                                            @if ($late = $mark->minutesLate())
-                                                <span class="inline-flex w-fit items-center gap-1 rounded-md bg-orange-100 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-orange-700 dark:bg-orange-500/15 dark:text-orange-300"><flux:icon.clock variant="micro" class="size-3" />{{ __('Late :time', ['time' => Attendance::duration($late)]) }}</span>
+                                            <span class="text-[0.6875rem] leading-tight font-medium text-zinc-600 tabular-nums max-sm:hidden dark:text-zinc-300">{{ Attendance::clock($mark->check_in) }}@if ($mark->check_out) – {{ Attendance::clock($mark->check_out) }}@endif</span>
+                                            @if ($late)
+                                                <span class="inline-flex w-fit items-center gap-1 rounded-md bg-orange-100 max-sm:hidden px-1.5 py-0.5 text-[0.6875rem] font-semibold text-orange-700 dark:bg-orange-500/15 dark:text-orange-300"><flux:icon.clock variant="micro" class="size-3" />{{ __('Late :time', ['time' => Attendance::duration($late)]) }}</span>
                                             @endif
                                         @endif
                                     @endif
@@ -299,6 +302,13 @@ new #[Title('My attendance')] class extends Component {
                     </div>
                 @endforeach
             </div>
+        </div>
+        <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 border-t border-zinc-100 px-4 py-3 text-[0.6875rem] text-zinc-500 sm:hidden dark:border-white/5">
+            @foreach (Attendance::STATUSES as $k => $st)
+                <span class="inline-flex items-center gap-1.5"><span class="{{ $markTone[$k]['pill'] }} size-2.5 rounded-full"></span>{{ __($st['label']) }}</span>
+            @endforeach
+            <span class="inline-flex items-center gap-1.5"><span class="size-2.5 rounded-full bg-orange-500"></span>{{ __('Late') }}</span>
+            <span class="inline-flex items-center gap-1.5"><span class="size-2.5 rounded-full bg-rose-100 ring-1 ring-rose-300"></span>{{ __('Holiday') }}</span>
         </div>
     </section>
 

@@ -168,6 +168,7 @@ new #[Title('Calendar')] class extends Component {
             'done' => $tasks->whereNotNull('completed_at')->count(),
             'overdue' => $tasks->filter->isOverdue()->count(),
             'byType' => $tasks->countBy('type')->all(),
+            'shoots' => Script::whereDate('shoot_date', '>=', $first)->whereDate('shoot_date', '<=', $last)->count(),
         ];
     }
 
@@ -202,7 +203,7 @@ new #[Title('Calendar')] class extends Component {
     $isAdmin = auth()->user()->isAdmin();
 @endphp
 
-<div class="stagger flex w-full flex-col gap-6">
+<div class="stagger flex w-full flex-col gap-4 sm:gap-6">
     <header class="flex flex-wrap items-end justify-between gap-4">
         <div>
             <h1 class="text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-3xl dark:text-white">{{ __('Calendar') }}</h1>
@@ -212,17 +213,18 @@ new #[Title('Calendar')] class extends Component {
     </header>
 
     {{-- Month at a glance --}}
-    <section class="grid gap-4 sm:grid-cols-3">
+    <section class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4" data-test="calendar-stats">
         @foreach ([
-            [__('Tasks this month'), $stats['total'], 'clipboard-document-list', 'bg-brand-500'],
-            [__('Done'), $stats['done'].($stats['total'] ? ' · '.round($stats['done'] / $stats['total'] * 100).'%' : ''), 'check-badge', 'bg-emerald-500'],
-            [__('Overdue'), $stats['overdue'], 'exclamation-triangle', 'bg-rose-500'],
+            [__('Tasks this month'), $stats['total'], 'clipboard-document-list', 'bg-brand-500 shadow-brand-500/30'],
+            [__('Done'), $stats['done'].($stats['total'] ? ' · '.round($stats['done'] / $stats['total'] * 100).'%' : ''), 'check-badge', 'bg-emerald-500 shadow-emerald-500/30'],
+            [__('Overdue'), $stats['overdue'], 'exclamation-triangle', 'bg-rose-500 shadow-rose-500/30'],
+            [__('Shoots this month'), $stats['shoots'], 'video-camera', 'bg-violet-500 shadow-violet-500/30'],
         ] as [$label, $value, $icon, $tile])
-            <div class="{{ $panel }} flex items-center gap-4 p-4">
-                <span class="{{ $tile }} flex size-11 items-center justify-center rounded-xl text-white shadow-md"><flux:icon :icon="$icon" variant="mini" class="size-5" /></span>
-                <div>
-                    <p class="text-sm text-zinc-500">{{ $label }}</p>
-                    <p class="text-2xl leading-tight font-bold text-zinc-900 tabular-nums dark:text-white">{{ $value }}</p>
+            <div class="{{ $panel }} flex min-w-0 items-center gap-3 p-3 sm:gap-4 sm:p-4">
+                <span class="{{ $tile }} flex size-9 shrink-0 items-center justify-center rounded-xl text-white shadow-md sm:size-11"><flux:icon :icon="$icon" variant="mini" class="size-4.5 sm:size-5" /></span>
+                <div class="min-w-0">
+                    <p class="truncate text-xs text-zinc-500 sm:text-sm">{{ $label }}</p>
+                    <p class="text-xl leading-tight font-bold text-zinc-900 tabular-nums sm:text-2xl dark:text-white">{{ $value }}</p>
                 </div>
             </div>
         @endforeach
@@ -230,11 +232,11 @@ new #[Title('Calendar')] class extends Component {
 
     {{-- Work type filters --}}
     @if ($types)
-        <div class="flex flex-wrap gap-2">
+        <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
             @foreach ($types as $slug => $t)
                 @php $on = ! in_array($slug, $off, true); @endphp
                 <button type="button" wire:click="toggleType('{{ $slug }}')" @class([
-                    'inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition',
+                    'inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition select-none',
                     'bg-white text-zinc-700 ring-zinc-200 shadow-xs hover:ring-zinc-300 dark:bg-zinc-950 dark:text-zinc-200 dark:ring-white/10' => $on,
                     'text-zinc-400 ring-zinc-200/60 line-through dark:ring-white/5' => ! $on,
                 ])>
@@ -249,9 +251,9 @@ new #[Title('Calendar')] class extends Component {
     <div class="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         {{-- Month --}}
         <section class="{{ $panel }} overflow-hidden">
-            <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+            <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-5 sm:py-4">
                 <div>
-                    <h2 class="text-xl font-semibold tracking-tight text-zinc-900 dark:text-white" data-test="month-title">{{ NepaliDate::MONTHS[$m - 1] }} {{ $y }}</h2>
+                    <h2 class="text-lg font-semibold tracking-tight text-zinc-900 sm:text-xl dark:text-white" data-test="month-title">{{ NepaliDate::MONTHS[$m - 1] }} {{ $y }}</h2>
                     <p class="text-xs text-zinc-500">{{ $weeks[0][0]->format('M') }} – {{ end($weeks)[6]->format('M Y') }}</p>
                 </div>
                 <div class="flex items-center gap-1.5">
@@ -261,11 +263,11 @@ new #[Title('Calendar')] class extends Component {
                 </div>
             </div>
 
-            <div class="overflow-x-auto">
-                <div class="min-w-[44rem]">
+            <div class="sm:overflow-x-auto">
+                <div class="sm:min-w-[44rem]">
                     <div class="grid grid-cols-7 border-y border-zinc-100 bg-zinc-50/80 dark:border-white/5 dark:bg-white/[0.02]">
                         @foreach ($weekdays as $i => $w)
-                            <p @class(['px-3 py-2 text-xs font-semibold tracking-wide uppercase', 'text-rose-500' => $i === 6, 'text-zinc-500' => $i !== 6])>{{ $w }}</p>
+                            <p @class(['py-2 text-center text-[0.6875rem] font-semibold tracking-wide uppercase sm:px-3 sm:text-start sm:text-xs', 'text-rose-500' => $i === 6, 'text-zinc-500' => $i !== 6])><span class="sm:hidden">{{ mb_substr($w, 0, 1) }}</span><span class="max-sm:hidden">{{ $w }}</span></p>
                         @endforeach
                     </div>
                     <div class="grid grid-cols-7">
@@ -279,33 +281,41 @@ new #[Title('Calendar')] class extends Component {
                                     $holiday = $holidays[$key] ?? null;
                                 @endphp
                                 <div wire:key="d-{{ $key }}" wire:click="pick('{{ $key }}')" @class([
-                                    'group relative flex min-h-28 cursor-pointer flex-col gap-1 border-e border-b border-zinc-100 p-1.5 transition dark:border-white/5',
+                                    'group relative flex min-h-14 cursor-pointer flex-col items-center gap-1 border-e border-b border-zinc-100 p-1 transition select-none sm:min-h-28 sm:items-stretch sm:p-1.5 dark:border-white/5',
                                     'bg-zinc-50/60 dark:bg-white/[0.015]' => ! $inMonth && ! $holiday,
                                     'bg-rose-50/70 dark:bg-rose-500/[0.06]' => $holiday && ! $isSel,
                                     'hover:bg-brand-50/40 dark:hover:bg-brand-500/5' => ! $isSel,
                                     'bg-brand-50/70 ring-2 ring-brand-500 ring-inset dark:bg-brand-500/10' => $isSel,
                                 ])>
-                                    <div class="flex items-center justify-between px-1">
+                                    <div class="flex items-center justify-center sm:justify-between sm:px-1">
                                         <span @class([
-                                            'flex size-7 items-center justify-center rounded-full text-sm font-semibold tabular-nums',
+                                            'flex size-7 items-center justify-center rounded-full text-[0.8125rem] font-semibold tabular-nums sm:text-sm',
                                             'bg-brand-500 text-white shadow-md shadow-brand-500/30' => $d->isToday(),
                                             'text-rose-600 dark:text-rose-400' => ! $d->isToday() && $holiday,
                                             'text-zinc-900 dark:text-white' => ! $d->isToday() && ! $holiday && $inMonth,
                                             'text-zinc-400' => ! $d->isToday() && ! $holiday && ! $inMonth,
                                         ])>{{ $bsDay($d) }}</span>
-                                        <span class="text-[0.625rem] text-zinc-400 tabular-nums">{{ $d->day === 1 ? $d->format('j M') : $d->day }}</span>
+                                        <span class="text-[0.625rem] text-zinc-400 tabular-nums max-sm:hidden">{{ $d->day === 1 ? $d->format('j M') : $d->day }}</span>
                                     </div>
+                                    {{-- Phones: a dot per shoot and task instead of the labels --}}
+                                    @if ($holiday || $items->isNotEmpty() || ! empty($shootsByDay[$key]))
+                                        <div class="flex flex-wrap justify-center gap-0.5 sm:hidden" aria-hidden="true">
+                                            @if ($holiday)<span class="size-1.5 rounded-full bg-rose-500"></span>@endif
+                                            @foreach ($shootsByDay[$key] ?? [] as $s)<span class="size-1.5 rounded-full bg-violet-500"></span>@endforeach
+                                            @foreach ($items->take(4) as $t)<span class="{{ $t->completed_at ? 'bg-zinc-300 dark:bg-zinc-600' : ($t->isOverdue() ? 'bg-rose-500' : $toneOf($t->type)['dot']) }} size-1.5 rounded-full"></span>@endforeach
+                                        </div>
+                                    @endif
                                     @if ($holiday)
-                                        <span class="flex items-center gap-1 truncate rounded-md bg-rose-500 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-white shadow-sm shadow-rose-500/30" title="{{ $holiday }}" data-test="holiday-{{ $key }}"><flux:icon.sparkles variant="micro" class="size-3 shrink-0" /><span class="truncate">{{ $holiday }}</span></span>
+                                        <span class="flex items-center gap-1 truncate rounded-md bg-rose-500 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-white shadow-sm shadow-rose-500/30 max-sm:hidden" title="{{ $holiday }}" data-test="holiday-{{ $key }}"><flux:icon.sparkles variant="micro" class="size-3 shrink-0" /><span class="truncate">{{ $holiday }}</span></span>
                                     @endif
                                     @foreach ($shootsByDay[$key] ?? [] as $s)
-                                        <a href="{{ route('scripts.edit', $s) }}" wire:navigate @click.stop class="flex items-center gap-1 truncate rounded-md bg-violet-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-violet-700 ring-1 ring-violet-200 hover:bg-violet-100 dark:bg-violet-500/10 dark:text-violet-300 dark:ring-violet-500/20" title="{{ $s->client?->displayName() }}" data-test="shoot-{{ $s->id }}">
+                                        <a href="{{ route('scripts.edit', $s) }}" wire:navigate @click.stop class="flex items-center gap-1 truncate rounded-md bg-violet-50 px-1.5 py-0.5 text-[0.6875rem] font-medium text-violet-700 ring-1 ring-violet-200 hover:bg-violet-100 max-sm:hidden dark:bg-violet-500/10 dark:text-violet-300 dark:ring-violet-500/20" title="{{ $s->client?->displayName() }}" data-test="shoot-{{ $s->id }}">
                                             <flux:icon.video-camera variant="micro" class="size-3 shrink-0" /><span class="truncate">{{ __('Shoot: :title', ['title' => $s->title]) }}</span>
                                         </a>
                                     @endforeach
                                     @foreach ($items->take(3) as $t)
                                         <span @class([
-                                            'flex items-center gap-1 truncate rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium ring-1',
+                                            'flex items-center gap-1 truncate rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium ring-1 max-sm:hidden',
                                             $toneOf($t->type)['chip'] => ! $t->completed_at,
                                             'bg-zinc-50 text-zinc-400 ring-zinc-200/70 line-through dark:bg-white/5 dark:ring-white/5' => $t->completed_at,
                                         ])>
@@ -314,9 +324,9 @@ new #[Title('Calendar')] class extends Component {
                                         </span>
                                     @endforeach
                                     @if ($items->count() > 3)
-                                        <span class="px-1.5 text-[0.6875rem] font-medium text-zinc-500">+{{ $items->count() - 3 }} {{ __('more') }}</span>
+                                        <span class="px-1.5 text-[0.6875rem] font-medium text-zinc-500 max-sm:hidden">+{{ $items->count() - 3 }} {{ __('more') }}</span>
                                     @endif
-                                    <button type="button" wire:click.stop="newTask('{{ $key }}')" class="absolute right-1.5 bottom-1.5 hidden size-6 items-center justify-center rounded-md bg-white text-zinc-500 shadow-sm ring-1 ring-zinc-200 group-hover:flex hover:text-brand-600 dark:bg-zinc-900 dark:ring-white/10" aria-label="{{ __('Add task on this day') }}"><flux:icon.plus variant="micro" class="size-3.5" /></button>
+                                    <button type="button" wire:click.stop="newTask('{{ $key }}')" class="absolute right-1.5 bottom-1.5 hidden size-6 max-sm:hidden! items-center justify-center rounded-md bg-white text-zinc-500 shadow-sm ring-1 ring-zinc-200 group-hover:flex hover:text-brand-600 dark:bg-zinc-900 dark:ring-white/10" aria-label="{{ __('Add task on this day') }}"><flux:icon.plus variant="micro" class="size-3.5" /></button>
                                 </div>
                             @endforeach
                         @endforeach

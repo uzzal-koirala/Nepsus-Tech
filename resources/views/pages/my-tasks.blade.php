@@ -319,27 +319,27 @@ new #[Title('My tasks')] class extends Component {
     @endunless
 
     {{-- Tabs and filters --}}
-    <section class="flex flex-col gap-3">
-        <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:px-0">
+    <section class="flex flex-col gap-2.5 rounded-2xl bg-white p-2 ring-1 ring-zinc-200/70 sm:gap-3 sm:bg-transparent sm:p-0 sm:ring-0 dark:bg-zinc-950 dark:ring-white/10 sm:dark:bg-transparent">
+        <div class="flex gap-1 overflow-x-auto rounded-xl bg-zinc-100/80 p-1 [scrollbar-width:none] sm:gap-2 sm:rounded-none sm:bg-transparent sm:p-0 sm:pb-1 dark:bg-white/5 sm:dark:bg-transparent" role="tablist">
             @foreach ($tabs as $key => [$label, $items, $icon])
-                <button type="button" wire:click="$set('tab', '{{ $key }}')" @class([
-                    'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[0.8125rem] font-medium ring-1 transition sm:gap-2 sm:px-4 sm:py-2 sm:text-sm',
-                    'bg-zinc-900 text-white ring-zinc-900 shadow-md dark:bg-white dark:text-zinc-900 dark:ring-white' => $tab === $key,
-                    'bg-white text-zinc-600 ring-zinc-200 hover:text-zinc-900 hover:ring-zinc-300 dark:bg-zinc-950 dark:text-zinc-300 dark:ring-white/10 dark:hover:text-white' => $tab !== $key,
+                <button type="button" role="tab" aria-selected="{{ $tab === $key ? 'true' : 'false' }}" wire:click="$set('tab', '{{ $key }}')" @class([
+                    'inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium whitespace-nowrap transition select-none [-webkit-tap-highlight-color:transparent] sm:gap-2 sm:rounded-full sm:px-4 sm:py-2 sm:text-sm sm:ring-1',
+                    'bg-white text-zinc-900 shadow-sm sm:bg-zinc-900 sm:text-white sm:shadow-md sm:ring-zinc-900 dark:bg-zinc-800 dark:text-white sm:dark:bg-white sm:dark:text-zinc-900 sm:dark:ring-white' => $tab === $key,
+                    'text-zinc-500 hover:text-zinc-900 sm:bg-white sm:text-zinc-600 sm:ring-zinc-200 sm:hover:ring-zinc-300 dark:text-zinc-400 dark:hover:text-white sm:dark:bg-zinc-950 sm:dark:ring-white/10' => $tab !== $key,
                 ]) data-test="tab-{{ $key }}">
-                    <flux:icon :icon="$icon" variant="micro" class="size-4" />{{ $label }}
+                    <flux:icon :icon="$icon" variant="micro" class="size-4 max-sm:hidden" />{{ $label }}
                     <span @class([
-                        'rounded-full px-1.5 text-xs tabular-nums',
-                        'bg-white/20' => $tab === $key,
+                        'rounded-full px-1.5 text-[0.6875rem] tabular-nums sm:text-xs',
+                        'bg-zinc-100 text-zinc-600 sm:bg-white/20 sm:text-inherit dark:bg-white/10 dark:text-zinc-300' => $tab === $key,
                         'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' => $tab !== $key && $key === 'late' && $items->count(),
                         'bg-zinc-100 text-zinc-500 dark:bg-white/10 dark:text-zinc-400' => $tab !== $key && ! ($key === 'late' && $items->count()),
                     ])>{{ $items->count() }}</span>
                 </button>
             @endforeach
         </div>
-        <div class="flex flex-wrap items-center gap-2">
-            <div class="min-w-56 flex-1"><flux:input wire:model.live.debounce.300ms="search" icon="magnifying-glass" :placeholder="__('Search my tasks')" clearable /></div>
-            <div class="w-full sm:w-56">
+        <div class="flex items-center gap-2">
+            <div class="min-w-0 flex-1"><flux:input wire:model.live.debounce.300ms="search" icon="magnifying-glass" :placeholder="__('Search my tasks')" clearable /></div>
+            <div class="w-32 shrink-0 sm:w-56">
                 <flux:select wire:model.live="client">
                     <flux:select.option value="">{{ __('All clients') }}</flux:select.option>
                     @foreach ($this->myClients as $c)
@@ -498,37 +498,22 @@ new #[Title('My tasks')] class extends Component {
     </flux:modal>
 
     {{-- Add / edit --}}
-    <flux:modal name="task-form" class="w-full max-w-xl">
+    <flux:modal name="task-form" class="w-full max-w-xl overflow-visible">
         <form wire:submit="saveTask" class="flex flex-col gap-5">
             <div>
                 <flux:heading size="lg">{{ $editingId ? __('Edit task') : __('New task') }}</flux:heading>
                 <flux:text>{{ __('Pick a client so it also shows on their profile. You stay on the task.') }}</flux:text>
             </div>
             <flux:input wire:model="fTitle" :label="__('Title')" :placeholder="__('e.g. Write the Tihar reel caption')" required autofocus />
-            <div class="grid gap-4 sm:grid-cols-2">
-                <flux:select wire:model="fClient" :label="__('Client')">
-                    <flux:select.option value="">{{ __('No client (team task)') }}</flux:select.option>
-                    @foreach ($this->clients as $c)
-                        <flux:select.option value="{{ $c->id }}">{{ $c->displayName() }}</flux:select.option>
-                    @endforeach
-                </flux:select>
-                <flux:select wire:model="fType" :label="__('Type')">
-                    @foreach ($types as $slug => $t)
-                        <flux:select.option value="{{ $slug }}">{{ $t['label'] }}</flux:select.option>
-                    @endforeach
-                </flux:select>
-                <flux:select wire:model="fStatus" :label="__('Status')">
-                    @foreach (Task::STATUSES as $sk => $s)
-                        <flux:select.option value="{{ $sk }}">{{ __($s['label']) }}</flux:select.option>
-                    @endforeach
-                </flux:select>
-                <flux:select wire:model="fPriority" :label="__('Priority')">
-                    @foreach (Task::PRIORITIES as $pk => $pl)
-                        <flux:select.option value="{{ $pk }}">{{ __($pl) }}</flux:select.option>
-                    @endforeach
-                </flux:select>
-                <flux:input type="date" wire:model="fStart" :label="__('Start')" />
-                <flux:input type="date" wire:model="fDue" :label="__('Due')" />
+            {{-- Pairs side by side, phones too: client + type, status + priority, start + due. --}}
+            <div class="grid grid-cols-2 gap-3 sm:gap-4">
+                <x-rich-select model="fClient" searchable :label="__('Client')" :placeholder="__('Pick a client')" :options="collect([['value' => '', 'label' => __('No client'), 'hint' => __('Team task'), 'icon' => 'user-group']])
+                    ->concat($this->clients->map(fn ($c) => ['value' => $c->id, 'label' => $c->displayName(), 'hint' => $c->contactName(), 'initials' => $c->initials(), 'tile' => 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200']))" />
+                <x-rich-select model="fType" :label="__('Type')" :options="collect($types)->map(fn ($t, $slug) => ['value' => $slug, 'label' => $t['label'], 'icon' => $t['icon'], 'tile' => (WorkType::PALETTE[$t['color']] ?? WorkType::PALETTE['zinc'])['dot'].' text-white'])->values()" />
+                <x-rich-select model="fStatus" :label="__('Status')" :options="collect(Task::STATUSES)->map(fn ($st, $sk) => ['value' => $sk, 'label' => __($st['label']), 'icon' => $st['icon'], 'tile' => $stageTone[$sk]['pill']])->values()" />
+                <x-rich-select model="fPriority" :label="__('Priority')" :options="collect(Task::PRIORITIES)->map(fn ($pl, $pk) => ['value' => $pk, 'label' => __($pl), 'icon' => Task::PRIORITY_STYLES[$pk]['icon'], 'tile' => Task::PRIORITY_STYLES[$pk]['tone'].' ring-1'])->values()" />
+                <x-nepali-date wire:model="fStart" :label="__('Start')" />
+                <x-nepali-date wire:model="fDue" :label="__('Due')" align="end" />
             </div>
             <flux:textarea wire:model="fDescription" :label="__('Notes')" rows="3" :placeholder="__('Anything the team should know')" />
             <div>
