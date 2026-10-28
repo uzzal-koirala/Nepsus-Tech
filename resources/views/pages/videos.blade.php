@@ -16,6 +16,10 @@ new #[Title('Videos')] class extends Component {
     #[Url(except: '')]
     public string $status = '';
 
+    /** '' = everything, 'broll' = only B-roll */
+    #[Url(except: '')]
+    public string $kind = '';
+
     #[Url(as: 'client', except: '')]
     public string $clientFilter = '';
 
@@ -27,7 +31,7 @@ new #[Title('Videos')] class extends Component {
 
     public string $clientId = '';
 
-    public string $videoStatus = 'raw';
+    public string $videoKind = 'raw';
 
     public string $shotOn = '';
 
@@ -49,7 +53,8 @@ new #[Title('Videos')] class extends Component {
         $q = mb_strtolower(trim($this->search));
 
         return $this->all
-            ->when($this->status !== '', fn ($c) => $c->where('status', $this->status))
+            ->when($this->kind === 'broll', fn ($c) => $c->where('kind', 'broll'))
+            ->when($this->status !== '', fn ($c) => $c->where('kind', 'raw')->where('status', $this->status))
             ->when($this->clientFilter !== '', fn ($c) => $c->where('client_id', $this->clientFilter === 'none' ? null : (int) $this->clientFilter))
             ->when($q !== '', fn ($c) => $c->filter(fn ($v) => str_contains(mb_strtolower($v->title.' '.$v->notes.' '.$v->client?->displayName()), $q)))
             ->values();
@@ -65,7 +70,7 @@ new #[Title('Videos')] class extends Component {
     {
         $this->reset('editingId', 'url', 'title', 'notes', 'shotOn', 'editBy');
         $this->clientId = $this->clientFilter !== '' && $this->clientFilter !== 'none' ? $this->clientFilter : '';
-        $this->videoStatus = 'raw';
+        $this->videoKind = 'raw';
         $this->resetErrorBag();
         Flux::modal('video-form')->show();
     }
@@ -77,7 +82,7 @@ new #[Title('Videos')] class extends Component {
         $this->url = $video->url;
         $this->title = $video->title;
         $this->clientId = (string) $video->client_id;
-        $this->videoStatus = $video->status;
+        $this->videoKind = $video->kind;
         $this->shotOn = (string) $video->shot_on?->toDateString();
         $this->editBy = (string) $video->edit_by?->toDateString();
         $this->notes = (string) $video->notes;
@@ -92,7 +97,7 @@ new #[Title('Videos')] class extends Component {
             'url' => ['required', 'url:http,https', 'max:2048'],
             'title' => ['nullable', 'string', 'max:200'],
             'clientId' => ['nullable', Rule::exists('clients', 'id')],
-            'videoStatus' => ['required', Rule::in(array_keys(Video::STATUSES))],
+            'videoKind' => ['required', Rule::in(array_keys(Video::KINDS))],
             'shotOn' => ['nullable', 'date'],
             'editBy' => ['nullable', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
@@ -102,24 +107,32 @@ new #[Title('Videos')] class extends Component {
             'url' => $data['url'],
             'title' => trim((string) $data['title']) ?: __('Footage :date', ['date' => ($data['shotOn'] ? \Illuminate\Support\Carbon::parse($data['shotOn']) : today())->toNepali()]),
             'client_id' => $data['clientId'] ?: null,
-            'status' => $data['videoStatus'],
-            'shot_on' => $data['shotOn'] ?: null,
-            'edit_by' => $data['editBy'] ?: null,
+            'kind' => $data['videoKind'],
+            'shot_on' => $data['videoKind'] === 'broll' ? null : ($data['shotOn'] ?: null),
+            'edit_by' => $data['videoKind'] === 'broll' ? null : ($data['editBy'] ?: null),
             'notes' => $data['notes'] ?: null,
         ];
         $this->editingId
             ? Video::findOrFail($this->editingId)->update($values)
-            : Video::create($values + ['user_id' => auth()->id()]);
+            : Video::create($values + ['status' => 'raw', 'user_id' => auth()->id()]);
 
         Flux::modal('video-form')->close();
         Flux::toast(variant: 'success', text: $this->editingId ? __('Video updated.') : __('Video added.'));
         unset($this->all);
     }
 
+    /** A filter chip: a status of the raw footage, or 'broll'. */
+    public function filter(string $key): void
+    {
+        [$this->kind, $this->status] = $key === 'broll' ? ['broll', ''] : ['', array_key_exists($key, Video::STATUSES) ? $key : ''];
+    }
+
     public function setStatus(int $id, string $status): void
     {
         abort_unless(isset(Video::STATUSES[$status]), 422);
-        Video::findOrFail($id)->update(['status' => $status]);
+        $video = Video::findOrFail($id);
+        abort_if($video->isBroll(), 422); // B-roll is not edited
+        $video->update(['status' => $status]);
         unset($this->all);
     }
 
@@ -142,33 +155,33 @@ new #[Title('Videos')] class extends Component {
 @php
     $all = $this->all;
     $videos = $this->visible;
-    $counts = $all->countBy('status');
-    $filtered = $search !== '' || $status !== '' || $clientFilter !== '';
+    $counts = $all->where('kind', 'raw')->countBy('status');
+    $filtered = $search !== '' || $status !== '' || $kind !== '' || $clientFilter !== '';
     $clientOptions = $this->clients->map(fn ($c) => ['value' => $c->id, 'label' => $c->displayName(), 'hint' => $c->company ? $c->name : $c->phone, 'initials' => $c->initials(), 'tile' => 'bg-linear-to-br from-brand-500 to-violet-600 text-white']);
     $filterOptions = collect([['value' => '', 'label' => __('All clients'), 'icon' => 'squares-2x2'], ['value' => 'none', 'label' => __('No client'), 'hint' => __('Our own content'), 'icon' => 'sparkles']])->concat($clientOptions);
-    $statusOptions = collect(Video::STATUSES)->map(fn ($s, $k) => ['value' => $k, 'label' => __($s['label']), 'icon' => $s['icon'], 'tile' => $s['tone']])->values();
+    $kindOptions = collect(Video::KINDS)->map(fn ($k, $key) => ['value' => $key, 'label' => __($k['label']), 'hint' => __($k['hint']), 'icon' => $k['icon'], 'tile' => $k['tile']])->values();
 @endphp
 
 <div class="stagger flex w-full flex-col gap-6">
     <header class="flex flex-wrap items-end justify-between gap-4">
         <div>
             <h1 class="text-2xl font-semibold tracking-[-0.02em] text-zinc-900 sm:text-3xl dark:text-white">{{ __('Videos') }}</h1>
-            <p class="mt-1 text-sm text-zinc-500">{{ __('Raw footage links from Google Drive, ready for the editors.') }}</p>
+            <p class="mt-1 text-sm text-zinc-500">{{ __('Raw footage for the editors and B-roll for later, from Google Drive.') }}</p>
         </div>
         <flux:button variant="primary" icon="plus" wire:click="openNew" class="shadow-lg shadow-brand-500/25" data-test="add-video">{{ __('Add video') }}</flux:button>
     </header>
 
     <div class="flex flex-wrap items-center gap-2">
         <nav class="flex flex-wrap gap-2">
-            @foreach (['' => ['short' => __('All'), 'dot' => 'bg-brand-500']] + Video::STATUSES as $key => $st)
-                @php $on = $status === $key; @endphp
-                <button type="button" wire:click="$set('status', '{{ $key }}')" @class([
+            @foreach (['' => ['short' => __('All'), 'dot' => 'bg-brand-500']] + Video::STATUSES + ['broll' => ['short' => __('B-roll'), 'dot' => 'bg-teal-500']] as $key => $st)
+                @php $on = $key === 'broll' ? $kind === 'broll' : ($kind === '' && $status === $key); @endphp
+                <button type="button" wire:click="filter('{{ $key }}')" @class([
                     'inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium ring-1 transition',
                     'bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900 dark:ring-white' => $on,
                     'bg-white text-zinc-700 ring-zinc-200 hover:ring-zinc-300 dark:bg-zinc-950 dark:text-zinc-200 dark:ring-white/10' => ! $on,
                 ])>
                     <span class="{{ $st['dot'] }} size-2 rounded-full"></span>{{ __($st['short']) }}
-                    <span @class(['text-xs tabular-nums', 'opacity-70' => $on, 'text-zinc-400' => ! $on])>{{ $key === '' ? $all->count() : ($counts[$key] ?? 0) }}</span>
+                    <span @class(['text-xs tabular-nums', 'opacity-70' => $on, 'text-zinc-400' => ! $on])>{{ $key === '' ? $all->count() : ($key === 'broll' ? $all->where('kind', 'broll')->count() : ($counts[$key] ?? 0)) }}</span>
                 </button>
             @endforeach
         </nav>
@@ -193,6 +206,7 @@ new #[Title('Videos')] class extends Component {
                 @php $st = Video::STATUSES[$v->status] ?? Video::STATUSES['raw']; @endphp
                 <article wire:key="v-{{ $v->id }}" x-data="{ copied: false }" class="group flex flex-col overflow-hidden rounded-xl bg-white shadow-[0_1px_2px_rgb(15_23_42/0.06)] ring-1 ring-zinc-200/70 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_32px_-12px_rgb(15_23_42/0.22)] dark:bg-zinc-950 dark:ring-white/10" data-test="video-{{ $v->id }}">
                     {{-- Preview --}}
+                    <div class="relative">
                     <a href="{{ $v->url }}" target="_blank" rel="noopener" class="relative flex h-32 items-center justify-center overflow-hidden bg-linear-to-br from-zinc-800 via-zinc-900 to-brand-900">
                         <span class="pointer-events-none absolute -top-10 -right-10 size-36 rounded-full bg-brand-500/20 blur-2xl"></span>
                         <span class="pointer-events-none absolute -bottom-12 -left-8 size-32 rounded-full bg-violet-500/20 blur-2xl"></span>
@@ -202,40 +216,57 @@ new #[Title('Videos')] class extends Component {
                         <span class="absolute top-3 left-3 inline-flex items-center gap-1 rounded-md bg-black/40 px-2 py-0.5 text-[0.6875rem] font-medium text-white backdrop-blur">
                             <flux:icon.cloud variant="micro" class="size-3.5" />{{ $v->source() }}{{ $v->isFolder() ? ' · '.__('Folder') : '' }}
                         </span>
-                        <span class="{{ $st['tone'] }} absolute top-3 right-3 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold ring-1 ring-inset">
-                            <flux:icon :icon="$st['icon']" variant="micro" class="size-3" />{{ __($st['short']) }}
-                        </span>
-                        @if ($due = $v->deadline())
-                            <span class="{{ $due['tone'] }} absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold ring-1 ring-inset" data-test="edit-by-{{ $v->id }}">
-                                <flux:icon :icon="$due['icon']" variant="micro" class="size-3.5" />{{ $due['label'] }}
+                        {{-- The two dates together: when it was shot, and when the edit is due --}}
+                        @if ($v->shot_on || $v->edit_by)
+                            <span class="absolute inset-x-3 bottom-3 flex flex-wrap items-center gap-1.5">
+                                @if ($v->shot_on)
+                                    <span class="inline-flex items-center gap-1.5 rounded-lg bg-black/45 px-2.5 py-1 text-xs font-semibold text-white ring-1 ring-white/15 backdrop-blur" data-test="shot-on-{{ $v->id }}">
+                                        <flux:icon.video-camera variant="micro" class="size-3.5" />{{ __('Shot :date', ['date' => $v->shot_on->toNepali(false)]) }}
+                                    </span>
+                                @endif
+                                @if ($due = $v->deadline())
+                                    <span class="{{ $due['tone'] }} inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold ring-1 ring-inset" data-test="edit-by-{{ $v->id }}">
+                                        <flux:icon :icon="$due['icon']" variant="micro" class="size-3.5" />{{ $due['label'] }}
+                                    </span>
+                                @endif
                             </span>
                         @endif
                     </a>
-
-                    {{-- Details --}}
-                    <div class="flex flex-1 flex-col gap-1 px-4 pt-3.5">
-                        <div class="flex items-start gap-2">
-                            <a href="{{ $v->url }}" target="_blank" rel="noopener" class="line-clamp-1 min-w-0 flex-1 font-semibold text-zinc-900 hover:text-brand-600 dark:text-white">{{ $v->title }}</a>
-                            <flux:dropdown align="end">
-                                <button type="button" class="-me-1.5 -mt-1 flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-white/5" aria-label="{{ __('More') }}"><flux:icon.ellipsis-vertical variant="mini" class="size-4" /></button>
-                                <flux:menu>
+                    <div class="absolute top-3 right-3 flex items-center gap-1.5">
+                        @if ($v->isBroll())
+                            <span class="inline-flex items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 text-[0.6875rem] font-semibold text-teal-700 ring-1 ring-teal-200 ring-inset dark:bg-teal-500/15 dark:text-teal-200 dark:ring-teal-500/30"><flux:icon.photo variant="micro" class="size-3" />{{ __('B-roll') }}</span>
+                        @else
+                            <span class="{{ $st['tone'] }} inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold ring-1 ring-inset">
+                                <flux:icon :icon="$st['icon']" variant="micro" class="size-3" />{{ __($st['short']) }}
+                            </span>
+                        @endif
+                        <flux:dropdown align="end">
+                            <button type="button" class="flex size-7 shrink-0 items-center justify-center rounded-full bg-black/40 text-white ring-1 ring-white/20 backdrop-blur transition hover:bg-black/60" aria-label="{{ __('More') }}"><flux:icon.ellipsis-vertical variant="mini" class="size-4" /></button>
+                            <flux:menu>
+                                @unless ($v->isBroll())
                                     @foreach (Video::STATUSES as $key => $s)
                                         @continue($key === $v->status)
                                         <flux:menu.item :icon="$s['icon']" wire:click="setStatus({{ $v->id }}, '{{ $key }}')">{{ __('Mark as :status', ['status' => mb_strtolower(__($s['short']))]) }}</flux:menu.item>
                                     @endforeach
                                     <flux:menu.separator />
-                                    <flux:menu.item icon="pencil-square" wire:click="edit({{ $v->id }})">{{ __('Edit') }}</flux:menu.item>
-                                    <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete({{ $v->id }})">{{ __('Delete') }}</flux:menu.item>
-                                </flux:menu>
-                            </flux:dropdown>
-                        </div>
+                                @endunless
+                                <flux:menu.item icon="link" x-on:click="navigator.clipboard.writeText(@js($v->url))">{{ __('Copy link') }}</flux:menu.item>
+                                <flux:menu.item icon="pencil-square" wire:click="edit({{ $v->id }})">{{ __('Edit') }}</flux:menu.item>
+                                <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete({{ $v->id }})">{{ __('Delete') }}</flux:menu.item>
+                            </flux:menu>
+                        </flux:dropdown>
+                    </div>
+                    </div>
+
+                    {{-- Details --}}
+                    <div class="flex flex-1 flex-col gap-1 px-4 pt-3.5">
+                        <a href="{{ $v->url }}" target="_blank" rel="noopener" class="line-clamp-1 font-semibold text-zinc-900 hover:text-brand-600 dark:text-white">{{ $v->title }}</a>
                         <p class="flex min-w-0 items-center gap-1.5 text-xs text-zinc-500">
                             @if ($v->client)
                                 <a href="{{ route('clients.show', $v->client) }}" wire:navigate class="truncate hover:text-brand-600">{{ $v->client->displayName() }}</a>
                             @else
                                 <span>{{ __('No client') }}</span>
                             @endif
-                            @if ($v->shot_on)<span class="text-zinc-300 dark:text-zinc-600">·</span><span class="shrink-0">{{ __('Shot :date', ['date' => $v->shot_on->toNepali(false)]) }}</span>@endif
                         </p>
                         @if ($v->notes)<p class="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-500">{{ $v->notes }}</p>@endif
                     </div>
@@ -245,9 +276,13 @@ new #[Title('Videos')] class extends Component {
                         <a href="{{ $v->url }}" target="_blank" rel="noopener" class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-brand-600 dark:bg-white dark:text-zinc-900" data-test="open-{{ $v->id }}">
                             <flux:icon.arrow-top-right-on-square variant="micro" class="size-3.5" />{{ __('Open') }}
                         </a>
-                        <button type="button" @click="navigator.clipboard.writeText(@js($v->url)); copied = true; setTimeout(() => copied = false, 1500)" class="inline-flex items-center justify-center gap-1.5 rounded-lg bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-200 dark:bg-white/5 dark:text-zinc-200">
-                            <flux:icon.link variant="micro" class="size-3.5" /><span x-text="copied ? @js(__('Copied')) : @js(__('Copy link'))"></span>
-                        </button>
+                        @if ($step = $v->nextStep())
+                            <button type="button" wire:click="setStatus({{ $v->id }}, '{{ $step[0] }}')" @class(['inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition', 'bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-500/15 dark:text-amber-200' => $step[0] === 'editing', 'bg-emerald-500 text-white hover:bg-emerald-600' => $step[0] === 'done']) data-test="step-{{ $v->id }}">
+                                <flux:icon :icon="$step[2]" variant="micro" class="size-3.5" />{{ $step[1] }}
+                            </button>
+                        @elseif (! $v->isBroll())
+                            <span class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"><flux:icon.check-badge variant="micro" class="size-3.5" />{{ __('Edited') }}</span>
+                        @endif
                     </div>
                 </article>
             @endforeach
@@ -269,9 +304,10 @@ new #[Title('Videos')] class extends Component {
             <flux:input wire:model="title" :label="__('Title')" :placeholder="__('e.g. Dashain reel, kitchen shots')" :description:trailing="__('Leave empty to name it by date.')" />
             <div class="grid gap-4 sm:grid-cols-2">
                 <x-rich-select model="clientId" searchable :label="__('Client')" :placeholder="__('No client')" :options="collect([['value' => '', 'label' => __('No client'), 'hint' => __('Our own content'), 'icon' => 'sparkles']])->concat($clientOptions)" />
-                <x-rich-select model="videoStatus" :label="__('Status')" :options="$statusOptions" />
+                <x-rich-select model="videoKind" :label="__('Type')" :options="$kindOptions" data-test="video-kind" />
             </div>
-            <div class="grid grid-cols-2 gap-3 sm:gap-4">
+            {{-- B-roll is not edited, so it has no shoot or edit-by date --}}
+            <div x-show="$wire.videoKind !== 'broll'" class="grid grid-cols-2 gap-3 sm:gap-4">
                 <x-nepali-date wire:model="shotOn" :label="__('Shot on')" :placeholder="__('Shoot day')" />
                 <x-nepali-date wire:model="editBy" :label="__('Edit by')" :placeholder="__('Finish by')" align="end" data-test="edit-by" />
             </div>

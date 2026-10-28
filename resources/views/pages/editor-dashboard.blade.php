@@ -30,7 +30,7 @@ new class extends Component {
     #[Computed]
     public function queue()
     {
-        return Video::with('client')->whereIn('status', ['raw', 'editing'])
+        return Video::with('client')->where('kind', 'raw')->whereIn('status', ['raw', 'editing'])
             ->orderByRaw('edit_by is null')->orderBy('edit_by')
             ->orderByRaw("case status when 'editing' then 0 else 1 end")->oldest()->get();
     }
@@ -38,13 +38,13 @@ new class extends Component {
     #[Computed]
     public function editedThisWeek(): int
     {
-        return Video::where('status', 'done')->where('updated_at', '>=', today()->startOfWeek(\Carbon\CarbonInterface::SUNDAY))->count();
+        return Video::where('kind', 'raw')->where('status', 'done')->where('updated_at', '>=', today()->startOfWeek(\Carbon\CarbonInterface::SUNDAY))->count();
     }
 
     #[Computed]
     public function recentlyEdited()
     {
-        return Video::with('client')->where('status', 'done')->latest('updated_at')->limit(5)->get();
+        return Video::with('client')->where('kind', 'raw')->where('status', 'done')->latest('updated_at')->limit(5)->get();
     }
 
     /** My open tasks up to a week ahead, and undated ones. */

@@ -7,12 +7,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** A link to raw footage (usually a Google Drive file or folder) for the editors. */
-#[Fillable(['title', 'url', 'client_id', 'status', 'shot_on', 'edit_by', 'notes', 'user_id'])]
+#[Fillable(['title', 'url', 'kind', 'client_id', 'status', 'shot_on', 'edit_by', 'notes', 'user_id'])]
 class Video extends Model
 {
-    /** In working order. */
+    /** What the link is: raw footage goes to the editors; B-roll is kept for later and never edited. */
+    public const KINDS = [
+        'raw' => ['label' => 'Raw footage', 'hint' => 'Goes to the editors', 'icon' => 'film', 'tile' => 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300'],
+        'broll' => ['label' => 'B-roll', 'hint' => 'Extra shots, no editing', 'icon' => 'photo', 'tile' => 'bg-teal-50 text-teal-600 dark:bg-teal-500/15 dark:text-teal-300'],
+    ];
+
+    /** In working order (raw footage only). */
     public const STATUSES = [
-        'raw' => ['label' => 'Raw footage', 'short' => 'Raw', 'icon' => 'film', 'tone' => 'bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-500/20', 'dot' => 'bg-sky-500'],
+        'raw' => ['label' => 'To edit', 'short' => 'To edit', 'icon' => 'inbox-arrow-down', 'tone' => 'bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-500/20', 'dot' => 'bg-sky-500'],
         'editing' => ['label' => 'Editing', 'short' => 'Editing', 'icon' => 'scissors', 'tone' => 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20', 'dot' => 'bg-amber-500'],
         'done' => ['label' => 'Edited', 'short' => 'Edited', 'icon' => 'check-badge', 'tone' => 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20', 'dot' => 'bg-emerald-500'],
     ];
@@ -29,7 +35,7 @@ class Video extends Model
      */
     public function deadline(): ?array
     {
-        if (! $this->edit_by) {
+        if (! $this->edit_by || $this->isBroll()) {
             return null;
         }
         if ($this->status === 'done') {
@@ -42,6 +48,21 @@ class Video extends Model
             $days === 0 => ['label' => __('Edit by today'), 'tone' => 'bg-amber-400 text-amber-950 ring-amber-400 shadow-sm shadow-amber-400/30', 'icon' => 'clock', 'late' => false],
             $days === 1 => ['label' => __('Edit by tomorrow'), 'tone' => 'bg-amber-100 text-amber-800 ring-amber-300 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-500/30', 'icon' => 'clock', 'late' => false],
             default => ['label' => __('Edit by :date', ['date' => $this->edit_by->toNepali(false)]), 'tone' => 'bg-indigo-50 text-indigo-700 ring-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-200 dark:ring-indigo-500/25', 'icon' => 'calendar-days', 'late' => false],
+        };
+    }
+
+    public function isBroll(): bool
+    {
+        return $this->kind === 'broll';
+    }
+
+    /** The next editing step for raw footage: [status, label, icon], or null when edited or B-roll. */
+    public function nextStep(): ?array
+    {
+        return $this->isBroll() ? null : match ($this->status) {
+            'raw' => ['editing', __('Start editing'), 'scissors'],
+            'editing' => ['done', __('Mark edited'), 'check'],
+            default => null,
         };
     }
 
