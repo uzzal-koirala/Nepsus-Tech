@@ -85,6 +85,15 @@ new #[Title('Videos')] class extends Component {
         Flux::modal('video-script')->show();
     }
 
+    /** The open script as a plain .txt file. */
+    public function downloadScript()
+    {
+        $sc = $this->viewingScript ?? abort(404);
+        $text = implode("\n\n", array_filter([$sc->title, $sc->client?->displayName(), $sc->body, $sc->notes ? __('Shooting notes:').' '.$sc->notes : null]))."\n";
+
+        return response()->streamDownload(fn () => print ($text), \Illuminate\Support\Str::slug($sc->title ?: 'script').'.txt', ['Content-Type' => 'text/plain; charset=UTF-8']);
+    }
+
     #[Computed]
     public function clients()
     {
@@ -307,7 +316,9 @@ new #[Title('Videos')] class extends Component {
                                 <span>{{ __('No client') }}</span>
                             @endif
                         </p>
-                        @if ($v->script)
+                        @if ($v->script && auth()->user()->isVideoEditor())
+                            <flux:button size="xs" icon="document-text" wire:click="viewScript({{ $v->id }})" class="mt-1.5" data-test="script-chip-{{ $v->id }}">{{ __('View script') }}</flux:button>
+                        @elseif ($v->script)
                             <button type="button" wire:click="viewScript({{ $v->id }})" class="mt-1.5 inline-flex w-fit max-w-full items-center gap-1.5 rounded-lg bg-violet-50 px-2 py-1 text-xs font-medium text-violet-700 ring-1 ring-violet-200 transition hover:bg-violet-100 dark:bg-violet-500/10 dark:text-violet-200 dark:ring-violet-500/25" data-test="script-chip-{{ $v->id }}">
                                 <flux:icon.document-text variant="micro" class="size-3.5 shrink-0" /><span class="truncate">{{ __('Script: :title', ['title' => $v->script->title]) }}</span>
                             </button>
@@ -377,7 +388,7 @@ new #[Title('Videos')] class extends Component {
                         <flux:text>{{ $sc->client?->displayName() ?? __('Other scripts') }} · {{ __((\App\Models\Script::TYPES[$sc->type] ?? \App\Models\Script::TYPES['other'])['label']) }} · {{ \App\Models\Script::speakingTime((string) $sc->body) }}</flux:text>
                     </div>
                 </div>
-                <div class="max-h-[60vh] overflow-y-auto rounded-xl bg-zinc-50 px-5 py-4 text-[0.9375rem] leading-7 whitespace-pre-line text-zinc-800 dark:bg-white/5 dark:text-zinc-100" data-test="script-text">{{ $sc->body ?: __('This script is still empty.') }}</div>
+                <div class="max-h-[60vh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-xl bg-zinc-50 px-5 py-4 text-[0.9375rem] leading-7 whitespace-pre-line text-zinc-800 dark:bg-white/5 dark:text-zinc-100" data-test="script-text">{{ $sc->body ?: __('This script is still empty.') }}</div>
                 @if ($sc->notes)
                     <p class="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-100"><span class="font-semibold">{{ __('Shooting notes:') }}</span> {{ $sc->notes }}</p>
                 @endif
@@ -385,6 +396,7 @@ new #[Title('Videos')] class extends Component {
                     @if (auth()->user()->canPlanContent())
                         <flux:button icon="pencil-square" :href="route('scripts.edit', $sc)" wire:navigate>{{ __('Open script') }}</flux:button>
                     @endif
+                    <flux:button icon="arrow-down-tray" wire:click="downloadScript" data-test="download-script">{{ __('Download') }}</flux:button>
                     <flux:modal.close><flux:button variant="primary">{{ __('Done') }}</flux:button></flux:modal.close>
                 </div>
             </div>

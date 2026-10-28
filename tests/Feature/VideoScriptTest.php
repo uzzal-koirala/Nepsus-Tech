@@ -38,6 +38,8 @@ class VideoScriptTest extends TestCase
         $this->get(route('scripts.edit', $script))->assertRedirect(route('my.dashboard'));
         Livewire::test('pages::videos')->call('viewScript', $video->id)
             ->assertSee(['HOOK: Stop scrolling if you love momo.', 'Shoot in the kitchen'])->assertDontSee('Open script');
+        Livewire::test('pages::videos')->assertSee('View script')->assertDontSee('Script: ')
+            ->call('viewScript', $video->id)->call('downloadScript')->assertFileDownloaded(\Illuminate\Support\Str::slug($script->title).'.txt');
 
         // Deleting the script keeps the video, just unlinked.
         $script->delete();

@@ -319,7 +319,7 @@ new #[Title('Calendar')] class extends Component {
                                             $toneOf($t->type)['chip'] => ! $t->completed_at,
                                             'bg-zinc-50 text-zinc-400 ring-zinc-200/70 line-through dark:bg-white/5 dark:ring-white/5' => $t->completed_at,
                                         ])>
-                                            <span class="{{ $t->isOverdue() ? 'bg-rose-500' : $toneOf($t->type)['dot'] }} size-1.5 shrink-0 rounded-full"></span>
+                                            <flux:icon :icon="$typeOf($t->type)['icon']" variant="micro" @class(['size-3 shrink-0', 'text-rose-500' => $t->isOverdue()]) data-test="task-icon-{{ $t->id }}" />
                                             <span class="truncate">{{ $t->title }}</span>
                                         </span>
                                     @endforeach
