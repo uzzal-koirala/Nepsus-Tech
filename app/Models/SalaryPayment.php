@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Validation\Rule;
 
-#[Fillable(['period', 'title', 'amount', 'paid_on', 'note'])]
+#[Fillable(['period', 'title', 'amount', 'method', 'paid_on', 'note'])]
 class SalaryPayment extends Model
 {
     /** @use HasFactory<SalaryPaymentFactory> */
@@ -23,6 +23,20 @@ class SalaryPayment extends Model
             'amount' => 'decimal:2',
             'paid_on' => 'date',
         ];
+    }
+
+    /** How a salary can be paid. The keys match client payment methods, so Finance shows them the same way. */
+    public const METHODS = [
+        'Bank' => ['Bank transfer', 'building-library'],
+        'Cheque' => ['Cheque', 'document-text'],
+        'Cash' => ['Cash', 'banknotes'],
+        'Other' => ['Other', 'ellipsis-horizontal-circle'],
+    ];
+
+    /** "Bank transfer", or null when not recorded. */
+    public function methodLabel(): ?string
+    {
+        return $this->method ? __(self::METHODS[$this->method][0] ?? $this->method) : null;
     }
 
     /**
@@ -44,9 +58,7 @@ class SalaryPayment extends Model
     /** "Kartik 2083" for the salary's month. */
     public function periodLabel(): string
     {
-        [$y, $m] = array_map('intval', explode('-', (string) $this->period));
-
-        return (NepaliDate::MONTHS[$m - 1] ?? '').' '.$y;
+        return NepaliDate::periodLabel((string) $this->period);
     }
 
     /**

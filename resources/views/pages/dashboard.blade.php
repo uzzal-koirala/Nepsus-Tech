@@ -110,7 +110,7 @@ new #[Title('Overview')] class extends Component {
                 'link' => $p->client ? route('clients.show', ['client' => $p->client_id, 'tab' => 'payments']) : null]);
         $salaries = SalaryPayment::with('employee')->latest('paid_on')->latest('id')->limit($limit)->get()
             ->map(fn ($x) => ['key' => 's'.$x->id, 'kind' => 'expense', 'date' => $x->paid_on, 'title' => $x->employee?->name ?? __('Salary'),
-                'category' => __('Salary'), 'icon' => 'user-group', 'amount' => (float) $x->amount, 'method' => null,
+                'category' => __('Salary'), 'icon' => 'user-group', 'amount' => (float) $x->amount, 'method' => $x->method,
                 'link' => $x->employee ? route('employees.show', ['employee' => $x->employee_id, 'tab' => 'salary']) : null]);
         $manual = Transaction::latest('date')->latest('id')->limit($limit)->get()
             ->map(fn ($t) => ['key' => 't'.$t->id, 'kind' => $t->kind, 'date' => $t->date, 'title' => $t->title,

@@ -183,7 +183,7 @@ new #[Title('Finance')] class extends Component {
             ->map(fn ($s) => [
                 'key' => 's'.$s->id, 'kind' => 'expense', 'source' => 'salary', 'date' => $s->paid_on,
                 'title' => $s->employee?->name ?? __('Salary'), 'category' => __('Salary · :month', ['month' => $s->periodLabel()]), 'icon' => 'user-group',
-                'amount' => (float) $s->amount, 'method' => null, 'reference' => null, 'note' => $s->note, 'recorded' => $s->created_at->toNepali(), 'link' => $s->employee ? route('employees.show', ['employee' => $s->employee_id, 'tab' => 'salary']) : null,
+                'amount' => (float) $s->amount, 'method' => $s->method, 'reference' => null, 'note' => $s->note, 'recorded' => $s->created_at->toNepali(), 'link' => $s->employee ? route('employees.show', ['employee' => $s->employee_id, 'tab' => 'salary']) : null,
                 'proof' => null, 'id' => null,
             ]);
 

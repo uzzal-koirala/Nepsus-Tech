@@ -43,6 +43,9 @@ new #[Title('Employees')] class extends Component {
 
     public string $payNote = '';
 
+    /** Bank, Cheque, Cash or Other (SalaryPayment::METHODS). */
+    public string $payMethod = '';
+
     public ?int $historyEmployeeId = null;
 
     public function updated($property): void
@@ -193,6 +196,7 @@ new #[Title('Employees')] class extends Component {
         $this->payDate = today()->toDateString();
         $this->payTitle = '';
         $this->payNote = '';
+        $this->payMethod = '';
         $this->resetErrorBag();
 
         Flux::modal('pay-salary')->show();
@@ -215,7 +219,8 @@ new #[Title('Employees')] class extends Component {
             'payDate' => ['required', 'date'],
             'payTitle' => ['nullable', 'string', 'max:120'],
             'payNote' => ['nullable', 'string', 'max:255'],
-        ], attributes: ['payPeriod' => __('month'), 'payAmount' => __('amount'), 'payDate' => __('paid date')]);
+            'payMethod' => ['required', \Illuminate\Validation\Rule::in(array_keys(SalaryPayment::METHODS))],
+        ], ['payMethod.required' => __('Pick how the salary was paid.')], ['payPeriod' => __('month'), 'payAmount' => __('amount'), 'payDate' => __('paid date'), 'payMethod' => __('payment method')]);
 
         Employee::findOrFail($data['payEmployeeId'])->salaryPayments()->create([
             'period' => $data['payPeriod'],
@@ -223,6 +228,7 @@ new #[Title('Employees')] class extends Component {
             'paid_on' => $data['payDate'],
             'title' => filled($data['payTitle']) ? trim($data['payTitle']) : null,
             'note' => $data['payNote'] ?: null,
+            'method' => $data['payMethod'],
         ]);
 
         Flux::modal('pay-salary')->close();
@@ -647,7 +653,10 @@ new #[Title('Employees')] class extends Component {
                 @endif
                 <x-nepali-date wire:model="payDate" :label="__('Paid date')" />
                 <div class="sm:col-span-2">
-                    <flux:input wire:model="payNote" :label="__('Note')" :placeholder="__('e.g. Advance, bonus, bank transfer')" />
+                    <x-pay-method />
+                </div>
+                <div class="sm:col-span-2">
+                    <flux:input wire:model="payNote" :label="__('Note')" :placeholder="__('e.g. Advance, bonus, cheque number')" />
                 </div>
             </div>
             <div class="flex justify-end gap-2">
@@ -674,7 +683,7 @@ new #[Title('Employees')] class extends Component {
                         @foreach ($payments as $sp)
                             <div wire:key="sp-{{ $sp->id }}" class="flex items-center gap-3 px-4 py-2 text-sm">
                                 <span class="text-zinc-500" title="{{ $sp->paid_on->format('j M Y') }}">{{ $sp->paid_on->toNepali() }}</span>
-                                <span class="min-w-0 flex-1 truncate text-xs text-zinc-400">{{ $sp->note }}</span>
+                                <span class="min-w-0 flex-1 truncate text-xs text-zinc-400">{{ collect([$sp->methodLabel(), $sp->note])->filter()->join(' · ') }}</span>
                                 <span class="font-medium text-zinc-700 tabular-nums dark:text-zinc-200">{{ $money($sp->amount) }}</span>
                                 <button type="button" wire:click="deleteSalaryPayment({{ $sp->id }})" wire:confirm="{{ __('Delete this salary payment?') }}" class="text-zinc-300 hover:text-rose-500" aria-label="{{ __('Delete payment') }}">
                                     <flux:icon.trash variant="micro" class="size-4" />

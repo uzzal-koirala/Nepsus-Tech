@@ -88,6 +88,9 @@ new #[Title('Employee')] class extends Component {
 
     public string $payNote = '';
 
+    /** Bank, Cheque, Cash or Other (SalaryPayment::METHODS). */
+    public string $payMethod = '';
+
     /** Login account form. */
     public string $accEmail = '';
     public string $accPassword = '';
@@ -586,6 +589,7 @@ new #[Title('Employee')] class extends Component {
         $this->payDate = today()->toDateString();
         $this->payTitle = '';
         $this->payNote = '';
+        $this->payMethod = '';
         $this->resetErrorBag();
 
         Flux::modal('pay-salary')->show();
@@ -606,7 +610,8 @@ new #[Title('Employee')] class extends Component {
             'payDate' => ['required', 'date'],
             'payTitle' => ['nullable', 'string', 'max:120'],
             'payNote' => ['nullable', 'string', 'max:255'],
-        ], attributes: ['payPeriod' => __('month'), 'payAmount' => __('amount'), 'payDate' => __('paid date')]);
+            'payMethod' => ['required', \Illuminate\Validation\Rule::in(array_keys(SalaryPayment::METHODS))],
+        ], ['payMethod.required' => __('Pick how the salary was paid.')], ['payPeriod' => __('month'), 'payAmount' => __('amount'), 'payDate' => __('paid date'), 'payMethod' => __('payment method')]);
 
         $this->employee->salaryPayments()->create([
             'period' => $data['payPeriod'],
@@ -614,6 +619,7 @@ new #[Title('Employee')] class extends Component {
             'paid_on' => $data['payDate'],
             'title' => filled($data['payTitle']) ? trim($data['payTitle']) : null,
             'note' => $data['payNote'] ?: null,
+            'method' => $data['payMethod'],
         ]);
 
         unset($this->payments, $this->thisMonth, $this->months);
@@ -1470,7 +1476,9 @@ new #[Title('Employee')] class extends Component {
                                     <td class="px-3 py-2.5">
                                         <span class="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium whitespace-nowrap text-zinc-700 dark:bg-white/10 dark:text-zinc-200"><flux:icon.user-group variant="micro" class="size-3.5" />{{ __('Salary') }}</span>
                                     </td>
-                                    <td class="max-w-56 truncate px-3 py-2.5 text-zinc-500">{{ $sp->note ?: '—' }}</td>
+                                    <td class="max-w-56 truncate px-3 py-2.5 text-zinc-500">
+                                        @if ($sp->method)<span class="me-1.5 inline-flex items-center gap-1 rounded-md bg-zinc-100 px-1.5 py-0.5 text-[0.6875rem] font-medium text-zinc-700 dark:bg-white/10 dark:text-zinc-200"><flux:icon :icon="\App\Models\SalaryPayment::METHODS[$sp->method][1] ?? 'credit-card'" variant="micro" class="size-3" />{{ $sp->methodLabel() }}</span>@endif{{ $sp->note ?: ($sp->method ? '' : '—') }}
+                                    </td>
                                     <td class="px-3 py-2.5 text-end whitespace-nowrap">
                                         <span class="inline-flex items-center rounded-lg bg-emerald-50 px-2.5 py-1 text-sm font-bold text-emerald-700 tabular-nums ring-1 ring-emerald-200 ring-inset dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20">{{ $money($sp->amount) }}</span>
                                     </td>
@@ -2021,7 +2029,10 @@ new #[Title('Employee')] class extends Component {
                 <x-salary-month-picker :employee="$e" />
                 <x-nepali-date wire:model="payDate" :label="__('Paid date')" />
                 <div class="sm:col-span-2">
-                    <flux:input wire:model="payNote" :label="__('Note')" :placeholder="__('e.g. Advance, bonus, bank transfer')" />
+                    <x-pay-method />
+                </div>
+                <div class="sm:col-span-2">
+                    <flux:input wire:model="payNote" :label="__('Note')" :placeholder="__('e.g. Advance, bonus, cheque number')" />
                 </div>
             </div>
             <div class="flex justify-end gap-2">

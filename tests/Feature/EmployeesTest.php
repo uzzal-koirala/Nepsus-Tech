@@ -69,7 +69,7 @@ class EmployeesTest extends TestCase
             ->assertSet('payAmount', '40000')
             ->assertSet('payPeriod', $period)
             ->set('payAmount', '15000')
-            ->call('savePay')
+            ->set('payMethod', 'Bank')->call('savePay')
             ->assertHasNoErrors()
             ->assertSee('38%');
 
@@ -77,24 +77,24 @@ class EmployeesTest extends TestCase
 
         // A part-paid month takes another payment, but never more than what is left.
         $page->call('openPay', $ram->id)->assertSet('payPeriod', $period)->assertSet('payAmount', '25000');
-        $page->set('payAmount', '25001')->call('savePay')->assertHasErrors(['payAmount'])->assertSee('Only NPR 25,000 is left for this month.');
-        $page->set('payAmount', '25000')->call('savePay')->assertHasNoErrors();
+        $page->set('payAmount', '25001')->set('payMethod', 'Bank')->call('savePay')->assertHasErrors(['payAmount'])->assertSee('Only NPR 25,000 is left for this month.');
+        $page->set('payAmount', '25000')->set('payMethod', 'Bank')->call('savePay')->assertHasNoErrors();
         $this->assertSame(2, $ram->salaryPayments()->count());
 
         // Once fully paid the month is locked, and the popup moves on to next month.
         $page->call('openPay', $ram->id)->assertNotSet('payPeriod', $period)->assertSet('payAmount', '40000');
-        $page->set('payPeriod', $period)->set('payAmount', '100')->call('savePay')->assertHasErrors(['payPeriod'])->assertSee('Salary for this month is already fully paid.');
+        $page->set('payPeriod', $period)->set('payAmount', '100')->set('payMethod', 'Bank')->call('savePay')->assertHasErrors(['payPeriod'])->assertSee('Salary for this month is already fully paid.');
         $this->assertSame(2, $ram->salaryPayments()->count());
 
         // Future months (up to 2 ahead) can be paid in advance.
         $ahead = \App\Support\NepaliDate::period(\App\Support\NepaliDate::addMonths(today(), 2));
-        $page->call('openPay', $ram->id)->set('payPeriod', $ahead)->call('savePay')->assertHasNoErrors();
+        $page->call('openPay', $ram->id)->set('payPeriod', $ahead)->set('payMethod', 'Bank')->call('savePay')->assertHasNoErrors();
         $tooFar = \App\Support\NepaliDate::period(\App\Support\NepaliDate::addMonths(today(), 3));
-        $page->call('openPay', $ram->id)->set('payPeriod', $tooFar)->call('savePay')->assertHasErrors(['payPeriod']);
+        $page->call('openPay', $ram->id)->set('payPeriod', $tooFar)->set('payMethod', 'Bank')->call('savePay')->assertHasErrors(['payPeriod']);
         $lastMonth = \App\Support\NepaliDate::recentPeriods(2)[1];
-        $page->call('openPay', $ram->id)->set('payPeriod', $lastMonth)->call('savePay')->assertHasErrors(['payPeriod']);
+        $page->call('openPay', $ram->id)->set('payPeriod', $lastMonth)->set('payMethod', 'Bank')->call('savePay')->assertHasErrors(['payPeriod']);
 
-        $page->set('payPeriod', '1990-01')->set('payAmount', '100')->call('savePay')->assertHasErrors(['payPeriod']);
+        $page->set('payPeriod', '1990-01')->set('payAmount', '100')->set('payMethod', 'Bank')->call('savePay')->assertHasErrors(['payPeriod']);
 
         $payment = $ram->salaryPayments()->first();
         $page->call('openHistory', $ram->id)->call('deleteSalaryPayment', $payment->id);
@@ -124,7 +124,7 @@ class EmployeesTest extends TestCase
             ->call('openPay')
             ->assertSet('payAmount', '40000')
             ->set('payAmount', '15000')
-            ->call('savePay')
+            ->set('payMethod', 'Bank')->call('savePay')
             ->assertHasNoErrors()
             ->assertSee('Pay NPR 25,000')
             ->assertSee(['To pay this month', 'NPR 15,000 paid of NPR 40,000']);
@@ -263,8 +263,8 @@ class EmployeesTest extends TestCase
 
         // Salary day 1 has passed unless today is the 1st, so the calendar marks it unpaid.
         $page->assertSee(NepaliDate::fromAd(today())[2] > 1 ? 'Salary unpaid' : 'Salary day');
-        $page->call('openPay')->set('payAmount', '10000')->call('savePay')->assertSee(['Part paid', 'Salary part', 'Paid NPR 10,000']);
-        $page->call('openPay')->assertSet('payPeriod', NepaliDate::period(today()))->assertSet('payAmount', '20000')->call('savePay')->assertHasNoErrors()->assertSee('Paid on');
+        $page->call('openPay')->set('payAmount', '10000')->set('payMethod', 'Bank')->call('savePay')->assertSee(['Part paid', 'Salary part', 'Paid NPR 10,000']);
+        $page->call('openPay')->assertSet('payPeriod', NepaliDate::period(today()))->assertSet('payAmount', '20000')->set('payMethod', 'Bank')->call('savePay')->assertHasNoErrors()->assertSee('Paid on');
 
         // Overview shows the attendance history; the salary history (payments made) is on the Salary tab.
         $page->assertSee('Attendance history')->assertDontSee('Salary history');
@@ -272,7 +272,7 @@ class EmployeesTest extends TestCase
 
         // A payment can carry its own title.
         $next = \App\Models\SalaryPayment::firstOpenPeriod($employee->fullyPaidPeriods());
-        $page->call('openPay')->assertSet('payTitle', '')->set('payPeriod', $next)->set('payTitle', 'Dashain bonus')->set('payAmount', '5000')->call('savePay')->assertHasNoErrors()->assertSee('Dashain bonus')
+        $page->call('openPay')->assertSet('payTitle', '')->set('payPeriod', $next)->set('payTitle', 'Dashain bonus')->set('payAmount', '5000')->set('payMethod', 'Bank')->call('savePay')->assertHasNoErrors()->assertSee('Dashain bonus')
             ->assertSee('For '.str(NepaliDate::periodLabel($next))->before(' '))->assertDontSee('No salary paid ahead yet');
         $this->assertSame('Dashain bonus', $employee->salaryPayments()->where('period', $next)->value('title'));
     }
