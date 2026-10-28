@@ -23,11 +23,24 @@ class MyTasksListViewTest extends TestCase
             $t->assignees()->sync([$e->id]);
             $this->actingAs($user);
 
-            Livewire::test('pages::my-tasks')->assertSet('view', 'board')->assertSeeHtml('data-test="priority-boxes"')
-                ->set('view', 'list')->assertSeeHtml(['data-test="task-list"', 'data-test="row-'.$t->id.'"'])->assertDontSeeHtml('data-test="priority-boxes"')
-                ->assertSee("List task {$dept}")
+            // List by default, Board one click away.
+            Livewire::test('pages::my-tasks')->assertSet('view', 'list')->assertSeeHtml(['data-test="task-list"', 'data-test="row-'.$t->id.'"'])->assertDontSeeHtml('data-test="priority-boxes"')
+                ->assertSee(["List task {$dept}", 'Assigned to', 'You', 'Any priority', 'All clients'])
+                ->set('view', 'board')->assertSeeHtml('data-test="priority-boxes"')->set('view', 'list')
+                // Filters: priority, and "No client".
+                ->set('priority', 'low')->assertDontSee("List task {$dept}")->set('priority', 'high')->assertSee("List task {$dept}")
+                ->set('client', 'none')->assertSee("List task {$dept}")
                 ->call('setStatus', $t->id, 'done');
             $this->assertNotNull($t->fresh()->completed_at);
         }
+
+        // Shared tasks name the others.
+        $niksan = Employee::factory()->create(['name' => 'Niksan Adhikari', 'status' => 'active']);
+        $ram = Employee::factory()->create(['name' => 'Ram Thapa', 'status' => 'active']);
+        $shared = Task::factory()->create(['title' => 'Shared task', 'status' => 'todo', 'completed_at' => null, 'client_id' => null]);
+        $shared->assignees()->sync([$e->id, $niksan->id]);
+        Livewire::test('pages::my-tasks')->assertSee('You and Niksan');
+        $shared->assignees()->sync([$e->id, $niksan->id, $ram->id]);
+        Livewire::test('pages::my-tasks')->assertSee('You + 2 others');
     }
 }

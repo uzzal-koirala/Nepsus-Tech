@@ -23,9 +23,12 @@ new #[Title('My tasks')] class extends Component {
     #[Url(except: '')]
     public string $client = '';
 
-    /** Priority boxes or a table, like the admin Tasks page. */
-    #[Url(except: 'board')]
-    public string $view = 'board';
+    #[Url(except: '')]
+    public string $priority = '';
+
+    /** A table like the admin Tasks page (the default), or priority boxes. */
+    #[Url(except: 'list')]
+    public string $view = 'list';
 
     public ?int $viewingId = null;
 
@@ -61,11 +64,19 @@ new #[Title('My tasks')] class extends Component {
         return Task::with(['client', 'assignees'])->whereHas('assignees', fn ($q) => $q->whereKey($this->meId()));
     }
 
+    /** The client and priority pickers, same as the admin Tasks page. */
+    private function filters($query): void
+    {
+        $query->when($this->client === 'none', fn ($q) => $q->whereNull('client_id'))
+            ->when($this->client !== '' && $this->client !== 'none', fn ($q) => $q->where('client_id', (int) $this->client))
+            ->when(array_key_exists($this->priority, Task::PRIORITIES), fn ($q) => $q->where('priority', $this->priority));
+    }
+
     #[Computed]
     public function open()
     {
         return $this->mine()->whereNull('completed_at')
-            ->when($this->client !== '', fn ($q) => $q->where('client_id', (int) $this->client))
+            ->tap(fn ($q) => $this->filters($q))
             ->orderByRaw('due_date is null')->orderBy('due_date')
             ->orderByRaw("case priority when 'urgent' then 0 when 'high' then 1 when 'medium' then 2 else 3 end")->latest('id')->get();
     }
@@ -74,7 +85,7 @@ new #[Title('My tasks')] class extends Component {
     public function done()
     {
         return $this->mine()->whereNotNull('completed_at')
-            ->when($this->client !== '', fn ($q) => $q->where('client_id', (int) $this->client))
+            ->tap(fn ($q) => $this->filters($q))
             ->latest('completed_at')->limit(60)->get();
     }
 
@@ -147,7 +158,7 @@ new #[Title('My tasks')] class extends Component {
     {
         $this->resetErrorBag();
         $this->reset('editingId', 'fTitle', 'fDescription', 'fStart', 'fDue');
-        $this->fClient = $this->client;
+        $this->fClient = $this->client === 'none' ? '' : $this->client;
         $this->fType = (string) array_key_first(Task::types());
         $this->fStatus = 'todo';
         $this->fPriority = array_key_exists($priority, Task::PRIORITIES) ? $priority : 'medium';
@@ -264,6 +275,20 @@ new #[Title('My tasks')] class extends Component {
 
         return $days < 0 ? trans_choice(':count day late|:count days late', -$days) : ($days === 0 ? __('Today') : ($days === 1 ? __('Tomorrow') : $t->due_date->toNepali(false)));
     };
+    $clientFilterOptions = collect([['value' => '', 'label' => __('All clients'), 'icon' => 'building-office-2'], ['value' => 'none', 'label' => __('No client'), 'hint' => __('Internal work'), 'icon' => 'home']])
+        ->concat($this->myClients->map(fn ($c) => ['value' => $c->id, 'label' => $c->displayName(), 'initials' => $c->initials(), 'tile' => 'bg-linear-to-br from-brand-500 to-violet-600 text-white']));
+    $priorityFilterOptions = collect([['value' => '', 'label' => __('Any priority'), 'icon' => 'funnel']])
+        ->concat(collect(Task::PRIORITIES)->map(fn ($label, $k) => ['value' => $k, 'label' => __($label), 'icon' => Task::PRIORITY_STYLES[$k]['icon'], 'tile' => Task::PRIORITY_STYLES[$k]['tone']])->values());
+    // "You", "You and Niksan", "You + 2 others".
+    $people = function ($t) use ($meId) {
+        $others = $t->assignees->reject(fn ($a) => $a->id === $meId);
+
+        return match ($others->count()) {
+            0 => __('You'),
+            1 => __('You and :name', ['name' => str($others->first()->name)->before(' ')]),
+            default => trans_choice('You + :count other|You + :count others', $others->count()),
+        };
+    };
     $week = $this->week;
     $weekPct = $week['total'] ? (int) round($week['done'] / $week['total'] * 100) : 0;
     $ring = 2 * M_PI * 42;
@@ -350,14 +375,8 @@ new #[Title('My tasks')] class extends Component {
         </div>
         <div class="flex items-center gap-2">
             <div class="min-w-0 flex-1"><flux:input wire:model.live.debounce.300ms="search" icon="magnifying-glass" :placeholder="__('Search my tasks')" clearable /></div>
-            <div class="w-32 shrink-0 sm:w-56">
-                <flux:select wire:model.live="client">
-                    <flux:select.option value="">{{ __('All clients') }}</flux:select.option>
-                    @foreach ($this->myClients as $c)
-                        <flux:select.option value="{{ $c->id }}">{{ $c->displayName() }}</flux:select.option>
-                    @endforeach
-                </flux:select>
-            </div>
+            <x-rich-select model="client" live searchable :options="$clientFilterOptions" class="w-36 shrink-0 sm:w-60" />
+            <x-rich-select model="priority" live :options="$priorityFilterOptions" class="w-32 shrink-0 max-sm:hidden sm:w-44" />
             <nav class="flex shrink-0 gap-1 rounded-xl bg-white p-1 ring-1 ring-zinc-200/70 dark:bg-zinc-950 dark:ring-white/10" data-test="view-switch">
                 @foreach (['board' => ['view-columns', __('Board')], 'list' => ['list-bullet', __('List')]] as $key => [$icon, $label])
                     <button type="button" wire:click="$set('view', '{{ $key }}')" @class([
@@ -377,11 +396,12 @@ new #[Title('My tasks')] class extends Component {
             <p class="px-6 py-14 text-center text-sm text-zinc-500">{{ __('Nothing here.') }}</p>
         @else
             <div class="overflow-x-auto">
-                <table class="w-full min-w-[44rem] text-sm">
+                <table class="w-full min-w-[56rem] text-sm">
                     <thead class="bg-zinc-50/80 dark:bg-white/[0.02]">
                         <tr class="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
                             <th class="w-10 py-2.5 ps-5"></th>
                             <th class="px-3 py-2.5 text-start">{{ __('Task') }}</th>
+                            <th class="px-3 py-2.5 text-start">{{ __('Assigned to') }}</th>
                             <th class="px-3 py-2.5 text-start">{{ __('Due') }}</th>
                             <th class="px-3 py-2.5 text-start">{{ __('Priority') }}</th>
                             <th class="px-3 py-2.5 text-start">{{ __('Status') }}</th>
@@ -408,8 +428,14 @@ new #[Title('My tasks')] class extends Component {
                                         </span>
                                     </button>
                                 </td>
+                                <td class="px-3 py-3">
+                                    <span class="flex items-center gap-2" data-test="people-{{ $t->id }}">
+                                        <span class="flex -space-x-1.5">@foreach ($t->assignees->sortByDesc(fn ($a) => $a->id === $meId)->take(3) as $a)<x-employee-avatar :employee="$a" class="size-7 text-[0.625rem] ring-2 ring-white dark:ring-zinc-950" />@endforeach</span>
+                                        <span class="max-w-36 truncate text-xs text-zinc-600 dark:text-zinc-300">{{ $people($t) }}</span>
+                                    </span>
+                                </td>
                                 <td class="px-3 py-3 whitespace-nowrap">
-                                    @if ($whenText)<span @class(['text-xs font-medium', 'text-rose-600 dark:text-rose-400' => $t->isOverdue(), 'text-zinc-600 dark:text-zinc-300' => ! $t->isOverdue()])>{{ $whenText }}</span>@else<span class="text-xs text-zinc-400">—</span>@endif
+                                    @if ($whenText)<span @class(['text-xs font-medium', 'text-zinc-400' => $t->completed_at, 'text-rose-600 dark:text-rose-400' => ! $t->completed_at && $t->isOverdue(), 'text-amber-600 dark:text-amber-400' => ! $t->completed_at && ! $t->isOverdue() && $t->due_date?->isToday(), 'text-zinc-500' => ! $t->completed_at && ! $t->isOverdue() && ! $t->due_date?->isToday()])>{{ $whenText }}</span>@else<span class="text-xs text-zinc-400">—</span>@endif
                                 </td>
                                 <td class="px-3 py-3"><span class="{{ Task::PRIORITY_STYLES[$t->priority]['tone'] ?? '' }} inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1"><flux:icon :icon="Task::PRIORITY_STYLES[$t->priority]['icon'] ?? 'minus'" variant="micro" class="size-3" />{{ __(Task::PRIORITIES[$t->priority] ?? 'Medium') }}</span></td>
                                 <td class="px-3 py-3">
@@ -423,7 +449,7 @@ new #[Title('My tasks')] class extends Component {
                                     </flux:dropdown>
                                 </td>
                                 <td class="py-3 pe-5 text-end">
-                                    <flux:button size="xs" variant="ghost" icon="pencil-square" wire:click="editTask({{ $t->id }})" :aria-label="__('Edit')" />
+                                    <span class="inline-flex opacity-0 transition group-hover:opacity-100 focus-within:opacity-100 max-sm:opacity-100"><flux:button size="xs" variant="ghost" icon="pencil-square" wire:click="editTask({{ $t->id }})" :aria-label="__('Edit')" /></span>
                                 </td>
                             </tr>
                         @endforeach
