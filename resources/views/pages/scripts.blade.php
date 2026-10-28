@@ -53,6 +53,23 @@ new #[Title('Scripts')] class extends Component {
             ->map(fn ($group, $clientId) => ['client' => $clientId ? $group->first()->client : null, 'scripts' => $group]);
     }
 
+    /** Admins: scripts Content Creators submitted, oldest first. */
+    #[Computed]
+    public function waiting()
+    {
+        return auth()->user()->isAdmin() ? Script::with(['client', 'writer'])->where('status', 'review')->oldest('updated_at')->get() : collect();
+    }
+
+    /** Admins: approve straight from the list (sending back needs a reason, so that happens in the script). */
+    public function approve(int $id): void
+    {
+        abort_unless(auth()->user()->isAdmin(), 403);
+        $script = Script::where('status', 'review')->findOrFail($id);
+        $script->update(['status' => 'approved', 'review_note' => null]);
+        unset($this->all, $this->visible, $this->boxes, $this->waiting);
+        Flux::toast(variant: 'success', text: __('“:title” approved.', ['title' => $script->title]));
+    }
+
     #[Computed]
     public function clients()
     {
@@ -131,6 +148,41 @@ new #[Title('Scripts')] class extends Component {
         </nav>
         <div class="ms-auto w-full sm:w-72"><flux:input wire:model.live.debounce.300ms="search" icon="magnifying-glass" :placeholder="__('Search scripts')" /></div>
     </div>
+
+    {{-- Admins: submitted scripts stand out until they are approved or sent back (hidden while filtering) --}}
+    @if (! $filtered && $this->waiting->isNotEmpty())
+        <section class="overflow-hidden rounded-2xl bg-linear-to-br from-amber-50 to-white ring-1 ring-amber-200/80 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:from-amber-500/[0.07] dark:to-zinc-950 dark:ring-amber-500/25" data-test="waiting-scripts">
+            <div class="flex items-center gap-3 px-5 py-4">
+                <span class="relative flex size-10 items-center justify-center rounded-xl bg-amber-500 text-white shadow-md shadow-amber-500/30">
+                    <flux:icon.inbox-arrow-down variant="mini" class="size-5" />
+                    <span class="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-rose-500 text-[0.625rem] font-bold ring-2 ring-white dark:ring-zinc-950">{{ $this->waiting->count() }}</span>
+                </span>
+                <div>
+                    <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Waiting for your approval') }}</h2>
+                    <p class="text-xs text-zinc-500">{{ trans_choice(':count script submitted by the team|:count scripts submitted by the team', $this->waiting->count()) }}</p>
+                </div>
+            </div>
+            <ul class="divide-y divide-amber-100 border-t border-amber-100 dark:divide-white/5 dark:border-white/5">
+                @foreach ($this->waiting as $w)
+                    <li wire:key="wait-{{ $w->id }}" class="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-3.5">
+                        <a href="{{ route('scripts.edit', $w) }}" wire:navigate class="group flex min-w-0 flex-1 basis-60 items-center gap-3">
+                            <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-600 shadow-sm ring-1 ring-amber-200 dark:bg-zinc-900 dark:ring-amber-500/30"><flux:icon :icon="(Script::TYPES[$w->type] ?? Script::TYPES['other'])['icon']" variant="mini" class="size-5" /></span>
+                            <span class="min-w-0">
+                                <span class="block truncate text-sm font-semibold text-zinc-900 group-hover:text-brand-600 dark:text-white">{{ $w->title }}</span>
+                                <span class="block truncate text-xs text-zinc-500">
+                                    {{ __('By :name', ['name' => $w->writer?->name ?? __('the team')]) }} · {{ $w->client?->displayName() ?? __('Other scripts') }} · {{ trans_choice(':count word|:count words', Script::wordCount((string) $w->body)) }} · {{ $w->updated_at->diffForHumans() }}
+                                </span>
+                            </span>
+                        </a>
+                        <div class="flex shrink-0 gap-2 max-sm:w-full">
+                            <flux:button size="sm" icon="eye" :href="route('scripts.edit', $w)" wire:navigate class="max-sm:flex-1" data-test="view-{{ $w->id }}">{{ __('View & edit') }}</flux:button>
+                            <flux:button size="sm" variant="primary" icon="check" wire:click="approve({{ $w->id }})" class="max-sm:flex-1" data-test="approve-{{ $w->id }}">{{ __('Approve') }}</flux:button>
+                        </div>
+                    </li>
+                @endforeach
+            </ul>
+        </section>
+    @endif
 
     @if ($boxes->isEmpty())
         <section class="{{ $panel }} flex flex-col items-center gap-4 px-6 py-16 text-center">

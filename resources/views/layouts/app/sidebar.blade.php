@@ -43,7 +43,8 @@
                             ['icon' => 'presentation-chart-line', 'label' => __('Sales & Marketing'), 'route' => 'sales.index'],
                             ['icon' => 'check-circle', 'label' => __('Tasks'), 'route' => 'tasks.index'],
                             ['icon' => 'folder-open', 'label' => __('Documents'), 'route' => 'library.index'],
-                            ['icon' => 'pencil-square', 'label' => __('Scripts'), 'route' => 'scripts.index'],
+                            // A count, like new messages, while scripts wait for approval.
+                            ['icon' => 'pencil-square', 'label' => __('Scripts'), 'route' => 'scripts.index', 'badge' => $isAdmin ? (\App\Models\Script::waitingCount() ?: null) : null],
                             ['icon' => 'video-camera', 'label' => __('Videos'), 'route' => 'videos.index'],
                         ],
                         __('Money') => [

@@ -171,6 +171,21 @@ select:focus[data-flux-control] {
         box-shadow 380ms ease;
 }
 
+/* Sidebar counts (scripts to approve, leave requests) read like unread messages. */
+.app-sidebar [data-flux-navlist-badge] {
+    background: var(--color-rose-500);
+    color: var(--color-white);
+    font-weight: 700;
+    min-width: 1.25rem;
+    justify-content: center;
+    border-radius: 9999px;
+    box-shadow: 0 2px 6px -1px rgb(244 63 94 / 0.5);
+}
+.app-sidebar [data-flux-sidebar-item][data-current] [data-flux-navlist-badge] {
+    background: var(--color-white);
+    color: var(--color-rose-600);
+}
+
 /* The open drawer on phones floats above the page. */
 .app-sidebar[data-flux-sidebar-on-mobile]:not([data-flux-sidebar-collapsed-mobile]) {
     box-shadow: 0 24px 60px -12px rgb(15 23 42 / 0.45);

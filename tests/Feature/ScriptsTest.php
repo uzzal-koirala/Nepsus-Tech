@@ -128,4 +128,29 @@ class ScriptsTest extends TestCase
         $this->actingAs($user);
         $this->get(route('scripts.edit', $script))->assertSee(['Approved', 'Great hook'])->assertDontSee(['Submit for approval', 'Submit again']);
     }
+
+    public function test_admins_see_submitted_scripts_counted_and_approve_them_from_the_list(): void
+    {
+        $writer = User::factory()->staff()->create(['name' => 'Sita Rai']);
+        $waiting = Script::create(['title' => 'Momo reel', 'type' => 'reel', 'status' => 'review', 'body' => 'Stop scrolling', 'user_id' => $writer->id]);
+        Script::create(['title' => 'Chef intro', 'type' => 'reel', 'status' => 'review', 'body' => 'Meet the chef']);
+        Script::create(['title' => 'Old one', 'type' => 'reel', 'status' => 'approved']);
+        $this->actingAs(User::factory()->create());
+
+        $this->assertSame(2, Script::waitingCount());
+        $this->get(route('scripts.index'))->assertOk()
+            ->assertSee(['Waiting for your approval', '2 scripts submitted by the team', 'Momo reel', 'By Sita Rai', 'View &amp; edit', 'Approve'], false)
+            ->assertSeeInOrder(['Scripts', '2'], false);
+
+        Livewire::test('pages::scripts')->call('approve', $waiting->id)->assertSee('1 script submitted by the team');
+        $this->assertSame('approved', $waiting->fresh()->status);
+        Livewire::test('pages::scripts')->call('approve', $waiting->id)->assertNotFound();
+
+        // Writers see neither the count nor the panel, and cannot approve.
+        $e = \App\Models\Employee::factory()->create(['department' => 'content-creator', 'status' => 'active']);
+        \App\Models\Employee::whereKey($e->id)->update(['user_id' => $writer->id]);
+        $this->actingAs($writer);
+        $this->get(route('scripts.index'))->assertOk()->assertDontSee('Waiting for your approval');
+        Livewire::test('pages::scripts')->call('approve', $waiting->id)->assertForbidden();
+    }
 }

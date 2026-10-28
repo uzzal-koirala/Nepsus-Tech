@@ -37,6 +37,17 @@ class Script extends Model
         return ['shoot_date' => 'date'];
     }
 
+    /** Who wrote it (the login that created it). */
+    public function writer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public static function waitingCount(): int
+    {
+        return static::where('status', 'review')->count();
+    }
+
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
