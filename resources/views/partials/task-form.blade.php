@@ -31,7 +31,9 @@
             <x-nepali-date wire:model="task.due_date" :label="$strict ? __('Due date') : __('Due date (optional)')" />
             <x-rich-select model="task.priority" :label="__('Priority')" :options="$priorityOptions" />
             <x-rich-select model="task.status" :label="__('Status')" :options="$statusOptions" />
-            @if ($this->people->isNotEmpty())
+            @if (auth()->user()->isVideoEditor())
+                @unless ($editingId)<div class="sm:col-span-2"><x-editor-task-warning /></div>@endunless
+            @elseif ($this->people->isNotEmpty())
                 <div class="sm:col-span-2">
                     <p class="mb-2 text-sm font-medium text-zinc-800 dark:text-white">{{ __('Assign to') }}</p>
                     <div class="flex max-h-44 flex-wrap gap-2 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

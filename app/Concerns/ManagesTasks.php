@@ -119,12 +119,20 @@ trait ManagesTasks
             'due_date' => $data['due_date'] ?: null, 'description' => $data['description'] ?: null,
             'completed_at' => $data['status'] === 'done' ? ($t->completed_at ?? now()) : null,
         ])->save();
-        $assignees = $data['assignees'] ?? [];
-        // An employee who only sees their own work stays on the tasks they add or change, so the task does not vanish from their view.
-        if (! auth()->user()->canPlanContent() && $me = auth()->user()->employee?->id) {
-            $assignees = array_values(array_unique([...array_map('intval', $assignees), $me]));
+        $me = auth()->user()->employee?->id;
+        if (auth()->user()->isVideoEditor()) {
+            // Video Editors add tasks for themselves only and never change who is on a task.
+            if (! $this->editingId) {
+                $t->assignees()->sync(array_filter([$me]));
+            }
+        } else {
+            $assignees = $data['assignees'] ?? [];
+            // An employee who only sees their own work stays on the tasks they add or change, so the task does not vanish from their view.
+            if (! auth()->user()->canPlanContent() && $me) {
+                $assignees = array_values(array_unique([...array_map('intval', $assignees), $me]));
+            }
+            $t->assignees()->sync($assignees);
         }
-        $t->assignees()->sync($assignees);
 
         $this->taskSaved($t);
         Flux::modal('task-form')->close();

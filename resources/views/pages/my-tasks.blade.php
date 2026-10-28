@@ -200,12 +200,19 @@ new #[Title('My tasks')] class extends Component {
         $task->client_id = $data['fClient'] ? (int) $data['fClient'] : null;
         $task->save();
 
-        // I always stay on it, or it would vanish from this page.
-        $assignees = array_map('intval', $data['fAssignees'] ?? []);
-        if ($this->meId()) {
-            $assignees = array_values(array_unique([...$assignees, $this->meId()]));
+        if (auth()->user()->isVideoEditor()) {
+            // Video Editors add tasks for themselves only and never change who is on a task.
+            if (! $this->editingId) {
+                $task->assignees()->sync(array_filter([$this->meId()]));
+            }
+        } else {
+            // I always stay on it, or it would vanish from this page.
+            $assignees = array_map('intval', $data['fAssignees'] ?? []);
+            if ($this->meId()) {
+                $assignees = array_values(array_unique([...$assignees, $this->meId()]));
+            }
+            $task->assignees()->sync($assignees);
         }
-        $task->assignees()->sync($assignees);
 
         Flux::modal('task-form')->close();
         Flux::toast(variant: 'success', text: $this->editingId ? __('Task updated.') : __('Task added.'));
@@ -516,6 +523,9 @@ new #[Title('My tasks')] class extends Component {
                 <x-nepali-date wire:model="fDue" :label="__('Due')" align="end" />
             </div>
             <flux:textarea wire:model="fDescription" :label="__('Notes')" rows="3" :placeholder="__('Anything the team should know')" />
+            @if (auth()->user()->isVideoEditor())
+                @unless ($editingId)<x-editor-task-warning />@endunless
+            @else
             <div>
                 <p class="mb-2 text-sm font-medium text-zinc-800 dark:text-white">{{ __('People') }}</p>
                 <div class="flex flex-wrap gap-1.5">
@@ -529,6 +539,7 @@ new #[Title('My tasks')] class extends Component {
                     @endforeach
                 </div>
             </div>
+            @endif
             <div class="flex gap-2">
                 <flux:spacer />
                 <flux:modal.close><flux:button variant="ghost">{{ __('Cancel') }}</flux:button></flux:modal.close>

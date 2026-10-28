@@ -35,4 +35,24 @@ class CalendarCreatorTaskTest extends TestCase
             ->call('saveTask')->assertHasNoErrors();
         $this->assertSame($client->id, Task::sole()->client_id);
     }
+
+    public function test_a_task_a_content_creator_gives_an_editor_shows_on_the_editors_lists(): void
+    {
+        $client = Client::factory()->create(['status' => 'active']);
+        [$creator, $editor] = [User::factory()->staff()->create(), User::factory()->staff()->create()];
+        $c = Employee::factory()->create(['department' => 'content-creator', 'status' => 'active']);
+        $ed = Employee::factory()->create(['department' => 'video-editor', 'status' => 'active']);
+        Employee::whereKey($c->id)->update(['user_id' => $creator->id]);
+        Employee::whereKey($ed->id)->update(['user_id' => $editor->id]);
+
+        $this->actingAs($creator);
+        Livewire::test('pages::calendar')->call('newTask', today()->addDays(3)->toDateString())
+            ->set('task.title', 'Cut the Dashain reel')->set('task.client_id', (string) $client->id)->set('task.assignees', [(string) $ed->id])
+            ->call('saveTask')->assertHasNoErrors();
+        $this->assertSame([$ed->id], Task::sole()->assignees->pluck('id')->all());
+
+        $this->actingAs($editor);
+        Livewire::test('pages::my-tasks')->assertSee('Cut the Dashain reel');
+        Livewire::test('pages::editor-dashboard')->assertSee('Cut the Dashain reel');
+    }
 }
