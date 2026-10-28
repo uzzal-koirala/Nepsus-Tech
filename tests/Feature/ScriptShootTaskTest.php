@@ -15,7 +15,7 @@ class ScriptShootTaskTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_the_shoot_date_waits_for_approval_and_then_becomes_the_writers_shoot_task(): void
+    public function test_the_shoot_date_shows_only_after_approval_and_then_becomes_the_writers_shoot_task(): void
     {
         $client = Client::factory()->create(['status' => 'active']);
         $writer = User::factory()->staff()->create();
@@ -24,19 +24,16 @@ class ScriptShootTaskTest extends TestCase
         $script = Script::create(['title' => 'Momo reel', 'client_id' => $client->id, 'type' => 'reel', 'status' => 'draft', 'body' => 'Hook', 'user_id' => $writer->id]);
         $day = today()->addDays(4)->toDateString();
 
-        // Before approval: no picker, a date sent anyway is not kept.
+        // Before approval the writer can pick the date, but it stays off the calendar and makes no task.
         $this->actingAs($writer);
-        Livewire::test('pages::script-editor', ['script' => $script])->assertSee('once an admin approves')->set('shootDate', $day);
-        $this->assertNull($script->fresh()->shoot_date);
-
-        // An old date on an unapproved script stays off the calendar.
-        $script->update(['shoot_date' => $day]);
+        Livewire::test('pages::script-editor', ['script' => $script])->set('shootDate', $day)->assertSee('On the calendar once approved');
+        $this->assertSame($day, $script->fresh()->shoot_date->toDateString());
         Livewire::test('pages::calendar')->assertDontSee('Shoot: Momo reel');
         $this->assertSame(0, Task::count());
 
         // Approved: the date is kept, the calendar shows the shoot and the writer gets a video shoot task.
         $script->update(['status' => 'approved', 'shoot_date' => null]);
-        Livewire::test('pages::script-editor', ['script' => $script->fresh()])->assertDontSee('once an admin approves')->set('shootDate', $day);
+        Livewire::test('pages::script-editor', ['script' => $script->fresh()])->set('shootDate', $day)->assertDontSee('On the calendar once approved');
         $task = Task::sole();
         $this->assertSame(['Shoot: Momo reel', 'video', $day, $client->id, [$e->id]], [$task->title, $task->type, $task->due_date->toDateString(), $task->client_id, $task->assignees->pluck('id')->all()]);
         Livewire::test('pages::calendar')->assertSee('Shoot: Momo reel');

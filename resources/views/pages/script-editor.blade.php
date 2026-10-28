@@ -68,12 +68,6 @@ new #[Title('Script')] class extends Component {
         if (! isset($rules[$field])) {
             return;
         }
-        // The shoot date waits for an admin's approval.
-        if ($field === 'shootDate' && ! $this->script->canSchedule()) {
-            $this->shootDate = (string) $this->script->shoot_date?->toDateString();
-
-            return;
-        }
         if ($field === 'status' && ! auth()->user()->isAdmin()) {
             $this->status = $this->script->status;
 
@@ -93,7 +87,7 @@ new #[Title('Script')] class extends Component {
         $d = $this->validate(array_merge(array_diff_key($this->rules(), ['status' => 1]), ['body' => ['required', 'string', 'max:100000']]), attributes: ['title' => __('title'), 'body' => __('script')]);
         $this->script->update([
             'title' => $d['title'], 'client_id' => $d['clientId'] ?: null, 'type' => $d['type'], 'status' => 'review', 'review_note' => null,
-            'body' => $d['body'], 'notes' => $d['notes'] ?: null,
+            'shoot_date' => $d['shootDate'] ?: null, 'body' => $d['body'], 'notes' => $d['notes'] ?: null,
         ]);
         // Tell the office right away (Settings > Email). A mail problem must not stop the submit.
         if (\App\Models\Setting::get('script_emails_on') === '1' && $to = \App\Models\Setting::systemEmails()) {
@@ -202,15 +196,15 @@ new #[Title('Script')] class extends Component {
             <section class="{{ $panel }} flex flex-col gap-4 p-5" data-test="script-details">
                 <div>
                     <div class="min-w-0">
-                        @if (! $this->script->canSchedule())
-                            <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Shoot date') }}</span>
-                            <p class="mt-2 flex items-start gap-1.5 rounded-lg bg-zinc-50 px-3 py-2.5 text-xs text-zinc-500 ring-1 ring-zinc-200 dark:bg-white/5 dark:ring-white/10" data-test="shoot-locked"><flux:icon.lock-closed variant="micro" class="mt-px size-3.5 shrink-0" />{{ __('Pick the shoot day once an admin approves the script.') }}</p>
-                        @else
                         <x-nepali-date wire:model.live="shootDate" :label="__('Shoot date')" :placeholder="$simple ? __('Pick a day') : __('Pick the shoot day')" />
-                        @endif
-                        @if ($shootDate && $this->script->canSchedule())
+                        @if ($shootDate)
                             <div class="mt-1.5 flex items-center justify-between gap-2 text-xs">
-                                <span class="truncate text-violet-700 dark:text-violet-300">{{ $simple ? __('On the calendar') : __('Shows on the client calendar') }}</span>
+                                {{-- The calendar, dashboards and the shoot task wait for an admin's approval. --}}
+                                @if ($this->script->canSchedule())
+                                    <span class="truncate text-violet-700 dark:text-violet-300">{{ $simple ? __('On the calendar') : __('Shows on the client calendar') }}</span>
+                                @else
+                                    <span class="truncate text-amber-700 dark:text-amber-300" data-test="shoot-waits">{{ __('On the calendar once approved') }}</span>
+                                @endif
                                 <button type="button" wire:click="$set('shootDate', '')" class="shrink-0 text-zinc-500 hover:text-rose-600">{{ __('Clear') }}</button>
                             </div>
                         @endif
