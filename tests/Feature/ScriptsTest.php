@@ -106,7 +106,7 @@ class ScriptsTest extends TestCase
         Livewire::test('pages::script-editor', ['script' => $script])->set('reviewNote', 'ok')->call('approveScript')->assertForbidden();
 
         // The list only filters by In review and Approved for writers.
-        $this->get(route('scripts.index'))->assertSee(['All', 'In review', 'Approved'])->assertDontSee(['Idea', 'Draft', 'Shot']);
+        $this->get(route('scripts.index'))->assertSeeInOrder(['All', 'Approved', 'In review', 'Completed'])->assertDontSee(['Idea', 'Draft', 'Shot']);
 
         // The admin sends it back with a reason, which the writer sees.
         $admin = User::factory()->create();

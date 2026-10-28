@@ -118,8 +118,12 @@ new #[Title('Scripts')] class extends Component {
     $boxes = $this->boxes;
     $counts = $all->countBy('status');
     $filtered = $search !== '' || $status !== '';
-    // Content Creators only filter by where a script stands with the admin.
-    $chips = auth()->user()->isAdmin() ? Script::STATUSES : array_intersect_key(Script::STATUSES, array_flip(['review', 'approved']));
+    // Content Creators filter by where a script stands: approved, waiting for the admin, or shot (completed).
+    $chips = auth()->user()->isAdmin() ? Script::STATUSES : [
+        'approved' => Script::STATUSES['approved'],
+        'review' => Script::STATUSES['review'],
+        'shot' => ['label' => 'Completed'] + Script::STATUSES['shot'],
+    ];
     $clientOptions = $this->clients->map(fn ($c) => ['value' => $c->id, 'label' => $c->displayName(), 'hint' => $c->company ? $c->name : $c->phone, 'initials' => $c->initials(), 'tile' => 'bg-linear-to-br from-brand-500 to-violet-600 text-white']);
 @endphp
 
