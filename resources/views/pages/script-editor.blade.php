@@ -155,11 +155,10 @@ new #[Title('Script')] class extends Component {
 
 @php
     $panel = 'rounded-xl bg-white ring-1 ring-zinc-200/70 shadow-[0_1px_2px_rgb(15_23_42/0.04)] dark:bg-zinc-950 dark:ring-white/10';
-    $typeOptions = collect(Script::TYPES)->map(fn ($t, $k) => ['value' => $k, 'label' => __($t['label']), 'icon' => $t['icon'], 'tile' => 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300'])->values();
     $statusOptions = collect(Script::STATUSES)->map(fn ($s, $k) => ['value' => $k, 'label' => __($s['label']), 'icon' => 'flag', 'tile' => $s['tone']])->values();
     $clientOptions = collect([['value' => '', 'label' => __('No client'), 'hint' => __('Our own content'), 'icon' => 'home']])
         ->concat($this->clients->map(fn ($c) => ['value' => $c->id, 'label' => $c->displayName(), 'hint' => $c->company ? $c->name : $c->phone, 'initials' => $c->initials(), 'tile' => 'bg-linear-to-br from-brand-500 to-violet-600 text-white']));
-    // Content Creators get a simpler panel: no status, shoot date and type side by side, one Save button.
+    // Content Creators get a simpler panel: no status, one Save button. Nobody picks a type; scripts stay Reel unless set elsewhere.
     $simple = ! auth()->user()->isAdmin();
     $placeholder = __("HOOK (first 3 seconds)\nStop scrolling if you love momo…\n\nSTORY\nShow the kitchen, the steam, the first bite…\n\nCALL TO ACTION\nVisit us in Thamel today — link in bio.");
 @endphp
@@ -201,7 +200,7 @@ new #[Title('Script')] class extends Component {
             </section>
 
             <section class="{{ $panel }} flex flex-col gap-4 p-5" data-test="script-details">
-                <div @class(['grid grid-cols-2 items-start gap-3' => $simple])>
+                <div>
                     <div class="min-w-0">
                         @if (! $this->script->canSchedule())
                             <span class="text-sm font-medium text-zinc-800 dark:text-white">{{ __('Shoot date') }}</span>
@@ -216,13 +215,9 @@ new #[Title('Script')] class extends Component {
                             </div>
                         @endif
                     </div>
-                    @if ($simple)
-                        <x-rich-select model="type" live :label="__('Type')" :options="$typeOptions" class="min-w-0" />
-                    @endif
                 </div>
                 @unless ($simple)
                     <x-rich-select model="status" live :label="__('Status')" :options="$statusOptions" />
-                    <x-rich-select model="type" live :label="__('Type')" :options="$typeOptions" />
                 @endunless
                 <x-rich-select model="clientId" live searchable :label="__('Client')" :options="$clientOptions" />
                 <flux:textarea wire:model.live.debounce.800ms="notes" :label="__('Notes')" rows="3" :placeholder="__('Shooting notes, music, props, who is in it…')" />

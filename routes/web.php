@@ -1,8 +1,12 @@
 <?php
 
+use App\Models\CompanyDocument;
 use App\Models\Document;
 use App\Models\EmployeeDocument;
+use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\Script;
+use App\Models\Transaction;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
@@ -25,6 +29,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 Route::middleware(['auth', 'verified', 'content'])->group(function () {
     Route::livewire('scripts', 'pages::scripts')->name('scripts.index');
     Route::livewire('scripts/{script}', 'pages::script-editor')->name('scripts.edit');
+    // Print page; the browser saves it as a PDF (same as invoices).
+    Route::get('scripts/{script}/pdf', fn (Script $script) => view('script-print', ['script' => $script->load('client')]))->name('scripts.pdf');
 });
 
 // Admins and Video Editors: the raw footage to edit.
@@ -48,15 +54,15 @@ Route::middleware(['auth', 'verified', 'admin'])->group(function () {
     Route::livewire('invoices/create', 'pages::invoice-editor')->name('invoices.create');
     Route::livewire('invoices/{invoice}', 'pages::invoice-show')->name('invoices.show');
     Route::livewire('invoices/{invoice}/edit', 'pages::invoice-editor')->name('invoices.edit');
-    Route::get('invoices/{invoice}/print', fn (App\Models\Invoice $invoice) => view('invoice-print', ['invoice' => $invoice->load('items')]))->name('invoices.print');
+    Route::get('invoices/{invoice}/print', fn (Invoice $invoice) => view('invoice-print', ['invoice' => $invoice->load('items')]))->name('invoices.print');
 
     Route::get('documents/{document}', fn (Document $document) => Storage::disk('local')->download($document->path, $document->name))
         ->name('documents.download');
 
     // Company documents (Documents page): open in the browser, or download.
-    Route::get('library/{companyDocument}/view', fn (App\Models\CompanyDocument $companyDocument) => Storage::disk('local')
+    Route::get('library/{companyDocument}/view', fn (CompanyDocument $companyDocument) => Storage::disk('local')
         ->response($companyDocument->path, $companyDocument->name.'.'.$companyDocument->extension, ['X-Content-Type-Options' => 'nosniff']))->name('library.view');
-    Route::get('library/{companyDocument}/download', fn (App\Models\CompanyDocument $companyDocument) => Storage::disk('local')
+    Route::get('library/{companyDocument}/download', fn (CompanyDocument $companyDocument) => Storage::disk('local')
         ->download($companyDocument->path, $companyDocument->name.'.'.$companyDocument->extension))->name('library.download');
 
     Route::get('employee-documents/{employeeDocument}', fn (EmployeeDocument $employeeDocument) => Storage::disk('local')->download($employeeDocument->path, $employeeDocument->name))
@@ -67,7 +73,7 @@ Route::middleware(['auth', 'verified', 'admin'])->group(function () {
         : Storage::disk('local')->download($employeeDocument->path, $employeeDocument->name))
         ->name('employee-documents.view');
 
-    Route::get('transactions/{transaction}/receipt', fn (App\Models\Transaction $transaction) => $transaction->receipt_path
+    Route::get('transactions/{transaction}/receipt', fn (Transaction $transaction) => $transaction->receipt_path
         ? Storage::disk('local')->response($transaction->receipt_path)
         : abort(404))->name('transactions.receipt');
 

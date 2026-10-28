@@ -116,6 +116,29 @@ new #[Title('Scripts')] class extends Component {
     }
 
     /** "+ Add script" inside a box: straight to the editor. */
+    public ?int $viewingId = null;
+
+    #[Computed]
+    public function viewing(): ?Script
+    {
+        return $this->viewingId ? Script::with('client')->find($this->viewingId) : null;
+    }
+
+    public function viewScript(int $id): void
+    {
+        $this->viewingId = Script::findOrFail($id)->id;
+        Flux::modal('script-view')->show();
+    }
+
+    /** ⋮ > Completed: an approved script that has been shot. */
+    public function complete(int $id): void
+    {
+        $script = Script::where('status', 'approved')->findOrFail($id);
+        $script->update(['status' => 'shot']);
+        unset($this->all);
+        Flux::toast(variant: 'success', text: __('“:title” marked as completed.', ['title' => $script->title]));
+    }
+
     public function addTo(int $clientId = 0): void
     {
         abort_if($clientId && ! Client::whereKey($clientId)->exists(), 404);
@@ -272,7 +295,8 @@ new #[Title('Scripts')] class extends Component {
                     {{-- Next shoot --}}
                     @if ($next)
                         @php [$day, $month] = array_pad(explode(' ', $next->shoot_date->toNepali(false), 2), 2, ''); @endphp
-                        <a href="{{ route('scripts.edit', $next) }}" wire:navigate class="group flex items-center gap-3 border-b border-zinc-100 bg-violet-50/60 px-5 py-3 transition hover:bg-violet-50 dark:border-white/5 dark:bg-violet-500/10" data-test="script-{{ $next->id }}">
+                        <div class="flex items-center border-b border-zinc-100 bg-violet-50/60 pe-3 transition hover:bg-violet-50 dark:border-white/5 dark:bg-violet-500/10">
+                        <a href="{{ route('scripts.edit', $next) }}" wire:navigate class="group flex min-w-0 flex-1 items-center gap-3 py-3 ps-5 pe-2" data-test="script-{{ $next->id }}">
                             <span class="flex w-11 shrink-0 flex-col items-center overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-violet-100 dark:bg-zinc-900 dark:ring-violet-500/20">
                                 <span class="w-full bg-violet-600 py-0.5 text-center text-[0.5625rem] font-bold tracking-wider text-white uppercase">{{ mb_substr($month, 0, 3) }}</span>
                                 <span class="py-0.5 text-base font-bold text-zinc-900 tabular-nums dark:text-white">{{ $day }}</span>
@@ -281,16 +305,17 @@ new #[Title('Scripts')] class extends Component {
                                 <span class="flex items-center gap-1 text-[0.6875rem] font-semibold tracking-wide text-violet-700 uppercase dark:text-violet-300"><flux:icon.video-camera variant="micro" class="size-3.5" />{{ $next->shootLabel() }}</span>
                                 <span class="block truncate text-sm font-semibold text-zinc-900 group-hover:text-violet-700 dark:text-white">{{ $next->title }}</span>
                             </span>
-                            <flux:icon.chevron-right variant="micro" class="size-4 shrink-0 text-violet-300 transition group-hover:translate-x-0.5 group-hover:text-violet-600" />
                         </a>
+                        @include('partials.script-menu', ['s' => $next])
+                        </div>
                     @endif
 
                     {{-- Its scripts --}}
                     <ul class="flex flex-col py-1.5">
                         @foreach ($rest as $i => $s)
                             @php $type = Script::TYPES[$s->type] ?? Script::TYPES['other']; $st = Script::STATUSES[$s->status] ?? Script::STATUSES['draft']; @endphp
-                            <li wire:key="s-{{ $s->id }}" @if ($i >= 5) x-show="all" x-cloak @endif>
-                                <a href="{{ route('scripts.edit', $s) }}" wire:navigate class="group flex items-center gap-3 px-5 py-2.5 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]" data-test="script-{{ $s->id }}">
+                            <li wire:key="s-{{ $s->id }}" @if ($i >= 5) x-show="all" x-cloak @endif class="flex items-center pe-3 transition hover:bg-zinc-50 dark:hover:bg-white/[0.03]">
+                                <a href="{{ route('scripts.edit', $s) }}" wire:navigate class="group flex min-w-0 flex-1 items-center gap-3 py-2.5 ps-5 pe-2" data-test="script-{{ $s->id }}">
                                     <span class="{{ $st['dot'] }} h-8 w-1 shrink-0 rounded-full" title="{{ __($st['label']) }}"></span>
                                     <span class="min-w-0 flex-1">
                                         <span class="block truncate text-sm font-medium text-zinc-900 group-hover:text-brand-600 dark:text-white">{{ $s->title }}</span>
@@ -300,6 +325,7 @@ new #[Title('Scripts')] class extends Component {
                                     </span>
                                     <span class="shrink-0 text-xs font-medium text-zinc-500">{{ __($st['label']) }}</span>
                                 </a>
+                                @include('partials.script-menu')
                             </li>
                         @endforeach
                         @if ($rest->isEmpty())
@@ -352,5 +378,28 @@ new #[Title('Scripts')] class extends Component {
                 <flux:button type="submit" variant="primary" icon="arrow-right" data-test="start-script">{{ __('Start writing') }}</flux:button>
             </div>
         </form>
+    </flux:modal>
+
+    <flux:modal name="script-view" class="w-full max-w-2xl" x-on:close="$wire.set('viewingId', null)">
+        @if ($sc = $this->viewing)
+            <div class="flex flex-col gap-4">
+                <div class="flex items-start gap-3 pe-8">
+                    <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-violet-500 text-white shadow-md shadow-violet-500/30"><flux:icon.document-text variant="mini" class="size-5" /></span>
+                    <div class="min-w-0">
+                        <flux:heading size="lg">{{ $sc->title }}</flux:heading>
+                        <flux:text>{{ $sc->client?->displayName() ?? __('Other scripts') }} · {{ __((Script::STATUSES[$sc->status] ?? Script::STATUSES['draft'])['label']) }} · {{ Script::speakingTime((string) $sc->body) }}@if ($shoot = $sc->shootLabel()) · {{ $shoot }}@endif</flux:text>
+                    </div>
+                </div>
+                <div class="max-h-[60vh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-xl bg-zinc-50 px-5 py-4 text-[0.9375rem] leading-7 whitespace-pre-line text-zinc-800 dark:bg-white/5 dark:text-zinc-100" data-test="script-view-text">{{ $sc->body ?: __('This script is still empty.') }}</div>
+                @if ($sc->notes)
+                    <p class="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-100"><span class="font-semibold">{{ __('Shooting notes:') }}</span> {{ $sc->notes }}</p>
+                @endif
+                <div class="flex flex-wrap justify-end gap-2">
+                    <flux:button icon="clipboard-document" x-on:click="navigator.clipboard.writeText(@js((string) $sc->body)); $flux.toast({ text: @js(__('Script copied.')) })">{{ __('Copy script') }}</flux:button>
+                    <flux:button icon="pencil-square" :href="route('scripts.edit', $sc)" wire:navigate>{{ __('Edit') }}</flux:button>
+                    <flux:button variant="primary" icon="arrow-down-tray" :href="route('scripts.pdf', $sc)" target="_blank" data-test="script-pdf">{{ __('Download PDF') }}</flux:button>
+                </div>
+            </div>
+        @endif
     </flux:modal>
 </div>

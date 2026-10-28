@@ -92,8 +92,8 @@ class ScriptsTest extends TestCase
 
         // The writer's panel: no status, a Submit button, no copy or delete.
         $this->get(route('scripts.edit', $script))->assertOk()
-            ->assertSee(['Shoot date', 'Type', 'Client', 'Submit for approval'])
-            ->assertDontSee(['Copy script', 'Make a copy', 'Delete script', 'Save script']);
+            ->assertSee(['Shoot date', 'Client', 'Submit for approval'])
+            ->assertDontSee(['Copy script', 'Make a copy', 'Delete script', 'Save script', 'Podcast']);
         // They cannot set the status themselves.
         Livewire::test('pages::script-editor', ['script' => $script])->set('status', 'approved');
         $this->assertSame('draft', $script->fresh()->status);
