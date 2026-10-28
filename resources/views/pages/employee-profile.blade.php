@@ -403,6 +403,20 @@ new #[Title('Employee')] class extends Component {
         return $this->employee->documents()->latest()->get();
     }
 
+    public ?int $viewingDocId = null;
+
+    #[Computed]
+    public function viewingDoc(): ?EmployeeDocument
+    {
+        return $this->viewingDocId ? $this->employee->documents()->find($this->viewingDocId) : null;
+    }
+
+    public function viewDocument(int $id): void
+    {
+        $this->viewingDocId = $this->employee->documents()->findOrFail($id)->id;
+        Flux::modal('doc-view')->show();
+    }
+
     public function uploadDocument(): void
     {
         $data = $this->validate([
@@ -1751,11 +1765,11 @@ new #[Title('Employee')] class extends Component {
                 @endif
                 <div class="mt-4 flex flex-col gap-1.5">
                     @foreach ($agreementDocs as $doc)
-                        <a href="{{ route('employee-documents.download', $doc) }}" class="flex items-center gap-2.5 rounded-lg bg-zinc-50 px-3 py-2 text-sm transition hover:bg-zinc-100 dark:bg-white/[0.03] dark:hover:bg-white/5">
+                        <button type="button" wire:click="viewDocument({{ $doc->id }})" class="flex w-full items-center gap-2.5 rounded-lg bg-zinc-50 px-3 py-2 text-start text-sm transition hover:bg-zinc-100 dark:bg-white/[0.03] dark:hover:bg-white/5">
                             <flux:icon.document-check variant="micro" class="size-4 text-emerald-600" />
                             <span class="min-w-0 flex-1 truncate font-medium text-zinc-700 dark:text-zinc-200">{{ $doc->name }}</span>
-                            <flux:icon.arrow-down-tray variant="micro" class="size-4 text-zinc-400" />
-                        </a>
+                            <flux:icon.eye variant="micro" class="size-4 text-zinc-400" />
+                        </button>
                     @endforeach
                     <button type="button" x-on:click="$wire.docType = 'agreement'; $nextTick(() => document.getElementById('employee-upload')?.scrollIntoView({ behavior: 'smooth', block: 'center' }))" class="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-zinc-300 py-2 text-xs font-medium text-zinc-500 transition hover:border-brand-400 hover:text-brand-600 dark:border-white/15">
                         <flux:icon.arrow-up-tray variant="micro" class="size-3.5" />{{ $agreementDocs->isEmpty() ? __('Upload the signed agreement below') : __('Upload another below') }}
@@ -1799,6 +1813,7 @@ new #[Title('Employee')] class extends Component {
                                     <p class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $doc->name }}</p>
                                     <p class="text-xs text-zinc-500">{{ $doc->created_at->toNepali() }} · {{ $doc->size >= 1048576 ? number_format($doc->size / 1048576, 1).' MB' : max(1, (int) round($doc->size / 1024)).' KB' }}</p>
                                 </div>
+                                <flux:button size="sm" variant="ghost" icon="eye" wire:click="viewDocument({{ $doc->id }})" :aria-label="__('View')" data-test="view-doc-{{ $doc->id }}">{{ __('View') }}</flux:button>
                                 <flux:button size="sm" variant="ghost" icon="arrow-down-tray" :href="route('employee-documents.download', $doc)" :aria-label="__('Download')" />
                                 <button type="button" wire:click="deleteDocument({{ $doc->id }})" wire:confirm="{{ __('Delete this document?') }}" class="rounded-md p-1.5 text-zinc-300 transition hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-500/10" aria-label="{{ __('Delete') }}"><flux:icon.trash variant="micro" class="size-4" /></button>
                             </div>
@@ -2094,6 +2109,40 @@ new #[Title('Employee')] class extends Component {
                 <flux:button type="submit" variant="primary" data-test="save-hours">{{ __('Save') }}</flux:button>
             </div>
         </form>
+    </flux:modal>
+
+    {{-- Document preview --}}
+    <flux:modal name="doc-view" class="w-full max-w-4xl" x-on:close="$wire.set('viewingDocId', null)">
+        @if ($doc = $this->viewingDoc)
+            <div class="flex flex-col gap-4">
+                <div class="flex items-start gap-3 pe-8">
+                    <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white shadow-md shadow-brand-500/30"><flux:icon :icon="EmployeeDocument::TYPES[$doc->type]['icon'] ?? 'paper-clip'" variant="mini" class="size-5" /></span>
+                    <div class="min-w-0">
+                        <flux:heading size="lg" class="truncate">{{ $doc->name }}</flux:heading>
+                        <flux:text>{{ __(EmployeeDocument::TYPES[$doc->type]['label'] ?? 'Other') }} · {{ $doc->created_at->toNepali() }} · {{ $doc->size >= 1048576 ? number_format($doc->size / 1048576, 1).' MB' : max(1, (int) round($doc->size / 1024)).' KB' }}</flux:text>
+                    </div>
+                </div>
+                @if ($doc->previewKind() === 'pdf')
+                    <iframe src="{{ route('employee-documents.view', $doc) }}" title="{{ $doc->name }}" class="h-[70vh] w-full rounded-xl bg-zinc-100 ring-1 ring-zinc-200 dark:bg-white/5 dark:ring-white/10" data-test="doc-frame"></iframe>
+                @elseif ($doc->previewKind() === 'image')
+                    <div class="flex max-h-[70vh] justify-center overflow-auto rounded-xl bg-zinc-100 p-2 ring-1 ring-zinc-200 dark:bg-white/5 dark:ring-white/10">
+                        <img src="{{ route('employee-documents.view', $doc) }}" alt="{{ $doc->name }}" class="h-auto max-w-full rounded-lg object-contain" data-test="doc-image">
+                    </div>
+                @else
+                    <div class="flex flex-col items-center gap-3 rounded-xl bg-zinc-50 px-6 py-12 text-center ring-1 ring-zinc-200 dark:bg-white/5 dark:ring-white/10">
+                        <span class="flex size-14 items-center justify-center rounded-2xl bg-white text-zinc-500 shadow-sm dark:bg-zinc-900"><flux:icon.document-text class="size-7" /></span>
+                        <p class="font-semibold text-zinc-900 dark:text-white">{{ __('This file cannot be shown here') }}</p>
+                        <p class="text-sm text-zinc-500">{{ __('Word files and the like open after download.') }}</p>
+                    </div>
+                @endif
+                <div class="flex flex-wrap justify-end gap-2">
+                    @if ($doc->previewKind())
+                        <flux:button icon="arrow-top-right-on-square" :href="route('employee-documents.view', $doc)" target="_blank">{{ __('Open in new tab') }}</flux:button>
+                    @endif
+                    <flux:button variant="primary" icon="arrow-down-tray" :href="route('employee-documents.download', $doc)">{{ __('Download') }}</flux:button>
+                </div>
+            </div>
+        @endif
     </flux:modal>
 
     {{-- Remove --}}

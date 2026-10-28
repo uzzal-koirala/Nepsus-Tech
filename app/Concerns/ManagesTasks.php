@@ -20,6 +20,16 @@ trait ManagesTasks
 
     public ?int $deletingId = null;
 
+    /**
+     * Livewire runs this on mount for every page using the trait. The form's dropdowns bind to task.client_id,
+     * task.type and so on as soon as the page loads, so the keys must exist then; with an empty array they
+     * fail to connect and a picked client is never sent.
+     */
+    public function mountManagesTasks(): void
+    {
+        $this->task = $this->blankTask();
+    }
+
     /** The calendar only holds client work with a date. */
     public function needsClientAndDate(): bool
     {

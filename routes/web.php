@@ -61,6 +61,11 @@ Route::middleware(['auth', 'verified', 'admin'])->group(function () {
 
     Route::get('employee-documents/{employeeDocument}', fn (EmployeeDocument $employeeDocument) => Storage::disk('local')->download($employeeDocument->path, $employeeDocument->name))
         ->name('employee-documents.download');
+    // Open in the browser (the preview popup): PDFs and photos only; anything else is downloaded.
+    Route::get('employee-documents/{employeeDocument}/view', fn (EmployeeDocument $employeeDocument) => $employeeDocument->previewKind()
+        ? Storage::disk('local')->response($employeeDocument->path, $employeeDocument->name, ['X-Content-Type-Options' => 'nosniff', 'Cache-Control' => 'private, max-age=300'])
+        : Storage::disk('local')->download($employeeDocument->path, $employeeDocument->name))
+        ->name('employee-documents.view');
 
     Route::get('transactions/{transaction}/receipt', fn (App\Models\Transaction $transaction) => $transaction->receipt_path
         ? Storage::disk('local')->response($transaction->receipt_path)

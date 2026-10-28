@@ -23,6 +23,16 @@ class EmployeeDocument extends Model
         static::deleted(fn (EmployeeDocument $doc) => Storage::disk('local')->delete($doc->path));
     }
 
+    /** "pdf", "image" or null: what the browser can show inline. Word files and the rest are downloaded. */
+    public function previewKind(): ?string
+    {
+        return match (strtolower(pathinfo($this->name, PATHINFO_EXTENSION))) {
+            'pdf' => 'pdf',
+            'jpg', 'jpeg', 'png', 'webp' => 'image',
+            default => null,
+        };
+    }
+
     public function employee(): BelongsTo
     {
         return $this->belongsTo(Employee::class);
