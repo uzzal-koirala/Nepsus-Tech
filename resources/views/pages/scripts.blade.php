@@ -16,6 +16,26 @@ new #[Title('Scripts')] class extends Component {
     #[Url(except: '')]
     public string $status = '';
 
+    /** Content Creators pick one of their three filters; they start on Approved. */
+    private const WRITER_FILTERS = ['approved', 'review', 'shot'];
+
+    public function mount(): void
+    {
+        $this->keepWriterFilter();
+    }
+
+    public function updatedStatus(): void
+    {
+        $this->keepWriterFilter();
+    }
+
+    private function keepWriterFilter(): void
+    {
+        if (! auth()->user()->isAdmin() && ! in_array($this->status, self::WRITER_FILTERS, true)) {
+            $this->status = 'approved';
+        }
+    }
+
     /** New script popup: who it is for. */
     public string $newFor = 'client';
 
@@ -138,7 +158,7 @@ new #[Title('Scripts')] class extends Component {
 
     <div class="flex flex-wrap items-center gap-2">
         <nav class="flex flex-wrap gap-2">
-            @foreach (['' => ['label' => __('All'), 'dot' => 'bg-brand-500']] + $chips as $key => $st)
+            @foreach ((auth()->user()->isAdmin() ? ['' => ['label' => __('All'), 'dot' => 'bg-brand-500']] : []) + $chips as $key => $st)
                 @php $on = $status === $key; @endphp
                 <button type="button" wire:click="$set('status', '{{ $key }}')" @class([
                     'inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium ring-1 transition',
