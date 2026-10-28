@@ -214,7 +214,21 @@ new #[Title('Videos')] class extends Component {
 
                     {{-- Details --}}
                     <div class="flex flex-1 flex-col gap-1 px-4 pt-3.5">
-                        <a href="{{ $v->url }}" target="_blank" rel="noopener" class="line-clamp-1 font-semibold text-zinc-900 hover:text-brand-600 dark:text-white">{{ $v->title }}</a>
+                        <div class="flex items-start gap-2">
+                            <a href="{{ $v->url }}" target="_blank" rel="noopener" class="line-clamp-1 min-w-0 flex-1 font-semibold text-zinc-900 hover:text-brand-600 dark:text-white">{{ $v->title }}</a>
+                            <flux:dropdown align="end">
+                                <button type="button" class="-me-1.5 -mt-1 flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-white/5" aria-label="{{ __('More') }}"><flux:icon.ellipsis-vertical variant="mini" class="size-4" /></button>
+                                <flux:menu>
+                                    @foreach (Video::STATUSES as $key => $s)
+                                        @continue($key === $v->status)
+                                        <flux:menu.item :icon="$s['icon']" wire:click="setStatus({{ $v->id }}, '{{ $key }}')">{{ __('Mark as :status', ['status' => mb_strtolower(__($s['short']))]) }}</flux:menu.item>
+                                    @endforeach
+                                    <flux:menu.separator />
+                                    <flux:menu.item icon="pencil-square" wire:click="edit({{ $v->id }})">{{ __('Edit') }}</flux:menu.item>
+                                    <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete({{ $v->id }})">{{ __('Delete') }}</flux:menu.item>
+                                </flux:menu>
+                            </flux:dropdown>
+                        </div>
                         <p class="flex min-w-0 items-center gap-1.5 text-xs text-zinc-500">
                             @if ($v->client)
                                 <a href="{{ route('clients.show', $v->client) }}" wire:navigate class="truncate hover:text-brand-600">{{ $v->client->displayName() }}</a>
@@ -234,18 +248,6 @@ new #[Title('Videos')] class extends Component {
                         <button type="button" @click="navigator.clipboard.writeText(@js($v->url)); copied = true; setTimeout(() => copied = false, 1500)" class="inline-flex items-center justify-center gap-1.5 rounded-lg bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-200 dark:bg-white/5 dark:text-zinc-200">
                             <flux:icon.link variant="micro" class="size-3.5" /><span x-text="copied ? @js(__('Copied')) : @js(__('Copy link'))"></span>
                         </button>
-                        <flux:dropdown align="end">
-                            <button type="button" class="flex size-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-white/5" aria-label="{{ __('More') }}"><flux:icon.ellipsis-vertical variant="mini" class="size-4" /></button>
-                            <flux:menu>
-                                @foreach (Video::STATUSES as $key => $s)
-                                    @continue($key === $v->status)
-                                    <flux:menu.item :icon="$s['icon']" wire:click="setStatus({{ $v->id }}, '{{ $key }}')">{{ __('Mark as :status', ['status' => mb_strtolower(__($s['short']))]) }}</flux:menu.item>
-                                @endforeach
-                                <flux:menu.separator />
-                                <flux:menu.item icon="pencil-square" wire:click="edit({{ $v->id }})">{{ __('Edit') }}</flux:menu.item>
-                                <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete({{ $v->id }})">{{ __('Delete') }}</flux:menu.item>
-                            </flux:menu>
-                        </flux:dropdown>
                     </div>
                 </article>
             @endforeach
