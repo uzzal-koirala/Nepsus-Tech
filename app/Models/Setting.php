@@ -32,6 +32,7 @@ class Setting extends Model
         'reminder_emails' => 'info@nepdude.com', // comma separated: where every system email goes (Settings > Email)
         'reminder_emails_on' => '1',
         'leave_emails_on' => '1',
+        'script_emails_on' => '1',
     ];
 
     /** @var array<string, string|null>|null */

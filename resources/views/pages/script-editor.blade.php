@@ -89,6 +89,14 @@ new #[Title('Script')] class extends Component {
             'title' => $d['title'], 'client_id' => $d['clientId'] ?: null, 'type' => $d['type'], 'status' => 'review', 'review_note' => null,
             'shoot_date' => $d['shootDate'] ?: null, 'body' => $d['body'], 'notes' => $d['notes'] ?: null,
         ]);
+        // Tell the office right away (Settings > Email). A mail problem must not stop the submit.
+        if (\App\Models\Setting::get('script_emails_on') === '1' && $to = \App\Models\Setting::systemEmails()) {
+            try {
+                \Illuminate\Support\Facades\Mail::to($to)->send(new \App\Mail\ScriptSubmitted($this->script->fresh('client'), auth()->user()));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
         Flux::toast(variant: 'success', text: __('“:title” sent for approval.', ['title' => $d['title']]));
         $this->redirectRoute('scripts.index', navigate: true);
     }

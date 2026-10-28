@@ -18,11 +18,14 @@ new #[Title('Email')] class extends Component {
 
     public bool $leaveOn = true;
 
+    public bool $scriptsOn = true;
+
     public function mount(): void
     {
         $this->emails = Setting::systemEmails();
         $this->remindersOn = Setting::get('reminder_emails_on') === '1';
         $this->leaveOn = Setting::get('leave_emails_on') === '1';
+        $this->scriptsOn = Setting::get('script_emails_on') === '1';
     }
 
     public function addEmail(): void
@@ -44,7 +47,7 @@ new #[Title('Email')] class extends Component {
 
     public function save(bool $quiet = false): void
     {
-        if (($this->remindersOn || $this->leaveOn) && ! $this->emails) {
+        if (($this->remindersOn || $this->leaveOn || $this->scriptsOn) && ! $this->emails) {
             $this->addError('newEmail', __('Add at least one address, or turn the emails off.'));
 
             return;
@@ -53,6 +56,7 @@ new #[Title('Email')] class extends Component {
             'reminder_emails' => implode(', ', $this->emails),
             'reminder_emails_on' => $this->remindersOn ? '1' : '0',
             'leave_emails_on' => $this->leaveOn ? '1' : '0',
+            'script_emails_on' => $this->scriptsOn ? '1' : '0',
         ]);
         $quiet || Flux::toast(variant: 'success', text: __('Email settings saved.'));
     }
@@ -63,6 +67,11 @@ new #[Title('Email')] class extends Component {
     }
 
     public function updatedLeaveOn(): void
+    {
+        $this->save(quiet: true);
+    }
+
+    public function updatedScriptsOn(): void
     {
         $this->save(quiet: true);
     }
@@ -155,6 +164,7 @@ new #[Title('Email')] class extends Component {
                 @foreach ([
                     ['remindersOn', 'sun', 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300', __('Morning reminders'), __('Every day at 7:00 AM: shoots, tasks, payments and salaries due today or tomorrow, plus anything late.')],
                     ['leaveOn', 'paper-airplane', 'bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300', __('Leave requests'), __('As soon as an employee asks for leave, with the dates and the reason.')],
+                    ['scriptsOn', 'pencil-square', 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300', __('Scripts to approve'), __('As soon as a Content Creator submits a script, with the text and a link to approve it.')],
                 ] as [$model, $icon, $tone, $label, $hint])
                     <div class="flex items-start justify-between gap-4">
                         <div class="flex gap-4">

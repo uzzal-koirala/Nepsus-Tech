@@ -68,4 +68,36 @@ class EmailSettingsTest extends TestCase
         Mail::assertNothingSent();
         $this->assertSame(2, $sita->leaveRequests()->count());
     }
+
+    public function test_submitting_a_script_emails_the_office_right_away(): void
+    {
+        Mail::fake();
+        Setting::put(['reminder_emails' => 'boss@nepsustech.com', 'script_emails_on' => '1']);
+        $user = User::factory()->staff()->create(['name' => 'Sita Rai']);
+        $e = Employee::factory()->create(['department' => 'content-creator', 'status' => 'active']);
+        Employee::whereKey($e->id)->update(['user_id' => $user->id]);
+        $script = \App\Models\Script::create(['title' => 'Momo reel', 'type' => 'reel', 'status' => 'draft', 'body' => 'Stop scrolling if you love momo']);
+        $this->actingAs($user);
+
+        $this->get(route('settings.email'))->assertRedirect(route('my.dashboard'));
+        Livewire::test('pages::script-editor', ['script' => $script])->call('submitScript')->assertHasNoErrors();
+        Mail::assertSent(\App\Mail\ScriptSubmitted::class, function ($m) {
+            $html = $m->render();
+
+            return $m->hasTo('boss@nepsustech.com') && str_contains($m->envelope()->subject, 'Momo reel')
+                && str_contains($html, 'By Sita Rai') && str_contains($html, 'Stop scrolling if you love momo') && str_contains($html, 'Approve or send back');
+        });
+
+        // Switched off in Settings > Email: no email, the script is still submitted.
+        Mail::fake();
+        Setting::put(['script_emails_on' => '0']);
+        $other = \App\Models\Script::create(['title' => 'Chef intro', 'type' => 'reel', 'status' => 'draft', 'body' => 'Meet our chef']);
+        Livewire::test('pages::script-editor', ['script' => $other])->call('submitScript')->assertHasNoErrors();
+        Mail::assertNothingSent();
+        $this->assertSame('review', $other->fresh()->status);
+
+        // Admins see the switch.
+        $this->actingAs(User::factory()->create());
+        $this->get(route('settings.email'))->assertOk()->assertSee('Scripts to approve');
+    }
 }
