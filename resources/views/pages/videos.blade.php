@@ -31,6 +31,8 @@ new #[Title('Videos')] class extends Component {
 
     public string $shotOn = '';
 
+    public string $editBy = '';
+
     public string $notes = '';
 
     public ?int $deletingId = null;
@@ -61,7 +63,7 @@ new #[Title('Videos')] class extends Component {
 
     public function openNew(): void
     {
-        $this->reset('editingId', 'url', 'title', 'notes', 'shotOn');
+        $this->reset('editingId', 'url', 'title', 'notes', 'shotOn', 'editBy');
         $this->clientId = $this->clientFilter !== '' && $this->clientFilter !== 'none' ? $this->clientFilter : '';
         $this->videoStatus = 'raw';
         $this->resetErrorBag();
@@ -77,6 +79,7 @@ new #[Title('Videos')] class extends Component {
         $this->clientId = (string) $video->client_id;
         $this->videoStatus = $video->status;
         $this->shotOn = (string) $video->shot_on?->toDateString();
+        $this->editBy = (string) $video->edit_by?->toDateString();
         $this->notes = (string) $video->notes;
         $this->resetErrorBag();
         Flux::modal('video-form')->show();
@@ -91,6 +94,7 @@ new #[Title('Videos')] class extends Component {
             'clientId' => ['nullable', Rule::exists('clients', 'id')],
             'videoStatus' => ['required', Rule::in(array_keys(Video::STATUSES))],
             'shotOn' => ['nullable', 'date'],
+            'editBy' => ['nullable', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ], ['url.url' => __('Paste the full link, starting with https://')], ['url' => __('link')]);
 
@@ -100,6 +104,7 @@ new #[Title('Videos')] class extends Component {
             'client_id' => $data['clientId'] ?: null,
             'status' => $data['videoStatus'],
             'shot_on' => $data['shotOn'] ?: null,
+            'edit_by' => $data['editBy'] ?: null,
             'notes' => $data['notes'] ?: null,
         ];
         $this->editingId
@@ -200,6 +205,11 @@ new #[Title('Videos')] class extends Component {
                         <span class="{{ $st['tone'] }} absolute top-3 right-3 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold ring-1 ring-inset">
                             <flux:icon :icon="$st['icon']" variant="micro" class="size-3" />{{ __($st['short']) }}
                         </span>
+                        @if ($due = $v->deadline())
+                            <span class="{{ $due['tone'] }} absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold ring-1 ring-inset" data-test="edit-by-{{ $v->id }}">
+                                <flux:icon :icon="$due['icon']" variant="micro" class="size-3.5" />{{ $due['label'] }}
+                            </span>
+                        @endif
                     </a>
 
                     {{-- Details --}}
@@ -259,7 +269,10 @@ new #[Title('Videos')] class extends Component {
                 <x-rich-select model="clientId" searchable :label="__('Client')" :placeholder="__('No client')" :options="collect([['value' => '', 'label' => __('No client'), 'hint' => __('Our own content'), 'icon' => 'sparkles']])->concat($clientOptions)" />
                 <x-rich-select model="videoStatus" :label="__('Status')" :options="$statusOptions" />
             </div>
-            <x-nepali-date wire:model="shotOn" :label="__('Shot on')" :placeholder="__('Pick the shoot day')" />
+            <div class="grid grid-cols-2 gap-3 sm:gap-4">
+                <x-nepali-date wire:model="shotOn" :label="__('Shot on')" :placeholder="__('Shoot day')" />
+                <x-nepali-date wire:model="editBy" :label="__('Edit by')" :placeholder="__('Finish by')" align="end" data-test="edit-by" />
+            </div>
             <flux:textarea wire:model="notes" :label="__('Notes for the editor')" rows="3" :placeholder="__('Which clips to use, music, length, deadline…')" />
 
             <div class="flex justify-end gap-2">

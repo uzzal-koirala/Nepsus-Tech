@@ -26,11 +26,12 @@ new class extends Component {
         return Task::whereHas('assignees', fn ($q) => $q->whereKey($this->me?->id ?? 0));
     }
 
-    /** Footage waiting or being edited: what is in progress first, then the oldest. */
+    /** Footage waiting or being edited: the nearest edit-by date first, then what is in progress, then the oldest. */
     #[Computed]
     public function queue()
     {
         return Video::with('client')->whereIn('status', ['raw', 'editing'])
+            ->orderByRaw('edit_by is null')->orderBy('edit_by')
             ->orderByRaw("case status when 'editing' then 0 else 1 end")->oldest()->get();
     }
 
@@ -93,6 +94,8 @@ new class extends Component {
     $editing = $queue->where('status', 'editing');
     $tasks = $this->tasks;
     $dueNow = $tasks->filter(fn ($t) => $t->due_date?->lte(today()));
+    // Footage that must be edited today, or is late.
+    $footageDue = $queue->filter(fn ($v) => $v->edit_by?->lte(today()))->count();
     $shoots = $this->shoots;
     $hour = now()->hour;
     $greeting = $hour < 12 ? __('Good morning') : ($hour < 17 ? __('Good afternoon') : __('Good evening'));
@@ -135,7 +138,7 @@ new class extends Component {
         @foreach ([
             ['label' => __('Waiting to edit'), 'value' => $raw->count(), 'icon' => 'inbox-arrow-down', 'tile' => 'bg-sky-500 shadow-sky-500/30', 'glow' => 'bg-sky-100/70 dark:bg-sky-500/10', 'sub' => $raw->count() ? __('Raw footage in the queue') : __('Queue is empty'), 'href' => route('videos.index', ['status' => 'raw'])],
             ['label' => __('Editing now'), 'value' => $editing->count(), 'icon' => 'scissors', 'tile' => 'bg-amber-500 shadow-amber-500/30', 'glow' => 'bg-amber-100/70 dark:bg-amber-500/10', 'sub' => __('Started, not finished'), 'href' => route('videos.index', ['status' => 'editing'])],
-            ['label' => __('Edits due'), 'value' => $dueNow->count(), 'icon' => 'clock', 'tile' => 'bg-rose-500 shadow-rose-500/30', 'glow' => 'bg-rose-100/70 dark:bg-rose-500/10', 'sub' => $dueNow->count() ? __('Today or late') : __('Nothing due today'), 'href' => route('my.tasks')],
+            ['label' => __('Edits due'), 'value' => $dueNow->count() + $footageDue, 'icon' => 'clock', 'tile' => 'bg-rose-500 shadow-rose-500/30', 'glow' => 'bg-rose-100/70 dark:bg-rose-500/10', 'sub' => $dueNow->count() + $footageDue ? __('Footage and tasks, today or late') : __('Nothing due today'), 'href' => route('videos.index')],
             ['label' => __('Edited this week'), 'value' => $this->editedThisWeek, 'icon' => 'check-badge', 'tile' => 'bg-emerald-500 shadow-emerald-500/30', 'glow' => 'bg-emerald-100/70 dark:bg-emerald-500/10', 'sub' => __('Since Sunday'), 'href' => route('videos.index', ['status' => 'done'])],
         ] as $card)
             <a href="{{ $card['href'] }}" wire:navigate class="{{ $panel }} group relative flex min-w-0 flex-col gap-3 overflow-hidden p-4 transition hover:-translate-y-0.5 hover:shadow-lg sm:gap-4 sm:p-5">
@@ -158,13 +161,14 @@ new class extends Component {
                 <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/25"><flux:icon.film variant="mini" class="size-5" /></span>
                 <div class="min-w-0 flex-1">
                     <h2 class="font-semibold text-zinc-900 dark:text-white">{{ __('Footage queue') }}</h2>
-                    <p class="text-xs text-zinc-500">{{ __('What you are editing first, then the oldest footage') }}</p>
+                    <p class="text-xs text-zinc-500">{{ __('Most urgent first, by the date it must be edited') }}</p>
                 </div>
                 <a href="{{ route('videos.index') }}" wire:navigate class="{{ $link }}">{{ __('All') }}</a>
             </div>
             @forelse ($queue as $v)
                 @php $isEditing = $v->status === 'editing'; $st = Video::STATUSES[$v->status]; @endphp
-                <div wire:key="v-{{ $v->id }}" @class(['flex flex-wrap items-center gap-x-3 gap-y-2.5 border-t border-zinc-100 px-4 py-3 sm:px-5 dark:border-white/5', 'bg-amber-50/40 dark:bg-amber-500/[0.04]' => $isEditing])>
+                @php $lateEdit = $v->deadline()['late'] ?? false; @endphp
+                <div wire:key="v-{{ $v->id }}" @class(['flex flex-wrap items-center gap-x-3 gap-y-2.5 border-t border-zinc-100 px-4 py-3 sm:px-5 dark:border-white/5', 'bg-rose-50/50 dark:bg-rose-500/[0.05]' => $lateEdit, 'bg-amber-50/40 dark:bg-amber-500/[0.04]' => $isEditing && ! $lateEdit])>
                     <a href="{{ $v->url }}" target="_blank" rel="noopener" class="group flex min-w-0 flex-1 basis-56 items-center gap-3">
                         <span @class(['relative flex size-11 shrink-0 items-center justify-center rounded-xl text-white transition group-hover:scale-105', 'bg-linear-to-br from-amber-500 to-orange-600' => $isEditing, 'bg-linear-to-br from-zinc-800 to-indigo-900' => ! $isEditing])>
                             <flux:icon :icon="$v->isFolder() ? 'folder-open' : 'play'" variant="mini" class="size-5" />
@@ -179,7 +183,10 @@ new class extends Component {
                             </span>
                         </span>
                     </a>
-                    <div class="flex shrink-0 items-center gap-2 max-sm:w-full max-sm:ps-14">
+                    <div class="flex shrink-0 flex-wrap items-center gap-2 max-sm:w-full max-sm:ps-14">
+                        @if ($due = $v->deadline())
+                            <span class="{{ $due['tone'] }} inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ring-1 ring-inset" data-test="queue-edit-by-{{ $v->id }}"><flux:icon :icon="$due['icon']" variant="micro" class="size-3.5" />{{ $due['label'] }}</span>
+                        @endif
                         <span class="{{ $st['tone'] }} inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold ring-1 ring-inset"><span class="{{ $st['dot'] }} size-1.5 rounded-full"></span>{{ __($st['short']) }}</span>
                         @if ($isEditing)
                             <flux:button size="sm" variant="primary" icon="check" wire:click="moveVideo({{ $v->id }}, 'done')" data-test="edited-{{ $v->id }}">{{ __('Mark edited') }}</flux:button>
