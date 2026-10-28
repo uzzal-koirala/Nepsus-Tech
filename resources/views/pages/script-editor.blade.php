@@ -45,10 +45,9 @@ new #[Title('Script')] class extends Component {
         return Client::orderBy('company')->orderBy('name')->get();
     }
 
-    /** Every change is saved as you type. */
-    public function updated(string $field): void
+    private function rules(): array
     {
-        $rules = [
+        return [
             'title' => ['required', 'string', 'max:200'],
             'clientId' => ['nullable', Rule::exists('clients', 'id')],
             'type' => ['required', Rule::in(array_keys(Script::TYPES))],
@@ -57,6 +56,12 @@ new #[Title('Script')] class extends Component {
             'body' => ['nullable', 'string', 'max:100000'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ];
+    }
+
+    /** Every change is saved as you type. */
+    public function updated(string $field): void
+    {
+        $rules = $this->rules();
         if (! isset($rules[$field])) {
             return;
         }
@@ -64,6 +69,18 @@ new #[Title('Script')] class extends Component {
         $column = ['clientId' => 'client_id', 'shootDate' => 'shoot_date'][$field] ?? $field;
         $this->script->update([$column => $value === '' ? null : $value]);
         $this->savedAt = now()->format('g:i A');
+    }
+
+    /** The Save button: everything at once, then back to the list. */
+    public function saveScript(): void
+    {
+        $d = $this->validate($this->rules(), attributes: ['title' => __('title')]);
+        $this->script->update([
+            'title' => $d['title'], 'client_id' => $d['clientId'] ?: null, 'type' => $d['type'], 'status' => $d['status'],
+            'shoot_date' => $d['shootDate'] ?: null, 'body' => $d['body'] ?: null, 'notes' => $d['notes'] ?: null,
+        ]);
+        Flux::toast(variant: 'success', text: __('“:title” saved.', ['title' => $d['title']]));
+        $this->redirectRoute('scripts.index', navigate: true);
     }
 
     public function duplicate(): void
@@ -88,6 +105,8 @@ new #[Title('Script')] class extends Component {
     $statusOptions = collect(Script::STATUSES)->map(fn ($s, $k) => ['value' => $k, 'label' => __($s['label']), 'icon' => 'flag', 'tile' => $s['tone']])->values();
     $clientOptions = collect([['value' => '', 'label' => __('No client'), 'hint' => __('Our own content'), 'icon' => 'home']])
         ->concat($this->clients->map(fn ($c) => ['value' => $c->id, 'label' => $c->displayName(), 'hint' => $c->company ? $c->name : $c->phone, 'initials' => $c->initials(), 'tile' => 'bg-linear-to-br from-brand-500 to-violet-600 text-white']));
+    // Content Creators get a simpler panel: no status, shoot date and type side by side, one Save button.
+    $simple = ! auth()->user()->isAdmin();
     $placeholder = __("HOOK (first 3 seconds)\nStop scrolling if you love momo…\n\nSTORY\nShow the kitchen, the steam, the first bite…\n\nCALL TO ACTION\nVisit us in Thamel today — link in bio.");
 @endphp
 
@@ -127,22 +146,32 @@ new #[Title('Script')] class extends Component {
                 <div class="px-3 py-4 text-center"><p class="text-xl font-bold text-zinc-900 tabular-nums dark:text-white" x-text="$wire.body.length">{{ mb_strlen($body) }}</p><p class="text-[0.6875rem] text-zinc-500">{{ __('characters') }}</p></div>
             </section>
 
-            <section class="{{ $panel }} flex flex-col gap-4 p-5">
-                <div>
-                    <x-nepali-date wire:model.live="shootDate" :label="__('Shoot date')" :placeholder="__('Pick the shoot day')" />
-                    @if ($shootDate)
-                        <div class="mt-1.5 flex items-center justify-between text-xs">
-                            <span class="text-violet-700 dark:text-violet-300">{{ __('Shows on the client calendar') }}</span>
-                            <button type="button" wire:click="$set('shootDate', '')" class="text-zinc-500 hover:text-rose-600">{{ __('Clear') }}</button>
-                        </div>
+            <section class="{{ $panel }} flex flex-col gap-4 p-5" data-test="script-details">
+                <div @class(['grid grid-cols-2 items-start gap-3' => $simple])>
+                    <div class="min-w-0">
+                        <x-nepali-date wire:model.live="shootDate" :label="__('Shoot date')" :placeholder="$simple ? __('Pick a day') : __('Pick the shoot day')" />
+                        @if ($shootDate)
+                            <div class="mt-1.5 flex items-center justify-between gap-2 text-xs">
+                                <span class="truncate text-violet-700 dark:text-violet-300">{{ $simple ? __('On the calendar') : __('Shows on the client calendar') }}</span>
+                                <button type="button" wire:click="$set('shootDate', '')" class="shrink-0 text-zinc-500 hover:text-rose-600">{{ __('Clear') }}</button>
+                            </div>
+                        @endif
+                    </div>
+                    @if ($simple)
+                        <x-rich-select model="type" live :label="__('Type')" :options="$typeOptions" class="min-w-0" />
                     @endif
                 </div>
-                <x-rich-select model="status" live :label="__('Status')" :options="$statusOptions" />
-                <x-rich-select model="type" live :label="__('Type')" :options="$typeOptions" />
+                @unless ($simple)
+                    <x-rich-select model="status" live :label="__('Status')" :options="$statusOptions" />
+                    <x-rich-select model="type" live :label="__('Type')" :options="$typeOptions" />
+                @endunless
                 <x-rich-select model="clientId" live searchable :label="__('Client')" :options="$clientOptions" />
                 <flux:textarea wire:model.live.debounce.800ms="notes" :label="__('Notes')" rows="3" :placeholder="__('Shooting notes, music, props, who is in it…')" />
             </section>
 
+            @if ($simple)
+                <flux:button variant="primary" icon="check" wire:click="saveScript" class="w-full shadow-md shadow-brand-500/20" data-test="save-script">{{ __('Save script') }}</flux:button>
+            @else
             <section class="{{ $panel }} flex flex-col gap-1 p-2">
                 <button type="button" @click="navigator.clipboard.writeText($wire.title + '\n\n' + $wire.body); copied = true; setTimeout(() => copied = false, 2000)" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:text-zinc-200 dark:hover:bg-white/5">
                     <flux:icon.clipboard-document variant="mini" class="size-4.5 text-zinc-400" /><span x-text="copied ? @js(__('Copied')) : @js(__('Copy script'))"></span>
@@ -154,6 +183,7 @@ new #[Title('Script')] class extends Component {
                     <flux:icon.trash variant="mini" class="size-4.5" />{{ __('Delete script') }}
                 </button>
             </section>
+            @endif
             <p class="px-1 text-xs text-zinc-400">{{ __('Speaking time at :wpm words a minute.', ['wpm' => Script::WORDS_PER_MINUTE]) }}</p>
         </aside>
     </div>

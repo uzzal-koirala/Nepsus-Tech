@@ -77,4 +77,28 @@ class ScriptsTest extends TestCase
         Livewire::test('pages::script-editor', ['script' => $script])->call('delete')->assertRedirect(route('scripts.index'));
         $this->assertModelMissing($script);
     }
+
+    public function test_content_creators_get_a_simple_panel_with_a_save_button(): void
+    {
+        $user = User::factory()->staff()->create();
+        $e = \App\Models\Employee::factory()->create(['department' => 'content-creator', 'status' => 'active']);
+        \App\Models\Employee::whereKey($e->id)->update(['user_id' => $user->id]);
+        $script = Script::create(['title' => 'Momo reel', 'type' => 'reel', 'status' => 'draft']);
+        $this->actingAs($user);
+
+        $this->get(route('scripts.edit', $script))->assertOk()
+            ->assertSee(['Shoot date', 'Type', 'Client', 'Save script'])
+            ->assertDontSee(['Copy script', 'Make a copy', 'Delete script', 'Status']);
+
+        Livewire::test('pages::script-editor', ['script' => $script])
+            ->set('title', 'Momo reel v2')->set('body', 'Stop scrolling if you love momo')->set('type', 'tiktok')
+            ->call('saveScript')->assertHasNoErrors()->assertRedirect(route('scripts.index'));
+        $script->refresh();
+        $this->assertSame(['Momo reel v2', 'Stop scrolling if you love momo', 'tiktok', 'draft'], [$script->title, $script->body, $script->type, $script->status]);
+        Livewire::test('pages::script-editor', ['script' => $script])->set('title', '')->call('saveScript')->assertHasErrors('title');
+
+        // Admins keep the full panel.
+        $this->actingAs(User::factory()->create());
+        $this->get(route('scripts.edit', $script))->assertOk()->assertSee(['Status', 'Copy script', 'Delete script'])->assertDontSee('Save script');
+    }
 }
