@@ -15,7 +15,7 @@
     x-data="nepaliDate"
     x-modelable="value"
     {{ $attributes->whereStartsWith('wire:model') }}
-    {{ $attributes->whereDoesntStartWith('wire:model')->class('relative grid gap-2') }}
+    {{ $attributes->whereDoesntStartWith('wire:model')->class('relative grid min-w-0 gap-2') }}
     @keydown.escape.stop="open = false"
     @click.outside="open = false"
 >
@@ -26,12 +26,13 @@
     <button
         type="button"
         @click="toggle()"
-        class="flex h-10 w-full items-center gap-2.5 rounded-lg border border-zinc-200 bg-white px-3 text-start text-sm shadow-xs transition hover:border-zinc-300 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none dark:border-white/10 dark:bg-white/5"
+        class="@container flex h-10 w-full min-w-0 items-center gap-2.5 overflow-hidden rounded-lg border border-zinc-200 bg-white px-3 text-start text-sm shadow-xs transition hover:border-zinc-300 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none dark:border-white/10 dark:bg-white/5"
         :aria-expanded="open"
     >
         <flux:icon.calendar-days variant="micro" class="size-4 shrink-0 text-zinc-400" />
-        <span class="flex-1 truncate" :class="value ? 'text-zinc-900 dark:text-white' : 'text-zinc-400'" x-text="label || @js(__($placeholder))"></span>
-        <span class="text-xs text-zinc-400 tabular-nums" x-text="adLabel"></span>
+        <span class="min-w-0 flex-1 truncate" :class="value ? 'text-zinc-900 dark:text-white' : 'text-zinc-400'" x-text="label || @js(__($placeholder))"></span>
+        {{-- The English date only when the field is wide enough; narrow fields show the Nepali date alone. --}}
+        <span class="hidden shrink-0 text-xs text-zinc-400 tabular-nums @[14rem]:inline" x-text="adLabel"></span>
     </button>
 
     <div

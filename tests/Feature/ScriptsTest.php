@@ -127,6 +127,21 @@ class ScriptsTest extends TestCase
         $this->assertSame('approved', $script->fresh()->status);
         $this->actingAs($user);
         $this->get(route('scripts.edit', $script))->assertSee(['Approved', 'Great hook'])->assertDontSee(['Submit for approval', 'Submit again']);
+
+        // After approval the writer marks it as shot; only from Approved.
+        $this->get(route('scripts.edit', $script))->assertSee('Mark as shot');
+        Livewire::test('pages::script-editor', ['script' => $script->fresh()])->call('markShot')->assertHasNoErrors();
+        $this->assertSame('shot', $script->fresh()->status);
+        $this->get(route('scripts.edit', $script))->assertSee('Approved and shot')->assertDontSee('Mark as shot');
+        Livewire::test('pages::script-editor', ['script' => $script->fresh()])->call('markShot')->assertStatus(422);
+
+        // Admins can mark an approved script as shot too.
+        $other = Script::create(['title' => 'Chef intro', 'type' => 'reel', 'status' => 'approved', 'body' => 'Meet our chef']);
+        $this->actingAs($admin);
+        $this->get(route('scripts.edit', $other))->assertSee(['Approved, ready to shoot', 'Mark as shot']);
+        Livewire::test('pages::script-editor', ['script' => $other])->call('markShot')->assertHasNoErrors();
+        $this->assertSame('shot', $other->fresh()->status);
+        $this->get(route('scripts.edit', $other))->assertDontSee('Mark as shot');
     }
 
     public function test_admins_see_submitted_scripts_counted_and_approve_them_from_the_list(): void

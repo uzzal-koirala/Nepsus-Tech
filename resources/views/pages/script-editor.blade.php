@@ -101,6 +101,16 @@ new #[Title('Script')] class extends Component {
         $this->redirectRoute('scripts.index', navigate: true);
     }
 
+    /** Once approved, the writer (or an admin) marks the script as shot. */
+    public function markShot(): void
+    {
+        abort_unless(auth()->user()->canPlanContent(), 403);
+        abort_unless($this->script->status === 'approved', 422);
+        $this->script->update(['status' => 'shot']);
+        $this->status = 'shot';
+        Flux::toast(variant: 'success', text: __('“:title” marked as shot.', ['title' => $this->script->title]));
+    }
+
     /** Admins: approve, with an optional note. */
     public function approveScript(): void
     {
@@ -222,9 +232,12 @@ new #[Title('Script')] class extends Component {
                         <flux:icon.check-badge variant="mini" class="mt-0.5 size-5 shrink-0 text-emerald-600 dark:text-emerald-300" />
                         <div class="text-sm">
                             <p class="font-semibold text-emerald-900 dark:text-emerald-100">{{ $stage === 'shot' ? __('Approved and shot') : __('Approved') }}</p>
-                            <p class="text-emerald-800/80 dark:text-emerald-200/80">{{ $this->script->review_note ?: __('Ready to shoot.') }}</p>
+                            <p class="text-emerald-800/80 dark:text-emerald-200/80">{{ $this->script->review_note ?: ($stage === 'shot' ? __('The footage is on its way to the editors.') : __('Ready to shoot.')) }}</p>
                         </div>
                     </div>
+                    @if ($stage === 'approved')
+                        <flux:button variant="primary" icon="video-camera" wire:click="markShot" wire:confirm="{{ __('Mark “:title” as shot?', ['title' => $this->script->title]) }}" class="w-full shadow-md shadow-brand-500/20" data-test="mark-shot">{{ __('Mark as shot') }}</flux:button>
+                    @endif
                 @elseif ($stage === 'rejected')
                     <div class="flex items-start gap-3 rounded-xl bg-rose-50 px-4 py-3 ring-1 ring-rose-200/70 dark:bg-rose-500/10 dark:ring-rose-500/20" data-test="stage-rejected">
                         <flux:icon.x-circle variant="mini" class="mt-0.5 size-5 shrink-0 text-rose-600 dark:text-rose-300" />
@@ -240,6 +253,13 @@ new #[Title('Script')] class extends Component {
                     <flux:error name="body" />
                 @endif
             @else
+                @if ($this->script->status === 'approved')
+                    {{-- Admin: the approved script was filmed --}}
+                    <section class="{{ $panel }} flex flex-col gap-3 p-4 ring-emerald-300/70 dark:ring-emerald-500/30" data-test="shot-panel">
+                        <p class="flex items-center gap-2 text-sm font-semibold text-emerald-800 dark:text-emerald-200"><flux:icon.check-badge variant="mini" class="size-4.5" />{{ __('Approved, ready to shoot') }}</p>
+                        <flux:button variant="primary" icon="video-camera" wire:click="markShot" wire:confirm="{{ __('Mark “:title” as shot?', ['title' => $this->script->title]) }}" class="w-full" data-test="mark-shot">{{ __('Mark as shot') }}</flux:button>
+                    </section>
+                @endif
                 @if ($this->script->status === 'review')
                     {{-- Admin: decide on a submitted script --}}
                     <section class="{{ $panel }} flex flex-col gap-3 p-4 ring-amber-300/70 dark:ring-amber-500/30" data-test="review-panel">
