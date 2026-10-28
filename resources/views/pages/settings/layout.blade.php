@@ -3,6 +3,7 @@
         __('Workspace') => [
             ['route' => 'settings.business', 'icon' => 'building-office-2', 'label' => __('Business'), 'hint' => __('Name, logo and contact details')],
             ['route' => 'settings.preferences', 'icon' => 'adjustments-horizontal', 'label' => __('Preferences'), 'hint' => __('Currency, reminders and holidays')],
+            ['route' => 'settings.email', 'icon' => 'envelope', 'label' => __('Email'), 'hint' => __('Who gets the system emails')],
             ['route' => 'settings.work-types', 'icon' => 'swatch', 'label' => __('Work types'), 'hint' => __('Post, reel, edit and more')],
             ['route' => 'settings.attendance-device', 'icon' => 'finger-print', 'label' => __('Attendance device'), 'hint' => __('Hikvision fingerprint machine')],
             ['route' => 'settings.ai-connections', 'icon' => 'link', 'label' => __('AI connections'), 'hint' => __('Use ChatGPT or Claude with this system')],

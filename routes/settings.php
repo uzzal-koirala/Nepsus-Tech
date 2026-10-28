@@ -12,6 +12,7 @@ Route::middleware(['auth'])->group(function () {
 Route::middleware(['auth', 'verified', 'admin'])->group(function () {
     Route::livewire('settings/business', 'pages::settings.business')->name('settings.business');
     Route::livewire('settings/preferences', 'pages::settings.preferences')->name('settings.preferences');
+    Route::livewire('settings/email', 'pages::settings.email')->name('settings.email');
     Route::livewire('settings/work-types', 'pages::settings.work-types')->name('settings.work-types');
     Route::livewire('settings/attendance-device', 'pages::settings.attendance-device')->name('settings.attendance-device');
     Route::livewire('settings/updates', 'pages::settings.updates')->name('settings.updates');

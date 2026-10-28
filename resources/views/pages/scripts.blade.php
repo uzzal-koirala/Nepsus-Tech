@@ -101,6 +101,8 @@ new #[Title('Scripts')] class extends Component {
     $boxes = $this->boxes;
     $counts = $all->countBy('status');
     $filtered = $search !== '' || $status !== '';
+    // Content Creators only filter by where a script stands with the admin.
+    $chips = auth()->user()->isAdmin() ? Script::STATUSES : array_intersect_key(Script::STATUSES, array_flip(['review', 'approved']));
     $clientOptions = $this->clients->map(fn ($c) => ['value' => $c->id, 'label' => $c->displayName(), 'hint' => $c->company ? $c->name : $c->phone, 'initials' => $c->initials(), 'tile' => 'bg-linear-to-br from-brand-500 to-violet-600 text-white']);
 @endphp
 
@@ -115,7 +117,7 @@ new #[Title('Scripts')] class extends Component {
 
     <div class="flex flex-wrap items-center gap-2">
         <nav class="flex flex-wrap gap-2">
-            @foreach (['' => ['label' => __('All'), 'dot' => 'bg-brand-500']] + Script::STATUSES as $key => $st)
+            @foreach (['' => ['label' => __('All'), 'dot' => 'bg-brand-500']] + $chips as $key => $st)
                 @php $on = $status === $key; @endphp
                 <button type="button" wire:click="$set('status', '{{ $key }}')" @class([
                     'inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium ring-1 transition',

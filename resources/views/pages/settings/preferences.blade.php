@@ -1,11 +1,9 @@
 <?php
 
-use App\Mail\DailyReminders;
 use App\Models\Setting;
 use Flux\Flux;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Title;
-use Illuminate\Support\Facades\Mail;
 use Livewire\Component;
 
 new #[Title('Preferences')] class extends Component {
@@ -16,16 +14,12 @@ new #[Title('Preferences')] class extends Component {
     public string $currency = 'NPR';
     public string $remindDays = '7';
     public string $weeklyHoliday = '6';
-    public bool $remindersOn = true;
-    public string $reminderEmails = '';
 
     public function mount(): void
     {
         $this->currency = (string) Setting::get('currency');
         $this->remindDays = (string) Setting::get('remind_days');
         $this->weeklyHoliday = (string) Setting::get('weekly_holiday');
-        $this->remindersOn = Setting::get('reminder_emails_on') === '1';
-        $this->reminderEmails = (string) Setting::get('reminder_emails');
     }
 
     public function save(): void
@@ -34,44 +28,16 @@ new #[Title('Preferences')] class extends Component {
             'currency' => ['required', Rule::in(array_keys(self::CURRENCIES))],
             'remindDays' => ['required', 'integer', 'min:0', 'max:60'],
             'weeklyHoliday' => ['required', 'integer', 'min:0', 'max:6'],
-            'remindersOn' => ['boolean'],
-            'reminderEmails' => [$this->remindersOn ? 'required' : 'nullable', 'string', 'max:500', function ($attr, $value, $fail) {
-                foreach (array_filter(array_map('trim', explode(',', (string) $value))) as $email) {
-                    if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                        $fail(__('":email" is not an email address.', ['email' => $email]));
-                    }
-                }
-            }],
-        ], attributes: ['remindDays' => __('reminder days'), 'weeklyHoliday' => __('weekly holiday'), 'reminderEmails' => __('reminder emails')]);
+        ], attributes: ['remindDays' => __('reminder days'), 'weeklyHoliday' => __('weekly holiday')]);
 
         Setting::put([
             'currency' => $data['currency'],
             'remind_days' => $data['remindDays'],
             'weekly_holiday' => $data['weeklyHoliday'],
-            'reminder_emails_on' => $data['remindersOn'] ? '1' : '0',
-            'reminder_emails' => $data['reminderEmails'],
         ]);
         config(['app.currency' => $data['currency']]);
 
         Flux::toast(variant: 'success', text: __('Preferences saved.'));
-    }
-
-    /** Saves, then sends today's reminders straight away so you can see the email. */
-    public function sendTest(): void
-    {
-        $this->save();
-        if (! $to = DailyReminders::recipients()) {
-            $this->addError('reminderEmails', __('Add an email address first.'));
-
-            return;
-        }
-        try {
-            Mail::to($to)->send(new DailyReminders(DailyReminders::gather()));
-            Flux::toast(variant: 'success', text: __('Test email sent to :to.', ['to' => implode(', ', $to)]));
-        } catch (\Throwable $e) {
-            report($e);
-            Flux::toast(variant: 'danger', text: __('Could not send: :error', ['error' => str($e->getMessage())->limit(120)]));
-        }
     }
 }; ?>
 
@@ -116,23 +82,15 @@ new #[Title('Preferences')] class extends Component {
             </div>
             <flux:error name="remindDays" class="-mt-5 pb-4" />
 
-            {{-- Email reminders --}}
-            <div class="flex flex-col gap-4 py-7">
-                <div class="flex items-start justify-between gap-4">
-                    <div class="flex gap-4">
-                        <span class="{{ $tile }} bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300"><flux:icon.envelope variant="mini" class="size-5" /></span>
-                        <div>
-                            <p class="font-semibold text-zinc-900 dark:text-white">{{ __('Morning email') }}</p>
-                            <p class="mt-0.5 max-w-md text-sm text-zinc-500">{{ __('Every day at 7:00 AM: shoots, tasks, payments and salaries due today or tomorrow, plus anything late. Works on any phone with email.') }}</p>
-                        </div>
-                    </div>
-                    <flux:switch wire:model.live="remindersOn" data-test="reminders-on" />
-                </div>
-                <div x-show="$wire.remindersOn" class="flex flex-col gap-3 sm:ms-14 sm:flex-row sm:items-start">
-                    <flux:input wire:model="reminderEmails" icon="at-symbol" class="flex-1" :placeholder="__('you@gmail.com, partner@gmail.com')" :description:trailing="__('Separate more than one with a comma.')" data-test="reminder-emails" />
-                    <flux:button type="button" icon="paper-airplane" wire:click="sendTest" data-test="send-test">{{ __('Send test email') }}</flux:button>
-                </div>
-            </div>
+            {{-- Email lives in its own page --}}
+            <a href="{{ route('settings.email') }}" wire:navigate class="group flex items-center gap-4 py-7">
+                <span class="{{ $tile }} bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300"><flux:icon.envelope variant="mini" class="size-5" /></span>
+                <span class="min-w-0 flex-1">
+                    <span class="block font-semibold text-zinc-900 group-hover:text-brand-600 dark:text-white">{{ __('Morning email and other system emails') }}</span>
+                    <span class="mt-0.5 block text-sm text-zinc-500">{{ __('Who gets them and which ones are sent: Settings → Email.') }}</span>
+                </span>
+                <flux:icon.chevron-right variant="mini" class="size-5 text-zinc-300 transition group-hover:translate-x-0.5 group-hover:text-zinc-500" />
+            </a>
 
             {{-- Weekly holiday --}}
             <div class="flex flex-col gap-4 py-7">

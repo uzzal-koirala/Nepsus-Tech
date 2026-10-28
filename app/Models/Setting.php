@@ -29,8 +29,9 @@ class Setting extends Model
         'currency' => 'NPR',
         'remind_days' => '7',
         'weekly_holiday' => '6', // 0 = Sunday ... 6 = Saturday
-        'reminder_emails' => 'info@nepdude.com', // comma separated
+        'reminder_emails' => 'info@nepdude.com', // comma separated: where every system email goes (Settings > Email)
         'reminder_emails_on' => '1',
+        'leave_emails_on' => '1',
     ];
 
     /** @var array<string, string|null>|null */
@@ -53,6 +54,12 @@ class Setting extends Model
         }
 
         self::$cache = null;
+    }
+
+    /** @return list<string> Where system emails go (Settings > Email). */
+    public static function systemEmails(): array
+    {
+        return array_values(array_unique(array_filter(array_map(fn ($e) => mb_strtolower(trim($e)), explode(',', (string) static::get('reminder_emails'))), fn ($e) => filter_var($e, FILTER_VALIDATE_EMAIL))));
     }
 
     public static function forget(): void

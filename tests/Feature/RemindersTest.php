@@ -32,15 +32,18 @@ class RemindersTest extends TestCase
         $this->assertStringContainsString('Dashain reel', $html);
         $this->assertStringNotContainsString('Far away shoot', $html);
 
-        // Settings: a bad address is refused; good ones are saved and the test email goes out.
+        // Settings > Email: a bad address is refused; good ones are saved and the test email goes out.
         $this->actingAs(User::factory()->create());
-        Livewire::test('pages::settings.preferences')
-            ->set('reminderEmails', 'me@gmail.com, nope')->call('save')->assertHasErrors('reminderEmails')
-            ->set('reminderEmails', 'me@gmail.com, partner@gmail.com')->call('sendTest')->assertHasNoErrors();
+        Setting::put(['reminder_emails' => '']);
+        Livewire::test('pages::settings.email')
+            ->set('newEmail', 'nope')->call('addEmail')->assertHasErrors('newEmail')
+            ->set('newEmail', 'me@gmail.com')->call('addEmail')->set('newEmail', 'Partner@Gmail.com')->call('addEmail')->assertHasNoErrors()
+            ->assertSet('emails', ['me@gmail.com', 'partner@gmail.com'])
+            ->call('sendTest')->assertHasNoErrors();
         Mail::assertSent(DailyReminders::class, fn ($m) => $m->hasTo('me@gmail.com') && $m->hasTo('partner@gmail.com'));
 
         $this->artisan('reminders:send')->expectsOutputToContain('Reminders sent to me@gmail.com, partner@gmail.com')->assertOk();
         Setting::put(['reminder_emails' => '']);
-        $this->artisan('reminders:send')->expectsOutputToContain('No reminder email set')->assertOk();
+        $this->artisan('reminders:send')->expectsOutputToContain('No email address set')->assertOk();
     }
 }

@@ -78,7 +78,7 @@ class ScriptsTest extends TestCase
         $this->assertModelMissing($script);
     }
 
-    public function test_content_creators_get_a_simple_panel_with_a_save_button(): void
+    public function test_content_creators_submit_scripts_and_admins_approve_or_send_them_back(): void
     {
         $user = User::factory()->staff()->create();
         $e = \App\Models\Employee::factory()->create(['department' => 'content-creator', 'status' => 'active']);
@@ -86,19 +86,46 @@ class ScriptsTest extends TestCase
         $script = Script::create(['title' => 'Momo reel', 'type' => 'reel', 'status' => 'draft']);
         $this->actingAs($user);
 
+        // The writer's panel: no status, a Submit button, no copy or delete.
         $this->get(route('scripts.edit', $script))->assertOk()
-            ->assertSee(['Shoot date', 'Type', 'Client', 'Save script'])
-            ->assertDontSee(['Copy script', 'Make a copy', 'Delete script', 'Status']);
+            ->assertSee(['Shoot date', 'Type', 'Client', 'Submit for approval'])
+            ->assertDontSee(['Copy script', 'Make a copy', 'Delete script', 'Save script']);
+        // They cannot set the status themselves.
+        Livewire::test('pages::script-editor', ['script' => $script])->set('status', 'approved');
+        $this->assertSame('draft', $script->fresh()->status);
 
+        // An empty script cannot be submitted; a written one goes to review.
+        Livewire::test('pages::script-editor', ['script' => $script])->set('body', '')->call('submitScript')->assertHasErrors('body');
         Livewire::test('pages::script-editor', ['script' => $script])
             ->set('title', 'Momo reel v2')->set('body', 'Stop scrolling if you love momo')->set('type', 'tiktok')
-            ->call('saveScript')->assertHasNoErrors()->assertRedirect(route('scripts.index'));
+            ->call('submitScript')->assertHasNoErrors()->assertRedirect(route('scripts.index'));
         $script->refresh();
-        $this->assertSame(['Momo reel v2', 'Stop scrolling if you love momo', 'tiktok', 'draft'], [$script->title, $script->body, $script->type, $script->status]);
-        Livewire::test('pages::script-editor', ['script' => $script])->set('title', '')->call('saveScript')->assertHasErrors('title');
+        $this->assertSame(['Momo reel v2', 'tiktok', 'review'], [$script->title, $script->type, $script->status]);
+        $this->get(route('scripts.edit', $script))->assertSee('Waiting for approval')->assertDontSee('Submit for approval');
+        Livewire::test('pages::script-editor', ['script' => $script])->call('submitScript')->assertStatus(422);
+        Livewire::test('pages::script-editor', ['script' => $script])->set('reviewNote', 'ok')->call('approveScript')->assertForbidden();
 
-        // Admins keep the full panel.
-        $this->actingAs(User::factory()->create());
-        $this->get(route('scripts.edit', $script))->assertOk()->assertSee(['Status', 'Copy script', 'Delete script'])->assertDontSee('Save script');
+        // The list only filters by In review and Approved for writers.
+        $this->get(route('scripts.index'))->assertSee(['All', 'In review', 'Approved'])->assertDontSee(['Idea', 'Draft', 'Shot']);
+
+        // The admin sends it back with a reason, which the writer sees.
+        $admin = User::factory()->create();
+        $this->actingAs($admin);
+        $this->get(route('scripts.edit', $script))->assertSee(['Waiting for your approval', 'Approve', 'Not approved', 'Copy script']);
+        Livewire::test('pages::script-editor', ['script' => $script])->call('rejectScript')->assertHasErrors('reviewNote')
+            ->set('reviewNote', 'Make the hook shorter')->call('rejectScript')->assertHasNoErrors();
+        $this->assertSame(['rejected', 'Make the hook shorter'], [$script->fresh()->status, $script->fresh()->review_note]);
+
+        $this->actingAs($user);
+        $this->get(route('scripts.edit', $script))->assertSee(['Not approved', 'Make the hook shorter', 'Submit again']);
+        Livewire::test('pages::script-editor', ['script' => $script->fresh()])->set('body', 'Momo! Stop scrolling.')->call('submitScript')->assertHasNoErrors();
+        $this->assertSame(['review', null], [$script->fresh()->status, $script->fresh()->review_note]);
+
+        // Approved: the writer sees it is ready.
+        $this->actingAs($admin);
+        Livewire::test('pages::script-editor', ['script' => $script->fresh()])->set('reviewNote', 'Great hook')->call('approveScript')->assertHasNoErrors();
+        $this->assertSame('approved', $script->fresh()->status);
+        $this->actingAs($user);
+        $this->get(route('scripts.edit', $script))->assertSee(['Approved', 'Great hook'])->assertDontSee(['Submit for approval', 'Submit again']);
     }
 }

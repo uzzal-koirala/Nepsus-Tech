@@ -83,7 +83,15 @@ new #[Title('My attendance')] class extends Component {
             return;
         }
 
-        $this->me->leaveRequests()->create(['from_date' => $data['leaveFrom'], 'to_date' => $data['leaveTo'], 'reason' => trim($data['leaveReason'])]);
+        $request = $this->me->leaveRequests()->create(['from_date' => $data['leaveFrom'], 'to_date' => $data['leaveTo'], 'reason' => trim($data['leaveReason'])]);
+        // Tell the office (Settings > Email). A mail problem must not lose the request.
+        if (\App\Models\Setting::get('leave_emails_on') === '1' && $to = \App\Models\Setting::systemEmails()) {
+            try {
+                \Illuminate\Support\Facades\Mail::to($to)->send(new \App\Mail\LeaveRequested($request->setRelation('employee', $this->me)));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
         unset($this->leaveRequests);
         Flux::modal('leave-request')->close();
         Flux::toast(variant: 'success', text: __('Leave requested. An admin will look at it.'));

@@ -54,7 +54,7 @@ class DailyReminders extends Mailable
     /** @return list<string> */
     public static function recipients(): array
     {
-        return array_values(array_filter(array_map('trim', explode(',', (string) Setting::get('reminder_emails'))), fn ($e) => filter_var($e, FILTER_VALIDATE_EMAIL)));
+        return Setting::systemEmails();
     }
 
     public function envelope(): Envelope

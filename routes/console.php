@@ -22,7 +22,7 @@ Artisan::command('attendance:sync {--days=2 : How many days back to read}', func
 
 Artisan::command('reminders:send', function () {
     if (! $to = DailyReminders::recipients()) {
-        return $this->warn('No reminder email set (Settings → Preferences).');
+        return $this->warn('No email address set (Settings → Email).');
     }
     if (! $sections = DailyReminders::gather()) {
         return $this->info('Nothing due today or tomorrow, no email sent.');

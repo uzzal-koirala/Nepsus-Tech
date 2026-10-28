@@ -27,6 +27,9 @@ new #[Title('Script')] class extends Component {
 
     public ?string $savedAt = null;
 
+    /** The admin's reason when approving or sending a script back. */
+    public string $reviewNote = '';
+
     public function mount(Script $script): void
     {
         $this->script = $script;
@@ -65,22 +68,49 @@ new #[Title('Script')] class extends Component {
         if (! isset($rules[$field])) {
             return;
         }
+        if ($field === 'status' && ! auth()->user()->isAdmin()) {
+            $this->status = $this->script->status;
+
+            return;
+        }
         $value = $this->validate([$field => $rules[$field]], attributes: ['title' => __('title')])[$field];
         $column = ['clientId' => 'client_id', 'shootDate' => 'shoot_date'][$field] ?? $field;
         $this->script->update([$column => $value === '' ? null : $value]);
         $this->savedAt = now()->format('g:i A');
     }
 
-    /** The Save button: everything at once, then back to the list. */
-    public function saveScript(): void
+    /** Content Creators: saves everything and sends the script to an admin for approval. */
+    public function submitScript(): void
     {
-        $d = $this->validate($this->rules(), attributes: ['title' => __('title')]);
+        abort_if(in_array($this->script->status, ['review', 'approved', 'shot'], true), 422);
+        // The script itself must be written before it goes for approval.
+        $d = $this->validate(array_merge(array_diff_key($this->rules(), ['status' => 1]), ['body' => ['required', 'string', 'max:100000']]), attributes: ['title' => __('title'), 'body' => __('script')]);
         $this->script->update([
-            'title' => $d['title'], 'client_id' => $d['clientId'] ?: null, 'type' => $d['type'], 'status' => $d['status'],
-            'shoot_date' => $d['shootDate'] ?: null, 'body' => $d['body'] ?: null, 'notes' => $d['notes'] ?: null,
+            'title' => $d['title'], 'client_id' => $d['clientId'] ?: null, 'type' => $d['type'], 'status' => 'review', 'review_note' => null,
+            'shoot_date' => $d['shootDate'] ?: null, 'body' => $d['body'], 'notes' => $d['notes'] ?: null,
         ]);
-        Flux::toast(variant: 'success', text: __('“:title” saved.', ['title' => $d['title']]));
+        Flux::toast(variant: 'success', text: __('“:title” sent for approval.', ['title' => $d['title']]));
         $this->redirectRoute('scripts.index', navigate: true);
+    }
+
+    /** Admins: approve, with an optional note. */
+    public function approveScript(): void
+    {
+        abort_unless(auth()->user()->isAdmin(), 403);
+        $this->validate(['reviewNote' => ['nullable', 'string', 'max:500']]);
+        $this->script->update(['status' => 'approved', 'review_note' => trim($this->reviewNote) ?: null]);
+        [$this->status, $this->reviewNote] = ['approved', ''];
+        Flux::toast(variant: 'success', text: __('Script approved.'));
+    }
+
+    /** Admins: send it back with a reason the writer sees. */
+    public function rejectScript(): void
+    {
+        abort_unless(auth()->user()->isAdmin(), 403);
+        $this->validate(['reviewNote' => ['required', 'string', 'min:3', 'max:500']], attributes: ['reviewNote' => __('reason')]);
+        $this->script->update(['status' => 'rejected', 'review_note' => trim($this->reviewNote)]);
+        [$this->status, $this->reviewNote] = ['rejected', ''];
+        Flux::toast(text: __('Sent back to the writer.'));
     }
 
     public function duplicate(): void
@@ -170,8 +200,49 @@ new #[Title('Script')] class extends Component {
             </section>
 
             @if ($simple)
-                <flux:button variant="primary" icon="check" wire:click="saveScript" class="w-full shadow-md shadow-brand-500/20" data-test="save-script">{{ __('Save script') }}</flux:button>
+                @php $stage = $this->script->status; @endphp
+                @if ($stage === 'review')
+                    <div class="flex items-start gap-3 rounded-xl bg-amber-50 px-4 py-3 ring-1 ring-amber-200/70 dark:bg-amber-500/10 dark:ring-amber-500/20" data-test="stage-review">
+                        <flux:icon.clock variant="mini" class="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-300" />
+                        <div class="text-sm">
+                            <p class="font-semibold text-amber-900 dark:text-amber-100">{{ __('Waiting for approval') }}</p>
+                            <p class="text-amber-800/80 dark:text-amber-200/80">{{ __('An admin is looking at it. You can still fix typos.') }}</p>
+                        </div>
+                    </div>
+                @elseif (in_array($stage, ['approved', 'shot'], true))
+                    <div class="flex items-start gap-3 rounded-xl bg-emerald-50 px-4 py-3 ring-1 ring-emerald-200/70 dark:bg-emerald-500/10 dark:ring-emerald-500/20" data-test="stage-approved">
+                        <flux:icon.check-badge variant="mini" class="mt-0.5 size-5 shrink-0 text-emerald-600 dark:text-emerald-300" />
+                        <div class="text-sm">
+                            <p class="font-semibold text-emerald-900 dark:text-emerald-100">{{ $stage === 'shot' ? __('Approved and shot') : __('Approved') }}</p>
+                            <p class="text-emerald-800/80 dark:text-emerald-200/80">{{ $this->script->review_note ?: __('Ready to shoot.') }}</p>
+                        </div>
+                    </div>
+                @elseif ($stage === 'rejected')
+                    <div class="flex items-start gap-3 rounded-xl bg-rose-50 px-4 py-3 ring-1 ring-rose-200/70 dark:bg-rose-500/10 dark:ring-rose-500/20" data-test="stage-rejected">
+                        <flux:icon.x-circle variant="mini" class="mt-0.5 size-5 shrink-0 text-rose-600 dark:text-rose-300" />
+                        <div class="min-w-0 text-sm">
+                            <p class="font-semibold text-rose-900 dark:text-rose-100">{{ __('Not approved') }}</p>
+                            @if ($this->script->review_note)<p class="text-rose-800 dark:text-rose-200"><span class="font-medium">{{ __("Admin's reason:") }}</span> {{ $this->script->review_note }}</p>@endif
+                            <p class="mt-1 text-rose-800/80 dark:text-rose-200/80">{{ __('Change it, then submit again.') }}</p>
+                        </div>
+                    </div>
+                @endif
+                @if (! in_array($stage, ['review', 'approved', 'shot'], true))
+                    <flux:button variant="primary" icon="paper-airplane" wire:click="submitScript" class="w-full shadow-md shadow-brand-500/20" data-test="submit-script">{{ $stage === 'rejected' ? __('Submit again') : __('Submit for approval') }}</flux:button>
+                    <flux:error name="body" />
+                @endif
             @else
+                @if ($this->script->status === 'review')
+                    {{-- Admin: decide on a submitted script --}}
+                    <section class="{{ $panel }} flex flex-col gap-3 p-4 ring-amber-300/70 dark:ring-amber-500/30" data-test="review-panel">
+                        <p class="flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-200"><flux:icon.clock variant="mini" class="size-4.5" />{{ __('Waiting for your approval') }}</p>
+                        <flux:textarea wire:model="reviewNote" rows="2" :placeholder="__('Note for the writer (needed if not approved)')" data-test="review-note" />
+                        <div class="grid grid-cols-2 gap-2">
+                            <flux:button variant="danger" icon="x-mark" wire:click="rejectScript" data-test="reject-script">{{ __('Not approved') }}</flux:button>
+                            <flux:button variant="primary" icon="check" wire:click="approveScript" data-test="approve-script">{{ __('Approve') }}</flux:button>
+                        </div>
+                    </section>
+                @endif
             <section class="{{ $panel }} flex flex-col gap-1 p-2">
                 <button type="button" @click="navigator.clipboard.writeText($wire.title + '\n\n' + $wire.body); copied = true; setTimeout(() => copied = false, 2000)" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:text-zinc-200 dark:hover:bg-white/5">
                     <flux:icon.clipboard-document variant="mini" class="size-4.5 text-zinc-400" /><span x-text="copied ? @js(__('Copied')) : @js(__('Copy script'))"></span>

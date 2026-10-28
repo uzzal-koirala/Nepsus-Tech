@@ -47,7 +47,7 @@
             </td></tr>
 
             <tr><td style="padding:16px;text-align:center;font-size:11px;color:#a1a1aa;">
-                {{ __('Sent every morning. Change who gets it in Settings → Preferences.') }}
+                {{ __('Sent every morning. Change who gets it in Settings → Email.') }}
             </td></tr>
         </table>
     </td></tr>

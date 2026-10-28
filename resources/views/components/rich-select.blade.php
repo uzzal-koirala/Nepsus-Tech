@@ -24,6 +24,7 @@
     x-data="{
         open: false,
         up: false,
+        end: false,
         q: '',
         toggle() {
             this.open = ! this.open;
@@ -31,6 +32,8 @@
             // Open upwards when there is not enough room below.
             const r = this.$refs.trigger.getBoundingClientRect();
             this.up = window.innerHeight - r.bottom < 330 && r.top > window.innerHeight - r.bottom;
+            // Line up with the right edge when the list would run off the screen (a field on the right, a phone).
+            this.end = r.left + Math.max(r.width, 240) > document.documentElement.clientWidth - 8;
             this.$nextTick(() => this.$refs.search?.focus());
         },
         value: $wire.entangle('{{ $model }}'){{ $live ? '.live' : '' }},
@@ -61,8 +64,8 @@
     <div x-show="open" x-cloak role="listbox"
         x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 -translate-y-1 scale-95" x-transition:enter-end="opacity-100 translate-y-0 scale-100"
         x-transition:leave="transition ease-in duration-100" x-transition:leave-end="opacity-0 scale-95"
-        :class="up ? 'bottom-full mb-1.5 origin-bottom' : 'top-full mt-1.5 origin-top'"
-        class="absolute inset-x-0 z-40 min-w-60 overflow-hidden rounded-xl bg-white shadow-[0_24px_60px_-16px_rgb(15_23_42/0.4)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10">
+        :class="[up ? 'bottom-full mb-1.5' : 'top-full mt-1.5', end ? 'right-0' : 'left-0', up ? (end ? 'origin-bottom-right' : 'origin-bottom-left') : (end ? 'origin-top-right' : 'origin-top-left')]"
+        class="absolute z-40 w-full min-w-60 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl bg-white shadow-[0_24px_60px_-16px_rgb(15_23_42/0.4)] ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-white/10">
         @if ($searchable)
             <div class="border-b border-zinc-100 p-2 dark:border-white/5">
                 <div class="relative">
