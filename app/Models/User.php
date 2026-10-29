@@ -63,6 +63,16 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     }
 
     /** Admins and Content Creators: write scripts and plan every client's work on the calendar. Videos are for Video Editors (canEditVideos). */
+    /** "Admin", the employee's department ("Content Creator", "Video Editor"…) or "Team member". */
+    public function roleLabel(): string
+    {
+        return match (true) {
+            $this->isAdmin() => __('Admin'),
+            (bool) $this->employee?->department => __($this->employee->departmentMeta()['label']),
+            default => __('Team member'),
+        };
+    }
+
     public function canPlanContent(): bool
     {
         return $this->isAdmin() || $this->employee?->department === 'content-creator';

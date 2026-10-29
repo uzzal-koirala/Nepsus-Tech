@@ -244,13 +244,12 @@ class AttendanceDeviceTest extends TestCase
     public function test_helper_download_is_set_up_for_this_site(): void
     {
         $this->actingAs(User::factory()->create());
-        $this->get(route('settings.attendance-device.helper'))->assertNotFound(); // no key yet
-
-        Livewire::test('pages::settings.attendance-device')->call('createKey')->assertSee('Download helper');
+        // The button is there before any key; the first download makes one.
+        Livewire::test('pages::settings.attendance-device')->assertSee('Download helper')->assertDontSee('New secret key');
+        $response = $this->get(route('settings.attendance-device.helper'))->assertOk();
         $key = Setting::get('device_push_token');
         $this->assertSame(40, strlen($key));
-
-        $response = $this->get(route('settings.attendance-device.helper'))->assertOk();
+        Livewire::test('pages::settings.attendance-device')->assertSee('New secret key');
         $zip = new ZipArchive;
         $zip->open($response->baseResponse->getFile()->getPathname());
         $config = json_decode($zip->getFromName('config.json'), true);
@@ -333,5 +332,37 @@ class AttendanceDeviceTest extends TestCase
 
         AttendancePunches::apply([['user' => '3', 'time' => $day->copy()->setTime(8, 0)]]);
         $this->assertSame('half_day', Attendance::sole()->status);
+    }
+
+    public function test_a_wrong_device_password_says_how_many_tries_are_left(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $body = '<userCheck><statusValue>401</statusValue><lockStatus>unlock</lockStatus><unlockTime>0</unlockTime><retryLoginTime>1</retryLoginTime></userCheck>';
+        $locked = '<userCheck><statusValue>401</statusValue><lockStatus>lock</lockStatus><unlockTime>1800</unlockTime><retryLoginTime>0</retryLoginTime></userCheck>';
+        \Illuminate\Support\Facades\Http::fake(['*' => \Illuminate\Support\Facades\Http::sequence()->push($body, 401)->push($locked, 401)]);
+        Livewire::test('pages::settings.attendance-device')->set('host', '192.168.1.74')->set('username', 'admin')->set('password', 'wrong')
+            ->call('testConnection')->assertSee('1 try left before the device locks the account');
+
+        Livewire::test('pages::settings.attendance-device')->set('host', '192.168.1.74')->set('username', 'admin')->set('password', 'wrong')
+            ->call('testConnection')->assertSee('Wait 30 minutes');
+    }
+
+    public function test_sync_now_on_the_hosted_site_never_waits_on_the_office_device(): void
+    {
+        $this->actingAs(User::factory()->create());
+        Setting::put(['device_host' => '192.168.1.74', 'device_username' => 'admin', 'device_password' => \Illuminate\Support\Facades\Crypt::encryptString('x')]);
+        \Illuminate\Support\Facades\Http::fake(fn () => throw new \Illuminate\Http\Client\ConnectionException('cURL error 28: Connection timed out after 5001 milliseconds'));
+
+        // Inside the office: a timeout reads as words, not a cURL code.
+        Livewire::test('pages::settings.attendance-device')->call('syncNow')->assertSee('Could not reach the device')->assertDontSee('cURL');
+
+        // Hosted: no device call at all, it points to the helper, then asks the helper once there is a key.
+        $this->app->detectEnvironment(fn () => 'production');
+        \Illuminate\Support\Facades\Http::fake(fn () => throw new \RuntimeException('the hosted site must not call the device'));
+        Livewire::test('pages::settings.attendance-device')->call('syncNow')->assertSet('waitingSince', null)
+            ->assertDispatched('toast-show', fn ($name, $params) => str_contains(json_encode($params), 'Download the helper in step 4'));
+        Setting::put(['device_push_token' => str_repeat('k', 40)]);
+        Livewire::test('pages::settings.attendance-device')->call('syncNow')->assertNotSet('waitingSince', null);
+        $this->assertNotNull(Setting::get('device_sync_requested'));
     }
 }

@@ -11,6 +11,7 @@
         'hr' => 'bg-teal-100 text-teal-700 dark:bg-teal-500/25 dark:text-teal-100',
         'content-creator' => 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/25 dark:text-fuchsia-100',
         'video-editor' => 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/25 dark:text-indigo-100',
+        'social-media-manager' => 'bg-sky-100 text-sky-700 dark:bg-sky-500/25 dark:text-sky-100',
     ];
 @endphp
 

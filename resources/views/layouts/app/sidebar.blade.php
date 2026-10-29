@@ -88,7 +88,7 @@
                         </span>
                         <span class="grid min-w-0 flex-1 leading-tight in-data-flux-sidebar-collapsed-desktop:hidden">
                             <span class="truncate text-sm font-medium text-zinc-900 dark:text-white">{{ auth()->user()->name }}</span>
-                            <span class="truncate text-xs text-zinc-500 dark:text-zinc-400">{{ auth()->user()->email }}</span>
+                            <span class="truncate text-xs text-zinc-500 dark:text-zinc-400" data-test="sidebar-role">{{ auth()->user()->roleLabel() }}</span>
                         </span>
                         <flux:icon.ellipsis-vertical variant="micro" class="text-zinc-400 in-data-flux-sidebar-collapsed-desktop:hidden" />
                     </button>

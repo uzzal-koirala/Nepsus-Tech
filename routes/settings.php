@@ -21,7 +21,10 @@ Route::middleware(['auth', 'verified', 'admin'])->group(function () {
     // Zip with the office PC helper, already set up for this website and its secret key.
     Route::get('settings/attendance-device/helper', function () {
         $key = (string) Setting::get('device_push_token');
-        abort_if($key === '', 404);
+        if ($key === '') {
+            $key = Illuminate\Support\Str::random(40);
+            Setting::put(['device_push_token' => $key]);
+        }
 
         $path = tempnam(sys_get_temp_dir(), 'helper');
         $zip = new ZipArchive;

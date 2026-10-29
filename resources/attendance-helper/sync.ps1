@@ -5,6 +5,9 @@ $ErrorActionPreference = 'Stop'
 
 $dir = $PSScriptRoot
 $log = Join-Path $dir 'sync.log'
+# After a wrong device password, wait an hour before trying again: the device locks the account after a few tries.
+$loginFailed = Join-Path $dir 'device-login-failed.txt'
+$stage = 'website'
 
 function Write-Log([string] $text) {
     Add-Content -Path $log -Value ("{0}  {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $text)
@@ -12,6 +15,7 @@ function Write-Log([string] $text) {
 }
 
 try {
+    if ((Test-Path $loginFailed) -and (((Get-Date) - (Get-Item $loginFailed).LastWriteTime).TotalMinutes -lt 60)) { exit 0 }
     $cfg = Get-Content (Join-Path $dir 'config.json') -Raw | ConvertFrom-Json
     $site = $cfg.site.TrimEnd('/')
     $headers = @{ Authorization = 'Bearer ' + $cfg.token; Accept = 'application/json' }
@@ -34,6 +38,7 @@ try {
     # Read the last few days. One extra day either side, in case the device clock's time zone is set wrong.
     $start = (Get-Date).Date.AddDays(-[int] $cfg.days)
     $end = (Get-Date).AddDays(1)
+    $stage = 'device'
     $searchId = [guid]::NewGuid().ToString('N').Substring(0, 16)
     $punches = New-Object System.Collections.ArrayList
     $position = 0
@@ -57,6 +62,8 @@ try {
         $position += $events.Count
     } while ($page.responseStatusStrg -eq 'MORE' -and $events.Count -gt 0 -and $position -lt 20000)
 
+    $stage = 'website'
+    Remove-Item $loginFailed -ErrorAction SilentlyContinue
     $payload = @{ computer = $env:COMPUTERNAME; punches = @($punches) } | ConvertTo-Json -Depth 4 -Compress
     $result = Invoke-RestMethod -Uri ($site + '/api/attendance/punches') -Method Post `
         -Body ([Text.Encoding]::UTF8.GetBytes($payload)) -ContentType 'application/json; charset=utf-8' `
@@ -67,6 +74,12 @@ try {
     exit 0
 }
 catch {
-    Write-Log ("ERROR  " + $_.Exception.Message)
+    $message = $_.Exception.Message
+    if ($stage -eq 'device' -and $message -match '401') {
+        Set-Content -Path $loginFailed -Value (Get-Date -Format 'o')
+        Write-Log 'ERROR  The device rejected the password. Waiting an hour before trying again so it does not lock. Run Install.bat again with the correct password.'
+    } else {
+        Write-Log ("ERROR  ({0}) {1}" -f $stage, $message)
+    }
     exit 1
 }

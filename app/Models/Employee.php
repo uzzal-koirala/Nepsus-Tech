@@ -41,7 +41,7 @@ class Employee extends Model
     }
 
     /** The departments a person can be put in for now; each has its own dashboard and pages. Older ones still show on people who have them. */
-    public const CHOOSABLE_DEPARTMENTS = ['content-creator', 'video-editor'];
+    public const CHOOSABLE_DEPARTMENTS = ['content-creator', 'video-editor', 'social-media-manager'];
 
     /** @return array<string, array{label: string, icon: string}> */
     public static function choosableDepartments(): array

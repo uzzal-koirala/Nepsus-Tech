@@ -99,24 +99,43 @@ new #[Title('Attendance device')] class extends Component {
             $info = (new AttendanceDevice(trim($this->host), trim($this->username), $password))->info();
             $this->test = ['ok' => true, 'text' => __('Connected to :model', ['model' => $info['model'] ?: $info['name'] ?: __('the device')]).($info['serial'] ? ' · '.$info['serial'] : '')];
         } catch (\Illuminate\Http\Client\RequestException $e) {
-            $this->test = ['ok' => false, 'text' => $e->response->status() === 401 ? __('The device answered, but the username or password is wrong.') : __('The device answered with an error (:code). It may not support network sync; use file import below.', ['code' => $e->response->status()])];
+            $this->test = ['ok' => false, 'text' => $e->response->status() === 401 ? $this->wrongLogin($e->response->body()) : __('The device answered with an error (:code). It may not support network sync; use file import below.', ['code' => $e->response->status()])];
         } catch (\Throwable) {
-            $this->test = ['ok' => false, 'text' => __('Could not reach the device. Check the IP address and that this PC is on the same network.')];
+            // The hosted website is outside the office network; only the office PC helper can reach the device.
+            $this->test = ['ok' => false, 'text' => app()->isProduction()
+                ? __('This website runs online, so it cannot reach a device inside the office network. Use step 4: install the helper on an office PC.')
+                : __('Could not reach the device. Check the IP address and that this PC is on the same network.')];
         }
+    }
+
+    /** Hikvision says how many tries are left before it locks the account; pass that on. */
+    private function wrongLogin(string $body): string
+    {
+        $xml = @simplexml_load_string($body);
+        if ($xml && (string) $xml->lockStatus === 'lock') {
+            return __('The device has locked this account after too many wrong passwords. Wait :min minutes, then try the correct password.', ['min' => max(1, (int) ceil((int) $xml->unlockTime / 60))]);
+        }
+        $left = $xml ? (int) $xml->retryLoginTime : 0;
+
+        return $left > 0
+            ? trans_choice('The device answered, but the username or password is wrong. :count try left before the device locks the account.|The device answered, but the username or password is wrong. :count tries left before the device locks the account.', $left)
+            : __('The device answered, but the username or password is wrong.');
     }
 
     /** Set while waiting for the office PC helper to answer a "Sync now". */
     public ?string $waitingSince = null;
 
     /**
-     * Sync right away: read the device directly when this app can reach it,
-     * otherwise ask the office PC helper (hosted site) and wait for it.
+     * Sync right away: read the device directly when this app runs inside the office,
+     * otherwise (the hosted website) ask the office PC helper and wait for it.
      */
     public function syncNow(): void
     {
         $this->waitingSince = null;
+        // The hosted website is outside the office network: reaching the device only times out.
+        $hosted = app()->isProduction();
 
-        if (AttendanceDevice::fromSettings()) {
+        if (! $hosted && AttendanceDevice::fromSettings()) {
             try {
                 $r = AttendancePunches::syncFromDevice(7);
                 Flux::toast(variant: 'success', text: trans_choice(':count day marked present from the device.|:count days marked present from the device.', $r['marked']));
@@ -124,7 +143,7 @@ new #[Title('Attendance device')] class extends Component {
                 return;
             } catch (\Throwable $e) {
                 if (! $this->hasKey) {
-                    Flux::toast(variant: 'danger', text: __('Sync failed: :error', ['error' => Str::limit($e->getMessage(), 120)]));
+                    Flux::toast(variant: 'danger', text: __('Sync failed: :error', ['error' => Str::limit(AttendancePunches::readableError($e), 160)]));
 
                     return;
                 }
@@ -132,7 +151,9 @@ new #[Title('Attendance device')] class extends Component {
         }
 
         if (! $this->hasKey) {
-            Flux::toast(variant: 'warning', text: __('Connect the device in step 1, or set up the office PC helper in step 4.'));
+            Flux::toast(variant: 'warning', text: $hosted
+                ? __('This website cannot reach the device inside the office. Download the helper in step 4 and install it on an office PC.')
+                : __('Connect the device in step 1, or set up the office PC helper in step 4.'));
 
             return;
         }
@@ -406,8 +427,7 @@ new #[Title('Attendance device')] class extends Component {
                 <div class="grid gap-4 sm:ms-10 lg:grid-cols-[minmax(0,1fr)_18rem]">
                     <ol class="flex flex-col gap-3 rounded-xl p-5 ring-1 ring-zinc-200/70 dark:ring-white/10">
                         @foreach ([
-                            ['key', __('Create the secret key'), __('Only the helper with this key can send punches.')],
-                            ['arrow-down-tray', __('Download the helper on the office PC'), __('Open this page on the hosted website from the office PC and download it there.')],
+                            ['arrow-down-tray', __('Download the helper on the office PC'), __('Open this page on the hosted website from the office PC and download it there. It carries a secret key, so only it can send punches.')],
                             ['folder-open', __('Unzip it and double-click Install.bat'), __('Allow administrator access, then type the device password once.')],
                             ['check-badge', __('Done'), __('Windows sends new punches every 5 minutes, even after a restart.')],
                         ] as [$icon, $title, $hint])
@@ -432,11 +452,10 @@ new #[Title('Attendance device')] class extends Component {
                             <p class="text-sm text-zinc-500">{{ __('Not installed yet.') }}</p>
                         @endif
 
+                        {{-- The download makes the secret key the first time. --}}
+                        <flux:button variant="primary" icon="arrow-down-tray" :href="route('settings.attendance-device.helper')" data-test="download-helper">{{ __('Download helper') }}</flux:button>
                         @if ($this->hasKey)
-                            <flux:button variant="primary" icon="arrow-down-tray" :href="route('settings.attendance-device.helper')" data-test="download-helper">{{ __('Download helper') }}</flux:button>
                             <flux:button size="sm" variant="ghost" icon="arrow-path" wire:click="createKey" wire:confirm="{{ __('Make a new key? A helper already installed will stop working until you install the new download.') }}">{{ __('New secret key') }}</flux:button>
-                        @else
-                            <flux:button variant="primary" icon="key" wire:click="createKey" data-test="create-key">{{ __('Create secret key') }}</flux:button>
                         @endif
                     </div>
                 </div>

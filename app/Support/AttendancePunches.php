@@ -80,10 +80,20 @@ class AttendancePunches
 
             return $result;
         } catch (\Throwable $e) {
-            Setting::put(['device_last_sync' => now()->toIso8601String(), 'device_last_error' => Str::limit($e->getMessage(), 250)]);
+            Setting::put(['device_last_sync' => now()->toIso8601String(), 'device_last_error' => Str::limit(self::readableError($e), 250)]);
 
             throw $e;
         }
+    }
+
+    /** What went wrong, in words an office manager can act on (not a cURL code). */
+    public static function readableError(\Throwable $e): string
+    {
+        return match (true) {
+            $e instanceof \Illuminate\Http\Client\ConnectionException => __('Could not reach the device. Check that it is on and that this computer is on the office network.'),
+            $e instanceof \Illuminate\Http\Client\RequestException && $e->response->status() === 401 => __('The device rejected the username or password.'),
+            default => $e->getMessage(),
+        };
     }
 
     /** A second punch this soon after check-in is a double tap, not leaving. */

@@ -34,6 +34,7 @@ Artisan::command('reminders:send', function () {
 // Needs the hPanel cron job running `php artisan schedule:run` every minute.
 Schedule::command('reminders:send')->dailyAt('07:00')->when(fn () => Setting::get('reminder_emails_on') === '1');
 
-// Runs while `php artisan schedule:work` is running on the office PC.
+// Runs while `php artisan schedule:work` is running on the office PC. Not on the hosted website:
+// it cannot reach the office network (the office PC helper sends punches there instead).
 Schedule::command('attendance:sync')->everyFiveMinutes()->withoutOverlapping()
-    ->when(fn () => Setting::get('device_auto_sync') === '1');
+    ->when(fn () => Setting::get('device_auto_sync') === '1' && ! app()->isProduction());

@@ -231,12 +231,12 @@ class EmployeesTest extends TestCase
         $this->assertSame(0, $employee->attendances()->count());
     }
 
-    public function test_only_content_creator_and_video_editor_can_be_picked(): void
+    public function test_only_the_role_departments_can_be_picked(): void
     {
         $this->actingAs(User::factory()->create());
         $old = Employee::factory()->create(['name' => 'Bina Rai', 'department' => 'design']);
 
-        $this->assertSame(['content-creator' => 'Content Creator', 'video-editor' => 'Video Editor'], array_map(fn ($d) => $d['label'], Employee::choosableDepartments()));
+        $this->assertSame(['content-creator' => 'Content Creator', 'video-editor' => 'Video Editor', 'social-media-manager' => 'Social Media Manager'], array_map(fn ($d) => $d['label'], Employee::choosableDepartments()));
         $this->get(route('employees.index'))->assertOk()->assertDontSee(['New department', 'addDepartment', 'deleteDepartment']);
 
         // New people start as Content Creators; older departments cannot be picked any more.

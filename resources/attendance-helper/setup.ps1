@@ -12,6 +12,14 @@ if (-not $admin) {
 $target = Join-Path $env:ProgramData 'NepsusAttendance'
 $taskName = 'Nepsus Attendance Sync'
 
+# Any error: show it and keep the window open, so it can be read.
+trap {
+    Write-Host ''
+    Write-Host ('  Setup failed: ' + $_.Exception.Message) -ForegroundColor Red
+    Read-Host '  Press Enter to close'
+    exit 1
+}
+
 Write-Host ''
 Write-Host '  Nepsus attendance helper' -ForegroundColor Cyan
 Write-Host '  ------------------------'
@@ -30,6 +38,7 @@ $cfg.devicePassword = [Convert]::ToBase64String([Security.Cryptography.Protected
 
 New-Item -ItemType Directory -Force -Path $target | Out-Null
 Copy-Item (Join-Path $PSScriptRoot 'sync.ps1') $target -Force
+Remove-Item (Join-Path $target 'device-login-failed.txt') -ErrorAction SilentlyContinue  # new password: try again now
 $cfg | ConvertTo-Json | Set-Content (Join-Path $target 'config.json') -Encoding UTF8
 
 Write-Host ''
@@ -54,5 +63,7 @@ if ($ok) {
     Write-Host '  Installed, but the test failed (see the message above). Fix it and run Install.bat again.' -ForegroundColor Yellow
 }
 Write-Host ('  Log file: ' + (Join-Path $target 'sync.log'))
+Write-Host ''
+Read-Host '  Press Enter to close'
 Write-Host ''
 Read-Host '  Press Enter to close'
